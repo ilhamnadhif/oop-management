@@ -18,11 +18,16 @@ Go 1.26 atau lebih baru diperlukan.
 Mode aplikasi selalu menggunakan Google Sheets, termasuk saat dijalankan di lokal. Isi `.env` dengan Spreadsheet ID dan path credential service account, lalu jalankan:
 
 ```bash
-set -a
-source .env
-set +a
 go run ./cmd/web
 ```
+
+Aplikasi membaca `.env` dari direktori kerja secara otomatis, jadi tidak perlu `source .env` atau `export`. Aturannya:
+
+- Environment variable yang sudah ada di proses menang atas isi `.env`, sehingga `PORT=9000 go run ./cmd/web` dan env container tetap bisa menimpa.
+- Baris kosong, komentar `#`, dan awalan `export` diabaikan.
+- Nilai `"..."` dan tanpa kutip mendukung `$VAR`/`${VAR}` (termasuk `$PWD`); nilai `'...'` dipakai apa adanya.
+- `.env` yang tidak ada bukan error, ini yang dipakai saat deploy container karena `.env` masuk `.dockerignore`.
+- Path file lain bisa dipilih lewat `ENV_FILE=/path/ke/file go run ./cmd/web`.
 
 ## Konfigurasi Google Sheets
 

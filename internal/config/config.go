@@ -20,6 +20,11 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	envFile := getenv("ENV_FILE", ".env")
+	if err := LoadDotEnv(envFile); err != nil {
+		return Config{}, fmt.Errorf("load %s: %w", envFile, err)
+	}
+
 	timezoneName := getenv("APP_TIMEZONE", "Asia/Jakarta")
 	loc, err := time.LoadLocation(timezoneName)
 	if err != nil {
