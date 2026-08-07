@@ -1,0 +1,79 @@
+{{define "dashboard"}}
+{{template "pageHead" .}}
+<main class="app-shell" data-attendance-dashboard data-csrf-token="{{.CSRFToken}}">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">OPP HRIS ABSENSI</p>
+      <h1>Dashboard absensi</h1>
+    </div>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button class="button subtle" type="submit">Keluar</button>
+    </form>
+  </header>
+
+  <section class="welcome-card">
+    <div>
+      <p class="muted">Selamat datang,</p>
+      <h2>{{.User.NamaLengkap}}</h2>
+      <p class="identity">NRP {{.User.NRP}} <span>·</span> {{.User.Jabatan}}</p>
+    </div>
+    <div class="date-chip">{{.Today}}</div>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="panel status-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">STATUS HARI INI</p>
+          <h2>{{if not .HasClockIn}}Belum Clock In{{else if not .HasClockOut}}Sudah Clock In{{else}}Sudah Clock Out{{end}}</h2>
+        </div>
+        <span class="status-dot {{if .HasClockOut}}done{{else if .HasClockIn}}started{{else}}idle{{end}}"></span>
+      </div>
+
+      <dl class="time-list">
+        <div>
+          <dt>Clock in</dt>
+          <dd>{{if .HasClockIn}}{{formatTime .Attendance.ClockInAt}}{{else}}Belum tercatat{{end}}</dd>
+        </div>
+        <div>
+          <dt>Clock out</dt>
+          <dd>{{if .HasClockOut}}{{formatTime .Attendance.ClockOutAt}}{{else}}Belum tercatat{{end}}</dd>
+        </div>
+        {{if .Attendance}}{{if .Attendance.DurasiMenit}}
+        <div>
+          <dt>Durasi kerja</dt>
+          <dd>{{.Attendance.DurasiMenit}} menit</dd>
+        </div>
+        {{end}}{{end}}
+      </dl>
+    </article>
+
+    <article class="panel camera-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">BUKTI WAJAH</p>
+          <h2>Ambil foto selfie</h2>
+        </div>
+        <span class="camera-indicator" id="cameraIndicator">Menyiapkan kamera…</span>
+      </div>
+      <div class="video-frame">
+        <video id="cameraPreview" autoplay playsinline muted></video>
+        <div class="camera-placeholder" id="cameraPlaceholder">Izinkan akses kamera untuk melanjutkan.</div>
+      </div>
+      <p class="camera-status" id="cameraStatus" role="status">Lokasi akan diambil saat tombol ditekan.</p>
+      <div class="action-row">
+        {{if not .HasClockIn}}
+        <button class="button primary" type="button" data-attendance-action="/absensi/clock-in" disabled>Clock In</button>
+        {{else if not .HasClockOut}}
+        <button class="button primary" type="button" data-attendance-action="/absensi/clock-out" disabled>Clock Out</button>
+        {{else}}
+        <span class="completed-note">Absensi hari ini sudah lengkap.</span>
+        {{end}}
+      </div>
+    </article>
+  </section>
+</main>
+<script src="/static/js/attendance.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

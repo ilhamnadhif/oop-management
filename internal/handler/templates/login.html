@@ -1,0 +1,24 @@
+{{define "login"}}
+{{template "pageHead" .}}
+<main class="auth-shell">
+  <section class="auth-card" aria-labelledby="login-title">
+    <div class="brand-mark">OPP</div>
+    <p class="eyebrow">HRIS ABSENSI</p>
+    <h1 id="login-title">Selamat datang</h1>
+    <p class="muted">Masuk untuk mencatat kehadiran hari ini.</p>
+    {{template "authTabs" .}}
+    {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+    {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+    <form method="post" action="/login" class="stack-form">
+      <label for="identifier">NRP atau email</label>
+      <input id="identifier" name="identifier" type="text" value="{{.Identifier}}" autocomplete="username" required autofocus>
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+      <button class="button primary" type="submit">Masuk</button>
+    </form>
+  </section>
+</main>
+{{template "pageFoot" .}}
+{{end}}

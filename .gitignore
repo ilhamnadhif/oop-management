@@ -1,0 +1,11 @@
+.env
+*.json
+credentials/
+
+# Go tooling
+/bin/
+/dist/
+/web
+
+# Local OS files
+.DS_Store

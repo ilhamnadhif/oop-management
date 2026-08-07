@@ -1,0 +1,24 @@
+{{define "pageHead"}}
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173f5f">
+  <title>{{.Title}} · OPP HRIS Absensi</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+{{end}}
+
+{{define "pageFoot"}}
+</body>
+</html>
+{{end}}
+
+{{define "authTabs"}}
+<nav class="auth-tabs" aria-label="Autentikasi">
+  <a class="auth-tab {{if eq .ActiveTab "login"}}active{{end}}" href="/login">Masuk</a>
+  <a class="auth-tab {{if eq .ActiveTab "register"}}active{{end}}" href="/register">Daftar</a>
+</nav>
+{{end}}

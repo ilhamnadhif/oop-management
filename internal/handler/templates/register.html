@@ -1,0 +1,49 @@
+{{define "register"}}
+{{template "pageHead" .}}
+<main class="auth-shell">
+  <section class="auth-card wide" aria-labelledby="register-title">
+    <div class="brand-mark">OPP</div>
+    <p class="eyebrow">HRIS ABSENSI</p>
+    <h1 id="register-title">Buat akun</h1>
+    <p class="muted">Lengkapi data diri untuk mulai menggunakan absensi.</p>
+    {{template "authTabs" .}}
+    {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+    <form method="post" action="/register" class="stack-form">
+      <div class="form-grid">
+        <div>
+          <label for="tanggal_gabung">Tanggal gabung</label>
+          <input id="tanggal_gabung" name="tanggal_gabung" type="date" value="{{.Register.TanggalGabung}}" required>
+        </div>
+        <div>
+          <label for="nama_lengkap">Nama lengkap</label>
+          <input id="nama_lengkap" name="nama_lengkap" type="text" value="{{.Register.NamaLengkap}}" autocomplete="name" required>
+        </div>
+        <div>
+          <label for="nrp">NRP</label>
+          <input id="nrp" name="nrp" type="text" value="{{.Register.NRP}}" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="jabatan">Jabatan / posisi</label>
+          <input id="jabatan" name="jabatan" type="text" value="{{.Register.Jabatan}}" required>
+        </div>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" value="{{.Register.Email}}" autocomplete="email" required>
+        </div>
+        <div>
+          <label for="status_pengguna">Status pengguna</label>
+          <select id="status_pengguna" name="status_pengguna">
+            <option value="AKTIF" {{if eq .Register.Status "AKTIF"}}selected{{end}}>Aktif</option>
+            <option value="TIDAK_AKTIF" {{if eq .Register.Status "TIDAK_AKTIF"}}selected{{end}}>Tidak aktif</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="register-password">Password <span class="hint">(minimal 8 karakter)</span></label>
+      <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+      <button class="button primary" type="submit">Daftar akun</button>
+    </form>
+  </section>
+</main>
+{{template "pageFoot" .}}
+{{end}}
