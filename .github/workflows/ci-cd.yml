@@ -187,6 +187,7 @@ jobs:
             docker run -d \
               --name opp-absensi \
               --restart unless-stopped \
+              --user "$(id -u):$(id -g)" \
               --publish "$APP_HOST_PORT:8080" \
               --env-file "$APP_DIR/runtime/.env" \
               --mount "type=bind,src=$APP_DIR/runtime/google-application-credentials.json,dst=/run/secrets/google-application-credentials.json,readonly" \
