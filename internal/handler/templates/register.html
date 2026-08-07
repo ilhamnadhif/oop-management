@@ -2,13 +2,13 @@
 {{template "pageHead" .}}
 <main class="auth-shell">
   <section class="auth-card wide" aria-labelledby="register-title">
-    <div class="brand-mark">OPP</div>
-    <p class="eyebrow">HRIS ABSENSI</p>
+    {{template "brandLogo"}}
+    <p class="eyebrow">ORECON PUTRA PERKASA</p>
     <h1 id="register-title">Buat akun</h1>
     <p class="muted">Lengkapi data diri untuk mulai menggunakan absensi.</p>
     {{template "authTabs" .}}
     {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
-    <form method="post" action="/register" class="stack-form">
+    <form method="post" action="/register" class="stack-form" data-loading-form>
       <div class="form-grid">
         <div>
           <label for="tanggal_gabung">Tanggal gabung</label>
@@ -16,19 +16,24 @@
         </div>
         <div>
           <label for="nama_lengkap">Nama lengkap</label>
-          <input id="nama_lengkap" name="nama_lengkap" type="text" value="{{.Register.NamaLengkap}}" autocomplete="name" required>
+          <input id="nama_lengkap" name="nama_lengkap" type="text" value="{{.Register.NamaLengkap}}" placeholder="Budi Santoso" autocomplete="name" required>
         </div>
         <div>
           <label for="nrp">NRP</label>
-          <input id="nrp" name="nrp" type="text" value="{{.Register.NRP}}" autocomplete="off" required>
+          <input id="nrp" name="nrp" type="text" value="{{.Register.NRP}}" placeholder="123456" inputmode="numeric" pattern="[0-9]+" title="NRP hanya boleh angka" autocomplete="off" data-digits-only required>
         </div>
         <div>
           <label for="jabatan">Jabatan / posisi</label>
-          <input id="jabatan" name="jabatan" type="text" value="{{.Register.Jabatan}}" required>
+          <select id="jabatan" name="jabatan" required>
+            <option value="" {{if not .Register.Jabatan}}selected{{end}} disabled>Pilih jabatan</option>
+            {{range .JabatanOptions}}
+            <option value="{{.}}" {{if eq . $.Register.Jabatan}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
         </div>
         <div>
           <label for="email">Email</label>
-          <input id="email" name="email" type="email" value="{{.Register.Email}}" autocomplete="email" required>
+          <input id="email" name="email" type="email" value="{{.Register.Email}}" placeholder="nama@perusahaan.com" autocomplete="email" required>
         </div>
         <div>
           <label for="status_pengguna">Status pengguna</label>
@@ -40,10 +45,25 @@
       </div>
 
       <label for="register-password">Password <span class="hint">(minimal 8 karakter)</span></label>
-      <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
-      <button class="button primary" type="submit">Daftar akun</button>
+      <div class="input-with-action">
+        <input id="register-password" name="password" type="password" placeholder="Minimal 8 karakter" autocomplete="new-password" minlength="8" required>
+        {{template "passwordToggle" "register-password"}}
+      </div>
+
+      <label for="register-password-confirm">Konfirmasi password</label>
+      <div class="input-with-action">
+        <input id="register-password-confirm" type="password" placeholder="Ulangi password" autocomplete="new-password" minlength="8" required
+          data-confirm-for="register-password" data-confirm-message="Konfirmasi password tidak sama.">
+        {{template "passwordToggle" "register-password-confirm"}}
+      </div>
+
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Memproses…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        <span data-submit-label>Daftar akun</span>
+      </button>
     </form>
   </section>
 </main>
+<script src="/static/js/auth.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}

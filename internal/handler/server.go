@@ -22,7 +22,7 @@ import (
 	"opp-management/internal/session"
 )
 
-//go:embed templates/*.html static/css/* static/js/*
+//go:embed templates/*.html static/css/* static/js/* static/img/* static/vendor/leaflet/leaflet.js static/vendor/leaflet/leaflet.css static/vendor/leaflet/images/*
 var assetFiles embed.FS
 
 type Server struct {
@@ -37,12 +37,13 @@ type Server struct {
 }
 
 type AuthPageData struct {
-	Title      string
-	ActiveTab  string
-	Error      string
-	Success    string
-	Identifier string
-	Register   RegisterFormData
+	Title          string
+	ActiveTab      string
+	Error          string
+	Success        string
+	Identifier     string
+	Register       RegisterFormData
+	JabatanOptions []string
 }
 
 type RegisterFormData struct {
@@ -55,13 +56,17 @@ type RegisterFormData struct {
 }
 
 type DashboardPageData struct {
-	Title       string
-	User        *model.User
-	Attendance  *model.Attendance
-	Today       string
-	CSRFToken   string
-	HasClockIn  bool
-	HasClockOut bool
+	Title         string
+	User          *model.User
+	Attendance    *model.Attendance
+	Today         string
+	ClockNow      string
+	ClockInTime   string
+	ClockOutTime  string
+	TimezoneLabel string
+	CSRFToken     string
+	HasClockIn    bool
+	HasClockOut   bool
 }
 
 func NewServer(auth *service.AuthService, attendance *service.AttendanceService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
@@ -77,24 +82,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 	if maxPhotoChars <= 0 {
 		maxPhotoChars = photo.MaxOutputChars
 	}
-	templates, err := template.New("pages").Funcs(template.FuncMap{
-		"formatTime": func(value interface{}) string {
-			switch typed := value.(type) {
-			case time.Time:
-				if typed.IsZero() {
-					return "-"
-				}
-				return typed.In(location).Format("02 Jan 2006 15:04:05")
-			case *time.Time:
-				if typed == nil || typed.IsZero() {
-					return "-"
-				}
-				return typed.In(location).Format("02 Jan 2006 15:04:05")
-			default:
-				return "-"
-			}
-		},
-	}).ParseFS(assetFiles, "templates/*.html")
+	templates, err := template.New("pages").ParseFS(assetFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
@@ -183,7 +171,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		s.render(w, "register", AuthPageData{Title: "Daftar Akun", ActiveTab: "register", Register: RegisterFormData{Status: model.StatusAktif}}, http.StatusOK)
+		s.render(w, "register", AuthPageData{
+			Title:          "Daftar Akun",
+			ActiveTab:      "register",
+			Register:       RegisterFormData{Status: model.StatusAktif},
+			JabatanOptions: service.JabatanOptions,
+		}, http.StatusOK)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -220,7 +213,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			message = "Terjadi kesalahan saat menyimpan akun"
 			status = http.StatusInternalServerError
 		}
-		s.render(w, "register", AuthPageData{Title: "Daftar Akun", ActiveTab: "register", Error: message, Register: form}, status)
+		s.render(w, "register", AuthPageData{
+			Title:          "Daftar Akun",
+			ActiveTab:      "register",
+			Error:          message,
+			Register:       form,
+			JabatanOptions: service.JabatanOptions,
+		}, status)
 		return
 	}
 	redirect(w, r, "/login?registered=1")
@@ -274,14 +273,27 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Gagal memuat data absensi", http.StatusInternalServerError)
 		return
 	}
+	now := s.now().In(s.location)
+	clockInTime := emptyClock
+	if attendance != nil && !attendance.ClockInAt.IsZero() {
+		clockInTime = attendance.ClockInAt.In(s.location).Format("15:04")
+	}
+	clockOutTime := emptyClock
+	if attendance != nil && attendance.ClockOutAt != nil && !attendance.ClockOutAt.IsZero() {
+		clockOutTime = attendance.ClockOutAt.In(s.location).Format("15:04")
+	}
 	s.render(w, "dashboard", DashboardPageData{
-		Title:       "Dashboard Absensi",
-		User:        user,
-		Attendance:  attendance,
-		Today:       s.now().In(s.location).Format("02 January 2006"),
-		CSRFToken:   sessionValue.CSRFToken,
-		HasClockIn:  attendance != nil,
-		HasClockOut: attendance != nil && attendance.ClockOutAt != nil,
+		Title:         "Dashboard Absensi",
+		User:          user,
+		Attendance:    attendance,
+		Today:         formatIndonesianDate(now),
+		ClockNow:      now.Format("15:04"),
+		ClockInTime:   clockInTime,
+		ClockOutTime:  clockOutTime,
+		TimezoneLabel: now.Format("MST"),
+		CSRFToken:     sessionValue.CSRFToken,
+		HasClockIn:    attendance != nil,
+		HasClockOut:   attendance != nil && attendance.ClockOutAt != nil,
 	}, http.StatusOK)
 }
 
@@ -484,12 +496,26 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
+// contentSecurityPolicy keeps every directive at 'self'. The single exception
+// is img-src, which also allows the OpenStreetMap tile hosts because Leaflet
+// fetches map tiles as plain <img> elements. Scripts, styles and XHR stay
+// same-origin, so the tile hosts can only ever paint pixels.
+const contentSecurityPolicy = "default-src 'self'; " +
+	"script-src 'self'; " +
+	"style-src 'self'; " +
+	"img-src 'self' data: https://*.tile.openstreetmap.org; " +
+	"media-src 'self' blob:; " +
+	"connect-src 'self'; " +
+	"frame-ancestors 'none'; " +
+	"base-uri 'self'; " +
+	"form-action 'self'"
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		next.ServeHTTP(w, r)
 	})
 }

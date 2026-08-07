@@ -49,7 +49,7 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 		"tanggal_gabung":  "2026-08-07",
 		"nama_lengkap":    "Budi Santoso",
 		"nrp":             "123456",
-		"jabatan":         "Staff",
+		"jabatan":         "Produksi",
 		"email":           "budi@example.com",
 		"password":        "rahasia123",
 		"status_pengguna": model.StatusAktif,
@@ -140,7 +140,7 @@ func TestLoginFailureUsesGenericMessage(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 	if _, err := auth.Register(context.Background(), service.RegisterInput{
-		TanggalGabung: "2026-08-07", NamaLengkap: "Budi", NRP: "1", Jabatan: "Staff",
+		TanggalGabung: "2026-08-07", NamaLengkap: "Budi", NRP: "1", Jabatan: "Produksi",
 		Email: "budi@example.com", Password: "rahasia123", Status: model.StatusAktif,
 	}); err != nil {
 		t.Fatalf("register: %v", err)

@@ -40,6 +40,41 @@ type ActivityMeta struct {
 	UserAgent string
 }
 
+// JabatanOptions is the closed set of positions a new account may hold. The
+// register form renders it and normalizeRegisterInput enforces it, so a direct
+// POST cannot slip an unlisted position past the dropdown.
+var JabatanOptions = []string{
+	"Flagman",
+	"Security",
+	"SHE",
+	"Surveyor",
+	"Logistik",
+	"HR",
+	"SPV",
+	"Management",
+	"Produksi",
+}
+
+// canonicalJabatan matches case-insensitively and returns the listed spelling,
+// so "spv" and "SPV" never become two different values in the sheet.
+func canonicalJabatan(value string) (string, bool) {
+	for _, option := range JabatanOptions {
+		if strings.EqualFold(option, value) {
+			return option, true
+		}
+	}
+	return "", false
+}
+
+func isAllDigits(value string) bool {
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return value != ""
+}
+
 func NewAuthService(store repository.Store, location *time.Location, now NowFunc) *AuthService {
 	if location == nil {
 		location = time.Local
@@ -213,12 +248,14 @@ func normalizeRegisterInput(input RegisterInput) (RegisterInput, error) {
 	if input.NamaLengkap == "" {
 		return RegisterInput{}, fmt.Errorf("%w: nama lengkap wajib diisi", ErrValidation)
 	}
-	if input.NRP == "" || strings.ContainsAny(input.NRP, " \t\r\n") {
-		return RegisterInput{}, fmt.Errorf("%w: NRP wajib diisi dan tidak boleh mengandung spasi", ErrValidation)
+	if !isAllDigits(input.NRP) {
+		return RegisterInput{}, fmt.Errorf("%w: NRP wajib diisi dan hanya boleh angka", ErrValidation)
 	}
-	if input.Jabatan == "" {
-		return RegisterInput{}, fmt.Errorf("%w: jabatan wajib diisi", ErrValidation)
+	jabatan, ok := canonicalJabatan(input.Jabatan)
+	if !ok {
+		return RegisterInput{}, fmt.Errorf("%w: jabatan tidak terdaftar", ErrValidation)
 	}
+	input.Jabatan = jabatan
 	parsedEmail, err := mail.ParseAddress(input.Email)
 	if err != nil || parsedEmail.Address != input.Email {
 		return RegisterInput{}, fmt.Errorf("%w: email tidak valid", ErrValidation)

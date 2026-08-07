@@ -2,9 +2,12 @@
 {{template "pageHead" .}}
 <main class="app-shell" data-attendance-dashboard data-csrf-token="{{.CSRFToken}}">
   <header class="topbar">
-    <div>
-      <p class="eyebrow">OPP HRIS ABSENSI</p>
-      <h1>Dashboard absensi</h1>
+    <div class="topbar-brand">
+      {{template "brandLogo"}}
+      <div>
+        <p class="eyebrow">ORECON PUTRA PERKASA</p>
+        <h1>Dashboard absensi</h1>
+      </div>
     </div>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -12,68 +15,88 @@
     </form>
   </header>
 
-  <section class="welcome-card">
-    <div>
-      <p class="muted">Selamat datang,</p>
-      <h2>{{.User.NamaLengkap}}</h2>
-      <p class="identity">NRP {{.User.NRP}} <span>·</span> {{.User.Jabatan}}</p>
+  <section class="clock-hero">
+    <p class="clock-now" id="clockNow" data-clock-start="{{.ClockNow}}">{{.ClockNow}}</p>
+    <p class="clock-date">{{.Today}}</p>
+    <p class="clock-identity">{{.User.NamaLengkap}} <span>·</span> NRP {{.User.NRP}} <span>·</span> {{.User.Jabatan}}</p>
+  </section>
+
+  <section class="panel action-card">
+    <div class="action-summary">
+      <p class="eyebrow">STATUS HARI INI</p>
+      <h2>{{if not .HasClockIn}}Belum Clock In{{else if not .HasClockOut}}Sudah Clock In{{else}}Sudah Clock Out{{end}}</h2>
+      {{if .Attendance}}{{if .Attendance.DurasiMenit}}
+      <p class="action-times">Durasi kerja {{.Attendance.DurasiMenit}} menit</p>
+      {{end}}{{end}}
     </div>
-    <div class="date-chip">{{.Today}}</div>
+    <div class="clock-buttons">
+      <button class="clock-card in" type="button" data-attendance-action="/absensi/clock-in"
+        {{if .HasClockIn}}disabled{{end}}>
+        <span class="clock-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h6v6"></path><path d="M10 14 21 3"></path>
+            <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"></path>
+          </svg>
+        </span>
+        <span class="clock-card-time">{{.ClockInTime}} <small>{{.TimezoneLabel}}</small></span>
+        <span class="clock-card-label">Clock In</span>
+      </button>
+      <button class="clock-card out" type="button" data-attendance-action="/absensi/clock-out"
+        {{if or (not .HasClockIn) .HasClockOut}}disabled{{end}}>
+        <span class="clock-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h6v6"></path><path d="M10 14 21 3"></path>
+            <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"></path>
+          </svg>
+        </span>
+        <span class="clock-card-time">{{.ClockOutTime}} <small>{{.TimezoneLabel}}</small></span>
+        <span class="clock-card-label">Clock Out</span>
+      </button>
+    </div>
+    <p class="action-hint" id="actionHint" role="status">Mengambil lokasi…</p>
   </section>
 
-  <section class="dashboard-grid">
-    <article class="panel status-panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">STATUS HARI INI</p>
-          <h2>{{if not .HasClockIn}}Belum Clock In{{else if not .HasClockOut}}Sudah Clock In{{else}}Sudah Clock Out{{end}}</h2>
-        </div>
-        <span class="status-dot {{if .HasClockOut}}done{{else if .HasClockIn}}started{{else}}idle{{end}}"></span>
+  <section class="panel location-panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">LOKASI GPS</p>
+        <h2>Titik absensi</h2>
       </div>
-
-      <dl class="time-list">
-        <div>
-          <dt>Clock in</dt>
-          <dd>{{if .HasClockIn}}{{formatTime .Attendance.ClockInAt}}{{else}}Belum tercatat{{end}}</dd>
-        </div>
-        <div>
-          <dt>Clock out</dt>
-          <dd>{{if .HasClockOut}}{{formatTime .Attendance.ClockOutAt}}{{else}}Belum tercatat{{end}}</dd>
-        </div>
-        {{if .Attendance}}{{if .Attendance.DurasiMenit}}
-        <div>
-          <dt>Durasi kerja</dt>
-          <dd>{{.Attendance.DurasiMenit}} menit</dd>
-        </div>
-        {{end}}{{end}}
-      </dl>
-    </article>
-
-    <article class="panel camera-panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">BUKTI WAJAH</p>
-          <h2>Ambil foto selfie</h2>
-        </div>
-        <span class="camera-indicator" id="cameraIndicator">Menyiapkan kamera…</span>
-      </div>
-      <div class="video-frame">
-        <video id="cameraPreview" autoplay playsinline muted></video>
-        <div class="camera-placeholder" id="cameraPlaceholder">Izinkan akses kamera untuk melanjutkan.</div>
-      </div>
-      <p class="camera-status" id="cameraStatus" role="status">Lokasi akan diambil saat tombol ditekan.</p>
-      <div class="action-row">
-        {{if not .HasClockIn}}
-        <button class="button primary" type="button" data-attendance-action="/absensi/clock-in" disabled>Clock In</button>
-        {{else if not .HasClockOut}}
-        <button class="button primary" type="button" data-attendance-action="/absensi/clock-out" disabled>Clock Out</button>
-        {{else}}
-        <span class="completed-note">Absensi hari ini sudah lengkap.</span>
-        {{end}}
-      </div>
-    </article>
+      <span class="camera-indicator" id="locationIndicator">Mengambil lokasi…</span>
+    </div>
+    <div class="map-frame">
+      <div id="attendanceMap"></div>
+      <div class="map-placeholder" id="mapPlaceholder">Izinkan akses lokasi untuk menampilkan peta.</div>
+    </div>
+    <p class="location-chip" id="locationChip" role="status" hidden></p>
+    <div class="action-row">
+      <button class="button subtle" type="button" id="refreshLocation">Perbarui lokasi</button>
+    </div>
   </section>
+
 </main>
+
+<div class="camera-modal" id="cameraModal" hidden>
+  <div class="camera-dialog" role="dialog" aria-modal="true" aria-labelledby="cameraModalTitle">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">BUKTI WAJAH</p>
+        <h2 id="cameraModalTitle">Ambil foto selfie</h2>
+      </div>
+      <span class="camera-indicator" id="cameraIndicator">Menyiapkan kamera…</span>
+    </div>
+    <div class="video-frame">
+      <video id="cameraPreview" autoplay playsinline muted></video>
+      <div class="camera-placeholder" id="cameraPlaceholder">Izinkan akses kamera untuk melanjutkan.</div>
+    </div>
+    <p class="camera-status" id="cameraStatus" role="status">Pastikan wajah terlihat jelas sebelum absen.</p>
+    <div class="action-row">
+      <button class="button subtle" type="button" id="cancelCapture">Batal</button>
+      <button class="button primary" type="button" id="confirmCapture" disabled>Ambil Foto</button>
+    </div>
+  </div>
+</div>
+<script src="/static/vendor/leaflet/leaflet.js" defer></script>
 <script src="/static/js/attendance.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}

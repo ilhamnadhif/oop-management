@@ -2,23 +2,35 @@
 {{template "pageHead" .}}
 <main class="auth-shell">
   <section class="auth-card" aria-labelledby="login-title">
-    <div class="brand-mark">OPP</div>
-    <p class="eyebrow">HRIS ABSENSI</p>
+    {{template "brandLogo"}}
+    <p class="eyebrow">ORECON PUTRA PERKASA</p>
     <h1 id="login-title">Selamat datang</h1>
     <p class="muted">Masuk untuk mencatat kehadiran hari ini.</p>
     {{template "authTabs" .}}
     {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
     {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
-    <form method="post" action="/login" class="stack-form">
+    <form method="post" action="/login" class="stack-form" id="loginForm" data-loading-form>
       <label for="identifier">NRP atau email</label>
-      <input id="identifier" name="identifier" type="text" value="{{.Identifier}}" autocomplete="username" required autofocus>
+      <input id="identifier" name="identifier" type="text" value="{{.Identifier}}" placeholder="123456 atau nama@perusahaan.com" autocomplete="username" required autofocus>
 
       <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <div class="input-with-action">
+        <input id="password" name="password" type="password" placeholder="Masukkan password" autocomplete="current-password" required>
+        {{template "passwordToggle" "password"}}
+      </div>
 
-      <button class="button primary" type="submit">Masuk</button>
+      <label class="checkbox-row" for="rememberMe">
+        <input id="rememberMe" type="checkbox">
+        <span>Ingat NRP/email saya di perangkat ini</span>
+      </label>
+
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Memproses…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        <span data-submit-label>Masuk</span>
+      </button>
     </form>
   </section>
 </main>
+<script src="/static/js/auth.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}
