@@ -180,18 +180,28 @@ func (r *GoogleSheetsRepository) UpdateLastLogin(ctx context.Context, userID str
 	if err != nil {
 		return err
 	}
-	for index, row := range dataRowsWithIndex(rows) {
-		user, err := rowToUser(row.values, r.location)
+	user, rowNumber, err := findUserRow(rows, userID, r.location)
+	if err != nil {
+		return err
+	}
+	user.LastLoginAt = &at
+	user.UpdatedAt = at
+	return r.updateRow(ctx, userSheet, rowNumber, userToRow(user), "K")
+}
+
+// findUserRow returns the user and its 1-based sheet row number, which is what
+// the Sheets API expects in an update range.
+func findUserRow(rows [][]interface{}, userID string, location *time.Location) (*model.User, int, error) {
+	for _, row := range dataRowsWithIndex(rows) {
+		user, err := rowToUser(row.values, location)
 		if err != nil {
-			return err
+			return nil, 0, err
 		}
 		if user.UserID == userID {
-			user.LastLoginAt = &at
-			user.UpdatedAt = at
-			return r.updateRow(ctx, userSheet, index, userToRow(user), "K")
+			return user, row.rowNumber, nil
 		}
 	}
-	return ErrNotFound
+	return nil, 0, ErrNotFound
 }
 
 func (r *GoogleSheetsRepository) AppendActivity(ctx context.Context, activity *model.LoginActivity) error {
@@ -246,6 +256,11 @@ func (r *GoogleSheetsRepository) appendRow(ctx context.Context, sheetName string
 }
 
 func (r *GoogleSheetsRepository) updateRow(ctx context.Context, sheetName string, rowNumber int, row []interface{}, endColumn string) error {
+	// Row 1 holds the header and the Sheets API rejects row 0 outright, so a
+	// row number below 2 always means the caller computed it wrong.
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, sheetName)
+	}
 	rangeName := fmt.Sprintf("%s!A%d:%s%d", quoteSheet(sheetName), rowNumber, endColumn, rowNumber)
 	_, err := r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName, &sheets.ValueRange{Values: [][]interface{}{row}}).
 		ValueInputOption("RAW").Context(ctx).Do()
@@ -271,7 +286,14 @@ func dataRows(rows [][]interface{}) [][]interface{} {
 	if len(rows) <= 1 {
 		return nil
 	}
-	return rows[1:]
+	result := make([][]interface{}, 0, len(rows)-1)
+	for _, row := range rows[1:] {
+		if isBlankRow(row) {
+			continue
+		}
+		result = append(result, row)
+	}
+	return result
 }
 
 func dataRowsWithIndex(rows [][]interface{}) []indexedRow {
@@ -280,9 +302,36 @@ func dataRowsWithIndex(rows [][]interface{}) []indexedRow {
 	}
 	result := make([]indexedRow, 0, len(rows)-1)
 	for index, row := range rows[1:] {
+		if isBlankRow(row) {
+			continue
+		}
 		result = append(result, indexedRow{values: row, rowNumber: index + 2})
 	}
 	return result
+}
+
+func isBlankRow(row []interface{}) bool {
+	for _, cell := range row {
+		if strings.TrimSpace(cellString(cell)) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// padRow widens a row to the sheet's full column count. The Sheets API drops
+// trailing empty cells, so a record whose last columns are blank comes back
+// shorter than its header.
+func padRow(row []interface{}, width int) []interface{} {
+	if len(row) >= width {
+		return row
+	}
+	padded := make([]interface{}, width)
+	copy(padded, row)
+	for i := len(row); i < width; i++ {
+		padded[i] = ""
+	}
+	return padded
 }
 
 func userToRow(user *model.User) []interface{} {
@@ -316,9 +365,7 @@ func attendanceToRow(attendance *model.Attendance) []interface{} {
 }
 
 func rowToUser(row []interface{}, location *time.Location) (*model.User, error) {
-	if len(row) < len(userHeaders) {
-		return nil, fmt.Errorf("invalid user row: expected %d columns, got %d", len(userHeaders), len(row))
-	}
+	row = padRow(row, len(userHeaders))
 	createdAt, err := parseDateTime(cellString(row[8]), location)
 	if err != nil {
 		return nil, fmt.Errorf("parse user created_at: %w", err)
@@ -351,9 +398,7 @@ func rowToUser(row []interface{}, location *time.Location) (*model.User, error) 
 }
 
 func rowToAttendance(row []interface{}, location *time.Location) (*model.Attendance, error) {
-	if len(row) < len(attendanceHeaders) {
-		return nil, fmt.Errorf("invalid attendance row: expected %d columns, got %d", len(attendanceHeaders), len(row))
-	}
+	row = padRow(row, len(attendanceHeaders))
 	clockInAt, err := parseDateTime(cellString(row[6]), location)
 	if err != nil {
 		return nil, fmt.Errorf("parse attendance clock_in_at: %w", err)
