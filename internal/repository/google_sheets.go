@@ -93,7 +93,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 
 func (r *GoogleSheetsRepository) ensureHeader(ctx context.Context, sheetName string, expected []string) error {
 	rangeName := fmt.Sprintf("%s!1:1", quoteSheet(sheetName))
-	values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, rangeName).ValueRenderOption("RAW").Context(ctx).Do()
+	values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, rangeName).ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("read header for %s: %w", sheetName, err)
 	}
