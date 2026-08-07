@@ -3,6 +3,7 @@
 .DS_Store
 .env
 .env.*
+!.env.example
 *.json
 credentials/
 **/*_test.go
@@ -10,3 +11,7 @@ prd_*.md
 README.md
 Dockerfile*
 compose*.yaml
+vps.txt
+tmp/
+*.log
+bin/
