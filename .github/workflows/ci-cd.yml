@@ -111,3 +111,95 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
+
+  deploy:
+    name: Deploy to production VPS
+    runs-on: ubuntu-latest
+    needs: [test, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          APP_DIR: /opt/opp-absensi
+          APP_HOST_PORT: ${{ vars.APP_HOST_PORT }}
+          GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS_B64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_B64 }}
+          DEPLOY_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT }}
+          timeout: 2m
+          command_timeout: 20m
+          script_stop: true
+          envs: APP_DIR,APP_HOST_PORT,GOOGLE_SPREADSHEET_ID,GOOGLE_APPLICATION_CREDENTIALS_B64,DEPLOY_SHA,REPOSITORY
+          script: |
+            set -eu
+
+            if [ -z "$APP_HOST_PORT" ] || [ -z "$GOOGLE_SPREADSHEET_ID" ] || [ -z "$GOOGLE_APPLICATION_CREDENTIALS_B64" ]; then
+              echo "Required production configuration is missing."
+              exit 1
+            fi
+
+            case "$APP_HOST_PORT" in
+              ''|*[!0-9]*) echo "APP_HOST_PORT must be numeric."; exit 1 ;;
+            esac
+
+            mkdir -p "$APP_DIR/runtime"
+
+            if [ ! -d "$APP_DIR/repo/.git" ]; then
+              git clone "https://github.com/$REPOSITORY.git" "$APP_DIR/repo"
+            fi
+
+            cd "$APP_DIR/repo"
+            git fetch --depth=1 origin "$DEPLOY_SHA"
+            git checkout --detach "$DEPLOY_SHA"
+
+            umask 077
+            cat > "$APP_DIR/runtime/.env" <<EOF
+            PORT=8080
+            GOOGLE_SPREADSHEET_ID=$GOOGLE_SPREADSHEET_ID
+            GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google-application-credentials.json
+            APP_TIMEZONE=Asia/Jakarta
+            SESSION_TTL=24h
+            SESSION_COOKIE_SECURE=false
+            MAX_UPLOAD_BYTES=2097152
+            MAX_PHOTO_CHARS=45000
+            EOF
+
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_B64" | base64 --decode > "$APP_DIR/runtime/google-application-credentials.json"
+            chmod 600 "$APP_DIR/runtime/google-application-credentials.json"
+
+            docker build --pull -t opp-absensi:"$DEPLOY_SHA" .
+
+            docker rm -f opp-absensi >/dev/null 2>&1 || true
+            if ss -ltnH | awk '{print $4}' | grep -Eq "(^|:)${APP_HOST_PORT}$"; then
+              echo "Port $APP_HOST_PORT is already in use."
+              exit 1
+            fi
+
+            docker run -d \
+              --name opp-absensi \
+              --restart unless-stopped \
+              --publish "$APP_HOST_PORT:8080" \
+              --env-file "$APP_DIR/runtime/.env" \
+              --mount "type=bind,src=$APP_DIR/runtime/google-application-credentials.json,dst=/run/secrets/google-application-credentials.json,readonly" \
+              opp-absensi:"$DEPLOY_SHA"
+
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --show-error "http://127.0.0.1:$APP_HOST_PORT/healthz" >/dev/null; then
+                echo "Production deployment is healthy on port $APP_HOST_PORT."
+                exit 0
+              fi
+              sleep 2
+            done
+
+            docker logs --tail 100 opp-absensi || true
+            exit 1
