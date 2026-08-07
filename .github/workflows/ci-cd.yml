@@ -138,7 +138,6 @@ jobs:
           port: ${{ secrets.VPS_SSH_PORT }}
           timeout: 2m
           command_timeout: 20m
-          script_stop: true
           envs: APP_DIR,APP_HOST_PORT,GOOGLE_SPREADSHEET_ID,GOOGLE_APPLICATION_CREDENTIALS_B64,DEPLOY_SHA,REPOSITORY
           script: |
             set -eu
