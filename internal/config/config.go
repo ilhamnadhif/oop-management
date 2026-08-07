@@ -9,7 +9,6 @@ import (
 
 type Config struct {
 	Port                  string
-	StorageBackend        string
 	GoogleSpreadsheetID   string
 	GoogleCredentialsFile string
 	TimezoneName          string
@@ -42,14 +41,8 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("MAX_PHOTO_CHARS must be a positive integer")
 	}
 
-	backend := getenv("STORAGE_BACKEND", "google")
-	if backend != "google" && backend != "memory" {
-		return Config{}, fmt.Errorf("STORAGE_BACKEND must be google or memory")
-	}
-
 	cfg := Config{
 		Port:                  getenv("PORT", "8080"),
-		StorageBackend:        backend,
 		GoogleSpreadsheetID:   os.Getenv("GOOGLE_SPREADSHEET_ID"),
 		GoogleCredentialsFile: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
 		TimezoneName:          timezoneName,
@@ -60,13 +53,11 @@ func Load() (Config, error) {
 		MaxPhotoChars:         maxPhotoChars,
 	}
 
-	if backend == "google" {
-		if cfg.GoogleSpreadsheetID == "" {
-			return Config{}, fmt.Errorf("GOOGLE_SPREADSHEET_ID is required when STORAGE_BACKEND=google")
-		}
-		if cfg.GoogleCredentialsFile == "" {
-			return Config{}, fmt.Errorf("GOOGLE_APPLICATION_CREDENTIALS is required when STORAGE_BACKEND=google")
-		}
+	if cfg.GoogleSpreadsheetID == "" {
+		return Config{}, fmt.Errorf("GOOGLE_SPREADSHEET_ID is required")
+	}
+	if cfg.GoogleCredentialsFile == "" {
+		return Config{}, fmt.Errorf("GOOGLE_APPLICATION_CREDENTIALS is required")
 	}
 
 	return cfg, nil

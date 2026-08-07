@@ -25,7 +25,7 @@ import (
 )
 
 func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
-	store := repository.NewMemoryRepository()
+	store := repository.NewTestRepository()
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
@@ -130,7 +130,7 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 }
 
 func TestLoginFailureUsesGenericMessage(t *testing.T) {
-	store := repository.NewMemoryRepository()
+	store := repository.NewTestRepository()
 	now := time.Now()
 	auth := service.NewAuthService(store, time.Local, func() time.Time { return now })
 	attendance := service.NewAttendanceService(store, time.Local, func() time.Time { return now })

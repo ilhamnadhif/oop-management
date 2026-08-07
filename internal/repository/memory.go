@@ -9,22 +9,22 @@ import (
 	"opp-management/internal/model"
 )
 
-// MemoryRepository is intended for automated tests and local UI smoke tests.
-// Google Sheets remains the default production backend.
-type MemoryRepository struct {
+// TestRepository is used only by automated tests.
+// The application runtime always uses Google Sheets.
+type TestRepository struct {
 	mu         sync.RWMutex
 	users      []*model.User
 	activities []*model.LoginActivity
 	attendance []*model.Attendance
 }
 
-func NewMemoryRepository() *MemoryRepository {
-	return &MemoryRepository{}
+func NewTestRepository() *TestRepository {
+	return &TestRepository{}
 }
 
-func (r *MemoryRepository) EnsureSchema(context.Context) error { return nil }
+func (r *TestRepository) EnsureSchema(context.Context) error { return nil }
 
-func (r *MemoryRepository) FindUserByID(_ context.Context, userID string) (*model.User, error) {
+func (r *TestRepository) FindUserByID(_ context.Context, userID string) (*model.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, user := range r.users {
@@ -35,7 +35,7 @@ func (r *MemoryRepository) FindUserByID(_ context.Context, userID string) (*mode
 	return nil, ErrNotFound
 }
 
-func (r *MemoryRepository) FindUserByIdentifier(_ context.Context, identifier string) (*model.User, error) {
+func (r *TestRepository) FindUserByIdentifier(_ context.Context, identifier string) (*model.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	identifier = strings.ToLower(strings.TrimSpace(identifier))
@@ -47,7 +47,7 @@ func (r *MemoryRepository) FindUserByIdentifier(_ context.Context, identifier st
 	return nil, ErrNotFound
 }
 
-func (r *MemoryRepository) UserExists(_ context.Context, nrp, email string) (bool, error) {
+func (r *TestRepository) UserExists(_ context.Context, nrp, email string) (bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	nrp = strings.ToLower(strings.TrimSpace(nrp))
@@ -60,7 +60,7 @@ func (r *MemoryRepository) UserExists(_ context.Context, nrp, email string) (boo
 	return false, nil
 }
 
-func (r *MemoryRepository) CreateUser(_ context.Context, user *model.User) error {
+func (r *TestRepository) CreateUser(_ context.Context, user *model.User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, existing := range r.users {
@@ -72,7 +72,7 @@ func (r *MemoryRepository) CreateUser(_ context.Context, user *model.User) error
 	return nil
 }
 
-func (r *MemoryRepository) UpdateLastLogin(_ context.Context, userID string, at time.Time) error {
+func (r *TestRepository) UpdateLastLogin(_ context.Context, userID string, at time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, user := range r.users {
@@ -85,14 +85,14 @@ func (r *MemoryRepository) UpdateLastLogin(_ context.Context, userID string, at 
 	return ErrNotFound
 }
 
-func (r *MemoryRepository) AppendActivity(_ context.Context, activity *model.LoginActivity) error {
+func (r *TestRepository) AppendActivity(_ context.Context, activity *model.LoginActivity) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.activities = append(r.activities, cloneActivity(activity))
 	return nil
 }
 
-func (r *MemoryRepository) FindAttendanceByUserDate(_ context.Context, userID, date string) (*model.Attendance, int, error) {
+func (r *TestRepository) FindAttendanceByUserDate(_ context.Context, userID, date string) (*model.Attendance, int, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for index, attendance := range r.attendance {
@@ -103,14 +103,14 @@ func (r *MemoryRepository) FindAttendanceByUserDate(_ context.Context, userID, d
 	return nil, 0, nil
 }
 
-func (r *MemoryRepository) CreateAttendance(_ context.Context, attendance *model.Attendance) error {
+func (r *TestRepository) CreateAttendance(_ context.Context, attendance *model.Attendance) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.attendance = append(r.attendance, cloneAttendance(attendance))
 	return nil
 }
 
-func (r *MemoryRepository) UpdateAttendance(_ context.Context, rowNumber int, attendance *model.Attendance) error {
+func (r *TestRepository) UpdateAttendance(_ context.Context, rowNumber int, attendance *model.Attendance) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	index := rowNumber - 2
@@ -121,7 +121,7 @@ func (r *MemoryRepository) UpdateAttendance(_ context.Context, rowNumber int, at
 	return nil
 }
 
-func (r *MemoryRepository) Activities() []*model.LoginActivity {
+func (r *TestRepository) Activities() []*model.LoginActivity {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	result := make([]*model.LoginActivity, 0, len(r.activities))
