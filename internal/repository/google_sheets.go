@@ -16,6 +16,7 @@ const (
 	userSheet       = "user"
 	activitySheet   = "activity login"
 	attendanceSheet = "absensi data"
+	unitDTSheet     = "Unit DT"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -35,6 +36,11 @@ var attendanceHeaders = []string{
 	"clock_in_at", "clock_in_lat", "clock_in_lng", "clock_in_accuracy", "clock_in_photo",
 	"clock_in_ip", "clock_out_at", "clock_out_lat", "clock_out_lng", "clock_out_accuracy",
 	"clock_out_photo", "clock_out_ip", "status_absensi", "durasi_menit", "created_at", "updated_at",
+}
+
+var unitDTHeaders = []string{
+	"unit_id", "nopol", "panjang_m", "lebar_m", "tinggi_m", "driver",
+	"keterangan", "foto_unit", "dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
 }
 
 type GoogleSheetsRepository struct {
@@ -60,7 +66,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -83,6 +89,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: userSheet, headers: userHeaders},
 		{name: activitySheet, headers: activityHeaders},
 		{name: attendanceSheet, headers: attendanceHeaders},
+		{name: unitDTSheet, headers: unitDTHeaders},
 	} {
 		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
 			return err
@@ -202,6 +209,71 @@ func findUserRow(rows [][]interface{}, userID string, location *time.Location) (
 		}
 	}
 	return nil, 0, ErrNotFound
+}
+
+// UnitDTExists reads only columns A:B. The foto column holds a base64 data URL
+// of up to 45k characters per row, so a full-width read just to compare plates
+// would pull megabytes for nothing.
+func (r *GoogleSheetsRepository) UnitDTExists(ctx context.Context, nopol string) (bool, error) {
+	rows, err := r.readRows(ctx, unitDTSheet, "B")
+	if err != nil {
+		return false, err
+	}
+	nopol = strings.ToUpper(strings.TrimSpace(nopol))
+	for _, row := range dataRows(rows) {
+		if len(row) < 2 {
+			continue
+		}
+		if strings.ToUpper(strings.TrimSpace(cellString(row[1]))) == nopol {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// MaxUnitDTSequence returns the highest sequence number already used under the
+// given ID prefix. It reads column A only, and takes the maximum rather than a
+// row count so a deleted row can never make the next ID collide.
+func (r *GoogleSheetsRepository) MaxUnitDTSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, unitDTSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		sequence, ok := unitSequence(cellString(row[0]), prefix)
+		if ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func unitSequence(unitID, prefix string) (int, bool) {
+	trimmed := strings.TrimSpace(unitID)
+	if !strings.HasPrefix(trimmed, prefix) {
+		return 0, false
+	}
+	sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+	if err != nil || sequence <= 0 {
+		return 0, false
+	}
+	return sequence, true
+}
+
+func (r *GoogleSheetsRepository) CreateUnitDT(ctx context.Context, unit *model.UnitDT) error {
+	return r.appendRow(ctx, unitDTSheet, unitDTToRow(unit))
+}
+
+func unitDTToRow(unit *model.UnitDT) []interface{} {
+	return []interface{}{
+		unit.UnitID, unit.Nopol, formatFloat(unit.Panjang), formatFloat(unit.Lebar),
+		formatFloat(unit.Tinggi), unit.Driver, unit.Keterangan, unit.Foto,
+		unit.CreatedBy, unit.CreatedByID, formatDateTime(unit.CreatedAt), formatDateTime(unit.UpdatedAt),
+	}
 }
 
 func (r *GoogleSheetsRepository) AppendActivity(ctx context.Context, activity *model.LoginActivity) error {

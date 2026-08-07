@@ -18,6 +18,9 @@ type Store interface {
 	CreateUser(ctx context.Context, user *model.User) error
 	UpdateLastLogin(ctx context.Context, userID string, at time.Time) error
 	AppendActivity(ctx context.Context, activity *model.LoginActivity) error
+	UnitDTExists(ctx context.Context, nopol string) (bool, error)
+	MaxUnitDTSequence(ctx context.Context, prefix string) (int, error)
+	CreateUnitDT(ctx context.Context, unit *model.UnitDT) error
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	CreateAttendance(ctx context.Context, attendance *model.Attendance) error
 	UpdateAttendance(ctx context.Context, rowNumber int, attendance *model.Attendance) error

@@ -1,0 +1,66 @@
+{{define "unit_dt"}}
+{{template "appShellOpen" .}}
+  <h1 class="page-title">{{.PageTitle}}</h1>
+
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">DATA UNIT</p>
+        <h2>Tambah unit dump truck</h2>
+      </div>
+    </div>
+
+    <form method="post" action="/unit-dt" class="stack-form" enctype="multipart/form-data" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+      <label for="unit_id">ID Unit <span class="hint">(otomatis)</span></label>
+      <input id="unit_id" type="text" value="{{.NextUnitID}}" disabled>
+
+      <label for="nopol">Nopol</label>
+      <input id="nopol" name="nopol" type="text" value="{{.Form.Nopol}}" placeholder="B 1234 ABC"
+        pattern="[A-Za-z]{1,2} ?[0-9]{1,4} ?[A-Za-z]{1,3}"
+        title="Format: 1-2 huruf, spasi, 1-4 angka, spasi, 1-3 huruf. Contoh B 1234 ABC"
+        autocomplete="off" data-nopol required>
+
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="panjang">Panjang (m)</label>
+          <input id="panjang" name="panjang" type="number" value="{{.Form.Panjang}}" placeholder="7.5" step="0.01" min="0.01" required>
+        </div>
+        <div>
+          <label for="lebar">Lebar (m)</label>
+          <input id="lebar" name="lebar" type="number" value="{{.Form.Lebar}}" placeholder="2.4" step="0.01" min="0.01" required>
+        </div>
+        <div>
+          <label for="tinggi">Tinggi (m)</label>
+          <input id="tinggi" name="tinggi" type="number" value="{{.Form.Tinggi}}" placeholder="1.8" step="0.01" min="0.01" required>
+        </div>
+      </div>
+
+      <label for="driver">Driver</label>
+      <input id="driver" name="driver" type="text" value="{{.Form.Driver}}" placeholder="Nama driver" autocomplete="off" required>
+
+      <label for="keterangan">Keterangan</label>
+      <select id="keterangan" name="keterangan" required>
+        {{range .KeteranganOptions}}
+        <option value="{{.}}" {{if eq . $.Form.Keterangan}}selected{{end}}>{{.}}</option>
+        {{end}}
+      </select>
+
+      <label for="foto_unit">Foto unit <span class="hint">(opsional)</span></label>
+      <input id="foto_unit" name="foto_unit" type="file" accept="image/*">
+      <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
+
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        <span data-submit-label>Simpan unit</span>
+      </button>
+    </form>
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

@@ -42,6 +42,23 @@ type LoginActivity struct {
 	Message      string
 }
 
+// UnitDT is one dump truck in the fleet register. Panjang, Lebar and Tinggi
+// are metres.
+type UnitDT struct {
+	UnitID      string
+	Nopol       string
+	Panjang     float64
+	Lebar       float64
+	Tinggi      float64
+	Driver      string
+	Keterangan  string
+	Foto        string
+	CreatedBy   string
+	CreatedByID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Attendance struct {
 	AbsensiID        string
 	UserID           string

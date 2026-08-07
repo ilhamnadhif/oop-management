@@ -5,6 +5,7 @@ import "errors"
 var (
 	ErrValidation         = errors.New("validation error")
 	ErrDuplicateUser      = errors.New("user already exists")
+	ErrDuplicateUnitDT    = errors.New("unit already exists")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInactiveUser       = errors.New("user inactive")
 	ErrConflict           = errors.New("conflict")

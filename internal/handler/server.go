@@ -28,6 +28,7 @@ var assetFiles embed.FS
 type Server struct {
 	auth           *service.AuthService
 	attendance     *service.AttendanceService
+	unitDT         *service.UnitDTService
 	sessions       *session.Manager
 	location       *time.Location
 	now            service.NowFunc
@@ -55,21 +56,49 @@ type RegisterFormData struct {
 	Status        string
 }
 
+// ShellPageData is what every signed-in page needs to draw the sidebar,
+// breadcrumb and logout form.
+type ShellPageData struct {
+	Title      string
+	User       *model.User
+	Today      string
+	ClockNow   string
+	CSRFToken  string
+	NavItems   []NavItem
+	ActiveNav  string
+	PageTitle  string
+	Breadcrumb string
+}
+
+type UnitDTFormData struct {
+	Nopol      string
+	Panjang    string
+	Lebar      string
+	Tinggi     string
+	Driver     string
+	Keterangan string
+}
+
+type UnitDTPageData struct {
+	ShellPageData
+	Form              UnitDTFormData
+	KeteranganOptions []string
+	NextUnitID        string
+	Error             string
+	Success           string
+}
+
 type DashboardPageData struct {
-	Title         string
-	User          *model.User
+	ShellPageData
 	Attendance    *model.Attendance
-	Today         string
-	ClockNow      string
 	ClockInTime   string
 	ClockOutTime  string
 	TimezoneLabel string
-	CSRFToken     string
 	HasClockIn    bool
 	HasClockOut   bool
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
 	if location == nil {
 		location = time.Local
 	}
@@ -89,6 +118,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 	return &Server{
 		auth:           auth,
 		attendance:     attendance,
+		unitDT:         unitDT,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -105,6 +135,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/dashboard", s.handleDashboard)
+	mux.HandleFunc("/produksi", s.handleProduksi)
+	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
 	mux.HandleFunc("/absensi/clock-out", s.handleClockOut)
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -250,21 +282,47 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, "/login")
 }
 
-func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+// requireUser resolves the signed-in, active user for a page request. It writes
+// the redirect itself and reports false when the caller must stop.
+func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (*model.User, session.Session, bool) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+		return nil, session.Session{}, false
 	}
 	sessionValue, ok := s.currentSession(r)
 	if !ok {
 		redirect(w, r, "/login")
-		return
+		return nil, session.Session{}, false
 	}
 	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
 	if err != nil || user.StatusPengguna != model.StatusAktif {
 		s.sessions.Delete(r, w)
 		redirect(w, r, "/login")
+		return nil, session.Session{}, false
+	}
+	return user, sessionValue, true
+}
+
+func (s *Server) shellData(user *model.User, sessionValue session.Session, navKey string) ShellPageData {
+	now := s.now().In(s.location)
+	item, _ := navItemByKey(navKey)
+	return ShellPageData{
+		Title:      item.Label,
+		User:       user,
+		Today:      formatIndonesianDate(now),
+		ClockNow:   now.Format("15:04"),
+		CSRFToken:  sessionValue.CSRFToken,
+		NavItems:   navItemsFor(user.Jabatan),
+		ActiveNav:  navKey,
+		PageTitle:  item.Label,
+		Breadcrumb: item.Label,
+	}
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
 		return
 	}
 	attendance, err := s.attendance.Today(r.Context(), user.UserID)
@@ -283,18 +341,176 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		clockOutTime = attendance.ClockOutAt.In(s.location).Format("15:04")
 	}
 	s.render(w, "dashboard", DashboardPageData{
-		Title:         "Dashboard Absensi",
-		User:          user,
+		ShellPageData: s.shellData(user, sessionValue, "absensi"),
 		Attendance:    attendance,
-		Today:         formatIndonesianDate(now),
-		ClockNow:      now.Format("15:04"),
 		ClockInTime:   clockInTime,
 		ClockOutTime:  clockOutTime,
 		TimezoneLabel: now.Format("MST"),
-		CSRFToken:     sessionValue.CSRFToken,
 		HasClockIn:    attendance != nil,
 		HasClockOut:   attendance != nil && attendance.ClockOutAt != nil,
 	}, http.StatusOK)
+}
+
+// handleProduksi and handleUnitDT are placeholders: the shell plus the clock,
+// waiting for their real content.
+func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	s.render(w, "placeholder", s.shellData(user, sessionValue, "produksi"), http.StatusOK)
+}
+
+func (s *Server) handleUnitDT(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handleUnitDTCreate(w, r)
+		return
+	}
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	s.render(w, "unit_dt", UnitDTPageData{
+		ShellPageData:     s.shellData(user, sessionValue, "unit-dt"),
+		Form:              UnitDTFormData{Keterangan: service.DefaultKeterangan},
+		KeteranganOptions: service.KeteranganOptions,
+		NextUnitID:        s.nextUnitID(r),
+	}, http.StatusOK)
+}
+
+// nextUnitID is a preview only. A failure here must not block the form, so the
+// field simply renders empty and the server still assigns the real ID on save.
+func (s *Server) nextUnitID(r *http.Request) string {
+	nextID, err := s.unitDT.NextUnitID(r.Context())
+	if err != nil {
+		log.Printf("preview unit id: %v", err)
+		return ""
+	}
+	return nextID
+}
+
+func (s *Server) handleUnitDTCreate(w http.ResponseWriter, r *http.Request) {
+	sessionValue, ok := s.currentSession(r)
+	if !ok {
+		redirect(w, r, "/login")
+		return
+	}
+	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
+	if err != nil || user.StatusPengguna != model.StatusAktif {
+		s.sessions.Delete(r, w)
+		redirect(w, r, "/login")
+		return
+	}
+
+	// Bound the body before parsing, then check CSRF from the parsed form.
+	// ValidCSRF refuses to read a form value out of a multipart request
+	// precisely because it cannot know the body was limited first.
+	maxBody := s.maxUploadBytes + 64*1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseMultipartForm(maxBody); err != nil {
+		s.renderUnitDTError(w, r, user, sessionValue, UnitDTFormData{}, "Form tidak valid atau file terlalu besar", http.StatusUnprocessableEntity)
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+	if !s.sessions.ValidCSRFToken(r.FormValue("csrf_token"), sessionValue) {
+		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
+		return
+	}
+
+	form := UnitDTFormData{
+		Nopol:      strings.TrimSpace(r.FormValue("nopol")),
+		Panjang:    strings.TrimSpace(r.FormValue("panjang")),
+		Lebar:      strings.TrimSpace(r.FormValue("lebar")),
+		Tinggi:     strings.TrimSpace(r.FormValue("tinggi")),
+		Driver:     strings.TrimSpace(r.FormValue("driver")),
+		Keterangan: strings.TrimSpace(r.FormValue("keterangan")),
+	}
+
+	photoValue, err := s.readOptionalPhoto(r, "foto_unit")
+	if err != nil {
+		s.renderUnitDTError(w, r, user, sessionValue, form, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	unit, err := s.unitDT.Create(r.Context(), user, service.UnitDTInput{
+		Nopol:      form.Nopol,
+		Panjang:    form.Panjang,
+		Lebar:      form.Lebar,
+		Tinggi:     form.Tinggi,
+		Driver:     form.Driver,
+		Keterangan: form.Keterangan,
+		Foto:       photoValue,
+	})
+	if err != nil {
+		message := "Data unit tidak valid"
+		status := http.StatusUnprocessableEntity
+		switch {
+		case errors.Is(err, service.ErrDuplicateUnitDT):
+			message = "Nopol sudah terdaftar"
+			status = http.StatusConflict
+		case errors.Is(err, service.ErrInvalidPhoto):
+			message = "Foto unit tidak valid"
+		case errors.Is(err, service.ErrValidation):
+			message = strings.TrimPrefix(err.Error(), "validation error: ")
+		default:
+			log.Printf("create unit dt: %v", err)
+			message = "Terjadi kesalahan saat menyimpan unit"
+			status = http.StatusInternalServerError
+		}
+		s.renderUnitDTError(w, r, user, sessionValue, form, message, status)
+		return
+	}
+
+	s.render(w, "unit_dt", UnitDTPageData{
+		ShellPageData:     s.shellData(user, sessionValue, "unit-dt"),
+		Form:              UnitDTFormData{Keterangan: service.DefaultKeterangan},
+		KeteranganOptions: service.KeteranganOptions,
+		NextUnitID:        s.nextUnitID(r),
+		Success:           "Unit " + unit.UnitID + " (" + unit.Nopol + ") berhasil disimpan.",
+	}, http.StatusOK)
+}
+
+func (s *Server) renderUnitDTError(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form UnitDTFormData, message string, status int) {
+	if form.Keterangan == "" {
+		form.Keterangan = service.DefaultKeterangan
+	}
+	s.render(w, "unit_dt", UnitDTPageData{
+		ShellPageData:     s.shellData(user, sessionValue, "unit-dt"),
+		Form:              form,
+		KeteranganOptions: service.KeteranganOptions,
+		NextUnitID:        s.nextUnitID(r),
+		Error:             message,
+	}, status)
+}
+
+// readOptionalPhoto normalises an uploaded image to the same compressed data
+// URL the attendance photos use. An absent file yields an empty value; only a
+// file that is present but unreadable is an error.
+func (s *Server) readOptionalPhoto(r *http.Request, field string) (string, error) {
+	file, _, err := r.FormFile(field)
+	if errors.Is(err, http.ErrMissingFile) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("gagal membaca foto")
+	}
+	defer file.Close()
+	raw, err := io.ReadAll(io.LimitReader(file, s.maxUploadBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("gagal membaca foto")
+	}
+	if int64(len(raw)) > s.maxUploadBytes {
+		return "", fmt.Errorf("ukuran foto maksimal %d MB", s.maxUploadBytes/(1024*1024))
+	}
+	value, err := photo.Normalize(raw, s.maxPhotoChars)
+	if err != nil {
+		return "", fmt.Errorf("format foto tidak didukung")
+	}
+	return value, nil
 }
 
 func (s *Server) handleClockIn(w http.ResponseWriter, r *http.Request) {

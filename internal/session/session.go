@@ -99,6 +99,13 @@ func (m *Manager) Delete(r *http.Request, w http.ResponseWriter) {
 	}
 }
 
+// ValidCSRFToken compares a token the caller already extracted. Multipart
+// handlers use this after they have size-limited and parsed the body
+// themselves, which is what ValidCSRF refuses to do on their behalf.
+func (m *Manager) ValidCSRFToken(provided string, s Session) bool {
+	return provided != "" && provided == s.CSRFToken
+}
+
 func (m *Manager) ValidCSRF(r *http.Request, s Session) bool {
 	provided := r.Header.Get("X-CSRF-Token")
 	if provided == "" && !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {

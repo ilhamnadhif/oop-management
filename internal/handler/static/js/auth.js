@@ -44,6 +44,24 @@
     });
   };
 
+  // Nopol is stored upper-cased with single spaces. Formatting as the user
+  // types means the value they see is the value the server will keep.
+  const setupNopolFields = () => {
+    document.querySelectorAll("[data-nopol]").forEach((field) => {
+      field.addEventListener("input", () => {
+        const raw = field.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const match = raw.match(/^([A-Z]{0,2})([0-9]{0,4})([A-Z]{0,3})/);
+        if (!match) return;
+        const formatted = [match[1], match[2], match[3]].filter(Boolean).join(" ");
+        if (formatted !== field.value) {
+          const atEnd = field.selectionStart === field.value.length;
+          field.value = formatted;
+          if (atEnd) field.setSelectionRange(formatted.length, formatted.length);
+        }
+      });
+    });
+  };
+
   // Native constraint validation blocks submission on mismatch, so the loading
   // state never starts for a form the browser will reject.
   const setupConfirmFields = () => {
@@ -127,6 +145,7 @@
 
   setupPasswordToggles();
   setupDigitsOnly();
+  setupNopolFields();
   setupConfirmFields();
   setupLoadingForms();
   setupRememberMe();

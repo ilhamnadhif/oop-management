@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ type TestRepository struct {
 	users      []*model.User
 	activities []*model.LoginActivity
 	attendance []*model.Attendance
+	unitDT     []*model.UnitDT
 }
 
 func NewTestRepository() *TestRepository {
@@ -23,6 +25,54 @@ func NewTestRepository() *TestRepository {
 }
 
 func (r *TestRepository) EnsureSchema(context.Context) error { return nil }
+
+func (r *TestRepository) UnitDTExists(_ context.Context, nopol string) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	nopol = strings.ToUpper(strings.TrimSpace(nopol))
+	for _, unit := range r.unitDT {
+		if strings.ToUpper(strings.TrimSpace(unit.Nopol)) == nopol {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *TestRepository) MaxUnitDTSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, unit := range r.unitDT {
+		trimmed := strings.TrimSpace(unit.UnitID)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateUnitDT(_ context.Context, unit *model.UnitDT) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := *unit
+	r.unitDT = append(r.unitDT, &stored)
+	return nil
+}
+
+// UnitDTList exposes stored units to tests.
+func (r *TestRepository) UnitDTList() []model.UnitDT {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	units := make([]model.UnitDT, 0, len(r.unitDT))
+	for _, unit := range r.unitDT {
+		units = append(units, *unit)
+	}
+	return units
+}
 
 func (r *TestRepository) FindUserByID(_ context.Context, userID string) (*model.User, error) {
 	r.mu.RLock()

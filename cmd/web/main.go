@@ -42,8 +42,9 @@ func main() {
 	now := func() time.Time { return time.Now().In(cfg.Timezone) }
 	authService := service.NewAuthService(store, cfg.Timezone, now)
 	attendanceService := service.NewAttendanceService(store, cfg.Timezone, now)
+	unitDTService := service.NewUnitDTService(store, cfg.Timezone, now)
 	sessions := session.NewManager(cfg.SessionTTL, cfg.SessionCookieSecure)
-	webServer, err := handler.NewServer(authService, attendanceService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars)
+	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars)
 	if err != nil {
 		log.Fatal(err)
 	}

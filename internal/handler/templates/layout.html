@@ -19,6 +19,60 @@
 </html>
 {{end}}
 
+{{/* appShellOpen draws the sidebar, topbar and breadcrumb. Pages call it, emit
+     their own content, then call appShellClose. */}}
+{{define "appShellOpen"}}
+{{template "pageHead" .}}
+<div class="app-layout">
+  <aside class="sidebar" id="appSidebar">
+    <div class="sidebar-brand">
+      {{template "brandLogo"}}
+      <div>
+        <p class="eyebrow">ORECON PUTRA PERKASA</p>
+        <p class="sidebar-user">{{.User.NamaLengkap}}</p>
+        <p class="sidebar-role">{{.User.Jabatan}}</p>
+      </div>
+    </div>
+    <nav class="sidebar-nav" aria-label="Menu utama">
+      {{range .NavItems}}
+      <a class="sidebar-link {{if eq .Key $.ActiveNav}}active{{end}}" href="{{.Path}}"
+        {{if eq .Key $.ActiveNav}}aria-current="page"{{end}}>{{.Label}}</a>
+      {{end}}
+    </nav>
+    <form class="sidebar-logout" method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button class="button subtle" type="submit">Keluar</button>
+    </form>
+  </aside>
+  <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
+
+  <div class="app-main">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <button class="menu-toggle" type="button" id="menuToggle" aria-controls="appSidebar" aria-expanded="false" aria-label="Buka menu">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path>
+          </svg>
+        </button>
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <ol>
+            <li><a href="/dashboard">Beranda</a></li>
+            <li aria-current="page">{{.Breadcrumb}}</li>
+          </ol>
+        </nav>
+      </div>
+      <p class="topbar-date">{{.Today}}</p>
+    </header>
+    <main class="app-shell">
+{{end}}
+
+{{define "appShellClose"}}
+    </main>
+  </div>
+</div>
+<script src="/static/js/shell.js" defer></script>
+{{end}}
+
 {{define "brandLogo"}}
 <img class="brand-logo" src="/static/img/opp-logo.png" width="486" height="440" alt="Logo Orecon Putra Perkasa">
 {{end}}

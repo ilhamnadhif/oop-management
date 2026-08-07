@@ -1,19 +1,7 @@
 {{define "dashboard"}}
-{{template "pageHead" .}}
-<main class="app-shell" data-attendance-dashboard data-csrf-token="{{.CSRFToken}}">
-  <header class="topbar">
-    <div class="topbar-brand">
-      {{template "brandLogo"}}
-      <div>
-        <p class="eyebrow">ORECON PUTRA PERKASA</p>
-        <h1>Dashboard absensi</h1>
-      </div>
-    </div>
-    <form method="post" action="/logout">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button class="button subtle" type="submit">Keluar</button>
-    </form>
-  </header>
+{{template "appShellOpen" .}}
+<div data-attendance-dashboard data-csrf-token="{{.CSRFToken}}">
+  <h1 class="page-title">{{.PageTitle}}</h1>
 
   <section class="clock-hero">
     <p class="clock-now" id="clockNow" data-clock-start="{{.ClockNow}}">{{.ClockNow}}</p>
@@ -73,8 +61,8 @@
       <button class="button subtle" type="button" id="refreshLocation">Perbarui lokasi</button>
     </div>
   </section>
-
-</main>
+</div>
+{{template "appShellClose" .}}
 
 <div class="camera-modal" id="cameraModal" hidden>
   <div class="camera-dialog" role="dialog" aria-modal="true" aria-labelledby="cameraModalTitle">
@@ -96,6 +84,7 @@
     </div>
   </div>
 </div>
+<script src="/static/js/clock.js" defer></script>
 <script src="/static/vendor/leaflet/leaflet.js" defer></script>
 <script src="/static/js/attendance.js" defer></script>
 {{template "pageFoot" .}}

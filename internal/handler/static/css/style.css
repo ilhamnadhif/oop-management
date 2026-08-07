@@ -41,7 +41,12 @@ h2 { margin-bottom: 0.35rem; font-size: 1.25rem; letter-spacing: -0.02em; }
 input, select { width: 100%; padding: 0.78rem 0.85rem; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--white); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
 input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(43, 156, 150, 0.13); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.2rem 1rem; }
+.form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .form-grid > div { display: grid; gap: 0.65rem; }
+textarea { width: 100%; padding: 0.78rem 0.85rem; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--white); font: inherit; outline: none; resize: vertical; transition: border-color 0.15s, box-shadow 0.15s; }
+textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(43, 156, 150, 0.13); }
+input[type="file"] { padding: 0.6rem 0.85rem; background: #f7fafb; }
+input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; }
 .input-with-action { position: relative; }
 .input-with-action input { padding-right: 3rem; }
 .input-action { position: absolute; top: 50%; right: 0.35rem; display: grid; padding: 0.45rem; transform: translateY(-50%); place-items: center; border: 0; border-radius: 9px; color: var(--muted); background: transparent; cursor: pointer; }
@@ -63,12 +68,38 @@ input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgb
 .alert.error { color: var(--danger); background: #fff0f0; }
 .alert.success { color: var(--success); background: #edf8f1; }
 
-.app-shell { width: min(1180px, 100%); margin: 0 auto; padding: clamp(1rem, 4vw, 3rem); }
+.app-layout { display: flex; min-height: 100vh; }
+.app-main { flex: 1; min-width: 0; }
+.app-shell { width: min(1180px, 100%); margin: 0 auto; padding: clamp(1rem, 4vw, 2.5rem); }
+.page-title { margin-bottom: 1.25rem; font-size: clamp(1.4rem, 3vw, 2rem); }
+
+.sidebar { display: flex; width: 264px; flex-direction: column; flex-shrink: 0; padding: 1.5rem 1.1rem; border-right: 1px solid var(--line); background: var(--white); }
+.sidebar-brand { display: flex; align-items: center; gap: 0.75rem; padding-bottom: 1.3rem; border-bottom: 1px solid var(--line); }
+.sidebar-brand .brand-logo { height: 42px; margin-bottom: 0; }
+.sidebar-user { margin-bottom: 0; color: var(--navy-dark); font-size: 0.92rem; font-weight: 800; }
+.sidebar-role { margin-bottom: 0; color: var(--muted); font-size: 0.78rem; }
+.sidebar-nav { display: grid; gap: 0.25rem; padding-top: 1.1rem; }
+.sidebar-link { padding: 0.7rem 0.85rem; border-radius: 11px; color: var(--navy-dark); text-decoration: none; font-size: 0.92rem; font-weight: 700; }
+.sidebar-link:hover { background: #eef3f5; }
+.sidebar-link.active { color: var(--white); background: var(--navy); }
+/* margin-top:auto is what pins logout to the bottom of the column. */
+.sidebar-logout { margin-top: auto; padding-top: 1.2rem; }
+.sidebar-logout .button { width: 100%; }
+.sidebar-scrim { position: fixed; inset: 0; z-index: 1050; background: rgba(16, 47, 72, 0.45); }
+
 .topbar, .panel-heading, .action-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.topbar { margin-bottom: 1.5rem; }
-.topbar h1 { font-size: clamp(1.4rem, 3vw, 2rem); }
+.topbar { padding: 0.9rem clamp(1rem, 4vw, 2.5rem); border-bottom: 1px solid var(--line); background: var(--white); }
 .topbar-brand { display: flex; align-items: center; gap: 0.9rem; }
-.topbar-brand .brand-logo { height: 44px; margin-bottom: 0; }
+.topbar-date { margin-bottom: 0; color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
+.menu-toggle { display: none; padding: 0.45rem; border: 0; border-radius: 10px; color: var(--navy); background: #eef3f5; cursor: pointer; }
+
+.breadcrumb ol { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.85rem; }
+.breadcrumb li + li::before { margin-right: 0.4rem; content: "/"; color: var(--line); }
+.breadcrumb a { color: var(--muted); text-decoration: none; }
+.breadcrumb a:hover { color: var(--navy); }
+.breadcrumb [aria-current="page"] { color: var(--navy-dark); font-weight: 700; }
+
+.panel-empty { margin-bottom: 0; color: var(--muted); font-size: 0.9rem; }
 .panel { padding: clamp(1.1rem, 3vw, 1.6rem); border: 1px solid var(--line); border-radius: 20px; background: var(--white); box-shadow: 0 10px 32px rgba(23, 63, 95, 0.06); }
 .panel + .panel, .clock-hero + .panel { margin-top: 1.25rem; }
 .panel-heading { align-items: flex-start; margin-bottom: 1.25rem; }
@@ -115,13 +146,25 @@ input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgb
 .camera-modal { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 1rem; background: rgba(16, 47, 72, 0.62); }
 .camera-dialog { width: min(520px, 100%); max-height: 92vh; overflow-y: auto; padding: clamp(1.1rem, 3vw, 1.6rem); border-radius: 20px; background: var(--white); box-shadow: 0 24px 60px rgba(16, 47, 72, 0.35); }
 
+/* Below this width the sidebar slides off-canvas and the hamburger is the only
+   way back to it, so the toggle and the drawer must appear together. */
+@media (max-width: 900px) {
+  .menu-toggle { display: grid; place-items: center; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 1100; width: min(272px, 82vw); transform: translateX(-100%); transition: transform 0.2s ease; }
+  body.sidebar-open .sidebar { transform: none; }
+}
+
 @media (max-width: 720px) {
-  .form-grid { grid-template-columns: 1fr; }
+  .form-grid, .form-grid-3 { grid-template-columns: 1fr; }
   .topbar { flex-direction: row; align-items: center; }
   .video-frame, .video-frame video { min-height: 220px; }
   #attendanceMap { height: 240px; }
   .action-row { flex-wrap: wrap; justify-content: stretch; }
   .action-row .button { flex: 1 1 auto; }
   .topbar-brand { gap: 0.6rem; }
-  .topbar-brand .brand-logo { height: 34px; }
+  .topbar-date { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
 }

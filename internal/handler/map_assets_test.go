@@ -17,6 +17,12 @@ import (
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	testServer, _ := newTestServerWithStore(t)
+	return testServer
+}
+
+func newTestServerWithStore(t *testing.T) (*httptest.Server, *repository.TestRepository) {
+	t.Helper()
 	store := repository.NewTestRepository()
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
@@ -24,6 +30,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	server, err := NewServer(
 		service.NewAuthService(store, location, nowFunc),
 		service.NewAttendanceService(store, location, nowFunc),
+		service.NewUnitDTService(store, location, nowFunc),
 		session.NewManager(24*time.Hour, false),
 		location, nowFunc, 2*1024*1024, photo.MaxOutputChars,
 	)
@@ -32,7 +39,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	}
 	testServer := httptest.NewServer(server.Handler())
 	t.Cleanup(testServer.Close)
-	return testServer
+	return testServer, store
 }
 
 // The //go:embed patterns do not recurse into subdirectories, so a missing
