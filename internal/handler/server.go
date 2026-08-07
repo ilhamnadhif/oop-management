@@ -29,6 +29,7 @@ type Server struct {
 	auth           *service.AuthService
 	attendance     *service.AttendanceService
 	unitDT         *service.UnitDTService
+	produksi       *service.ProduksiService
 	sessions       *session.Manager
 	location       *time.Location
 	now            service.NowFunc
@@ -88,6 +89,31 @@ type UnitDTPageData struct {
 	Success           string
 }
 
+type ProduksiFormData struct {
+	Tanggal  string
+	Project  string
+	Supplier string
+	Quary    string
+	Kategori string
+	Lokasi   string
+	Layer    string
+	Nopol    string
+	TT       string
+}
+
+type ProduksiPageData struct {
+	ShellPageData
+	Form            ProduksiFormData
+	Units           []model.UnitDT
+	ProjectOptions  []string
+	SupplierOptions []string
+	QuaryOptions    []string
+	KategoriOptions []string
+	LayerOptions    []string
+	Error           string
+	Success         string
+}
+
 type DashboardPageData struct {
 	ShellPageData
 	Attendance    *model.Attendance
@@ -98,7 +124,7 @@ type DashboardPageData struct {
 	HasClockOut   bool
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
 	if location == nil {
 		location = time.Local
 	}
@@ -119,6 +145,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		auth:           auth,
 		attendance:     attendance,
 		unitDT:         unitDT,
+		produksi:       produksi,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -351,14 +378,111 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}, http.StatusOK)
 }
 
-// handleProduksi and handleUnitDT are placeholders: the shell plus the clock,
-// waiting for their real content.
 func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handleProduksiCreate(w, r)
+		return
+	}
 	user, sessionValue, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	s.render(w, "placeholder", s.shellData(user, sessionValue, "produksi"), http.StatusOK)
+	s.renderProduksi(w, r, user, sessionValue, ProduksiFormData{
+		Tanggal: s.produksi.Today(),
+	}, "", "", http.StatusOK)
+}
+
+func (s *Server) handleProduksiCreate(w http.ResponseWriter, r *http.Request) {
+	sessionValue, ok := s.currentSession(r)
+	if !ok {
+		redirect(w, r, "/login")
+		return
+	}
+	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
+	if err != nil || user.StatusPengguna != model.StatusAktif {
+		s.sessions.Delete(r, w)
+		redirect(w, r, "/login")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.renderProduksi(w, r, user, sessionValue, ProduksiFormData{Tanggal: s.produksi.Today()}, "Form tidak valid", "", http.StatusUnprocessableEntity)
+		return
+	}
+	if !s.sessions.ValidCSRF(r, sessionValue) {
+		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
+		return
+	}
+
+	form := ProduksiFormData{
+		Tanggal:  strings.TrimSpace(r.FormValue("tanggal")),
+		Project:  strings.TrimSpace(r.FormValue("project")),
+		Supplier: strings.TrimSpace(r.FormValue("supplier")),
+		Quary:    strings.TrimSpace(r.FormValue("quary")),
+		Kategori: strings.TrimSpace(r.FormValue("kategori")),
+		Lokasi:   strings.TrimSpace(r.FormValue("lokasi")),
+		Layer:    strings.TrimSpace(r.FormValue("layer")),
+		Nopol:    strings.TrimSpace(r.FormValue("nopol")),
+		TT:       strings.TrimSpace(r.FormValue("tt")),
+	}
+
+	produksi, err := s.produksi.Create(r.Context(), user, service.ProduksiInput{
+		Tanggal:  form.Tanggal,
+		Project:  form.Project,
+		Supplier: form.Supplier,
+		Quary:    form.Quary,
+		Kategori: form.Kategori,
+		Lokasi:   form.Lokasi,
+		Layer:    form.Layer,
+		Nopol:    form.Nopol,
+		TT:       form.TT,
+	})
+	if err != nil {
+		message := "Data produksi tidak valid"
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, service.ErrValidation) {
+			message = strings.TrimPrefix(err.Error(), "validation error: ")
+		} else {
+			log.Printf("create produksi: %v", err)
+			message = "Terjadi kesalahan saat menyimpan produksi"
+			status = http.StatusInternalServerError
+		}
+		s.renderProduksi(w, r, user, sessionValue, form, message, "", status)
+		return
+	}
+
+	s.renderProduksi(w, r, user, sessionValue,
+		ProduksiFormData{Tanggal: s.produksi.Today()},
+		"",
+		fmt.Sprintf("%s tersimpan. Volume %.4f m³, OPP %.0f m³, deviasi %.4f m³.",
+			produksi.ProduksiID, produksi.Volume, produksi.VolumeOPP, produksi.Deviasi),
+		http.StatusOK)
+}
+
+func (s *Server) renderProduksi(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form ProduksiFormData, errMessage, success string, status int) {
+	if form.Tanggal == "" {
+		form.Tanggal = s.produksi.Today()
+	}
+	units, err := s.produksi.Units(r.Context())
+	if err != nil {
+		// Without the register the nopol picker is empty, but the page itself
+		// still renders and says why.
+		log.Printf("list unit dt: %v", err)
+		if errMessage == "" {
+			errMessage = "Daftar unit gagal dimuat"
+		}
+	}
+	s.render(w, "produksi", ProduksiPageData{
+		ShellPageData:   s.shellData(user, sessionValue, "produksi"),
+		Form:            form,
+		Units:           units,
+		ProjectOptions:  service.ProjectOptions,
+		SupplierOptions: service.SupplierOptions,
+		QuaryOptions:    service.QuaryOptions,
+		KategoriOptions: service.KategoriOptions,
+		LayerOptions:    service.LayerOptions,
+		Error:           errMessage,
+		Success:         success,
+	}, status)
 }
 
 func (s *Server) handleUnitDT(w http.ResponseWriter, r *http.Request) {

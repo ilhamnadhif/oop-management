@@ -43,8 +43,9 @@ func main() {
 	authService := service.NewAuthService(store, cfg.Timezone, now)
 	attendanceService := service.NewAttendanceService(store, cfg.Timezone, now)
 	unitDTService := service.NewUnitDTService(store, cfg.Timezone, now)
+	produksiService := service.NewProduksiService(store, cfg.Timezone, now)
 	sessions := session.NewManager(cfg.SessionTTL, cfg.SessionCookieSecure)
-	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars)
+	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, produksiService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars)
 	if err != nil {
 		log.Fatal(err)
 	}

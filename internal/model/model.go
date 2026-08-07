@@ -59,6 +59,35 @@ type UnitDT struct {
 	UpdatedAt   time.Time
 }
 
+// Produksi is one hauling record. Every dimension is metres and every volume
+// is cubic metres.
+type Produksi struct {
+	ProduksiID  string
+	Tanggal     string
+	Project     string
+	Supplier    string
+	Quary       string
+	Kategori    string
+	Lokasi      string
+	Layer       string
+	UnitID      string
+	Nopol       string
+	Driver      string
+	JenisDT     string
+	Panjang     float64
+	Lebar       float64
+	Tinggi      float64
+	TT          float64
+	TF          float64
+	Volume      float64
+	VolumeOPP   float64
+	Deviasi     float64
+	CreatedBy   string
+	CreatedByID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Attendance struct {
 	AbsensiID        string
 	UserID           string

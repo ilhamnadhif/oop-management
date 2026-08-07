@@ -96,18 +96,50 @@ func TestSidebarMarksActivePageAndKeepsLogoutLast(t *testing.T) {
 	}
 }
 
-func TestPlaceholderPagesShowOnlyTheClock(t *testing.T) {
+func sectionBetween(t *testing.T, page, openTag, closeTag string) string {
+	t.Helper()
+	start := strings.Index(page, openTag)
+	if start < 0 {
+		t.Fatalf("%q not found", openTag)
+	}
+	end := strings.Index(page[start:], closeTag)
+	if end < 0 {
+		t.Fatalf("%q is not closed", openTag)
+	}
+	return page[start : start+end]
+}
+
+// The signed-in user's name and position belong in the topbar next to the date,
+// not in the sidebar.
+func TestUserIdentityLivesInTheTopbar(t *testing.T) {
 	testServer := newTestServer(t)
 	client := loggedInClient(t, testServer)
 
-	// Unit DT has real content now; Produksi is still the bare template.
-	for _, path := range []string{"/produksi"} {
+	for _, path := range []string{"/dashboard", "/produksi", "/unit-dt"} {
 		page := fetchAuthedPage(t, client, testServer.URL+path)
 
-		if !strings.Contains(page, `id="clockNow"`) || !strings.Contains(page, `data-clock-start="08:00"`) {
-			t.Fatalf("%s: clock template is missing", path)
+		topbar := sectionBetween(t, page, `<header class="topbar">`, "</header>")
+		if !strings.Contains(topbar, "Budi Santoso") {
+			t.Fatalf("%s: topbar is missing the user name", path)
 		}
-		// Attendance controls belong to the Absensi page only.
+		if !strings.Contains(topbar, `class="topbar-user-role"`) {
+			t.Fatalf("%s: topbar is missing the user position", path)
+		}
+
+		sidebar := sectionBetween(t, page, `<aside class="sidebar"`, "</aside>")
+		if strings.Contains(sidebar, "Budi Santoso") {
+			t.Fatalf("%s: the user name is still rendered in the sidebar", path)
+		}
+	}
+}
+
+// Attendance controls belong to the Absensi page only.
+func TestOtherPagesDoNotLeakAttendanceMarkup(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	for _, path := range []string{"/produksi", "/unit-dt"} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
 		for _, absensiOnly := range []string{"data-attendance-action", `id="attendanceMap"`, `id="cameraModal"`} {
 			if strings.Contains(page, absensiOnly) {
 				t.Fatalf("%s: leaked attendance markup %q", path, absensiOnly)

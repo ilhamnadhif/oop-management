@@ -17,6 +17,7 @@ const (
 	activitySheet   = "activity login"
 	attendanceSheet = "absensi data"
 	unitDTSheet     = "Unit DT"
+	produksiSheet   = "Produksi"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -43,6 +44,14 @@ var unitDTHeaders = []string{
 	"keterangan", "foto_unit", "dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
 }
 
+var produksiHeaders = []string{
+	"produksi_id", "tanggal", "project", "supplier", "quary", "kategori", "lokasi", "layer",
+	"unit_id", "nopol", "driver", "jenis_dt",
+	"panjang_m", "lebar_m", "tinggi_m", "tt_m", "tf_m",
+	"volume_m3", "volume_opp_m3", "deviasi_m3",
+	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+}
+
 type GoogleSheetsRepository struct {
 	service       *sheets.Service
 	spreadsheetID string
@@ -66,7 +75,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -90,6 +99,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: activitySheet, headers: activityHeaders},
 		{name: attendanceSheet, headers: attendanceHeaders},
 		{name: unitDTSheet, headers: unitDTHeaders},
+		{name: produksiSheet, headers: produksiHeaders},
 	} {
 		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
 			return err
@@ -273,6 +283,76 @@ func unitDTToRow(unit *model.UnitDT) []interface{} {
 		unit.UnitID, unit.Nopol, formatFloat(unit.Panjang), formatFloat(unit.Lebar),
 		formatFloat(unit.Tinggi), unit.Driver, unit.Keterangan, unit.Foto,
 		unit.CreatedBy, unit.CreatedByID, formatDateTime(unit.CreatedAt), formatDateTime(unit.UpdatedAt),
+	}
+}
+
+// ListUnitDT reads columns A:G, deliberately stopping before the foto column.
+// The production form only needs the plate and its dimensions, and pulling
+// every base64 photo would make the page weigh megabytes.
+func (r *GoogleSheetsRepository) ListUnitDT(ctx context.Context) ([]model.UnitDT, error) {
+	rows, err := r.readRows(ctx, unitDTSheet, "G")
+	if err != nil {
+		return nil, err
+	}
+	units := make([]model.UnitDT, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, 7)
+		nopol := strings.TrimSpace(cellString(row[1]))
+		if nopol == "" {
+			continue
+		}
+		units = append(units, model.UnitDT{
+			UnitID:     cellString(row[0]),
+			Nopol:      nopol,
+			Panjang:    parseFloatCell(row[2]),
+			Lebar:      parseFloatCell(row[3]),
+			Tinggi:     parseFloatCell(row[4]),
+			Driver:     cellString(row[5]),
+			Keterangan: cellString(row[6]),
+		})
+	}
+	return units, nil
+}
+
+func parseFloatCell(cell interface{}) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(cellString(cell)), 64)
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+func (r *GoogleSheetsRepository) MaxProduksiSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, produksiSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateProduksi(ctx context.Context, produksi *model.Produksi) error {
+	return r.appendRow(ctx, produksiSheet, produksiToRow(produksi))
+}
+
+func produksiToRow(produksi *model.Produksi) []interface{} {
+	return []interface{}{
+		produksi.ProduksiID, produksi.Tanggal, produksi.Project, produksi.Supplier,
+		produksi.Quary, produksi.Kategori, produksi.Lokasi, produksi.Layer,
+		produksi.UnitID, produksi.Nopol, produksi.Driver, produksi.JenisDT,
+		formatFloat(produksi.Panjang), formatFloat(produksi.Lebar), formatFloat(produksi.Tinggi),
+		formatFloat(produksi.TT), formatFloat(produksi.TF),
+		formatFloat(produksi.Volume), formatFloat(produksi.VolumeOPP), formatFloat(produksi.Deviasi),
+		produksi.CreatedBy, produksi.CreatedByID,
+		formatDateTime(produksi.CreatedAt), formatDateTime(produksi.UpdatedAt),
 	}
 }
 

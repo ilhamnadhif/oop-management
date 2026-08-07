@@ -27,11 +27,7 @@
   <aside class="sidebar" id="appSidebar">
     <div class="sidebar-brand">
       {{template "brandLogo"}}
-      <div>
-        <p class="eyebrow">ORECON PUTRA PERKASA</p>
-        <p class="sidebar-user">{{.User.NamaLengkap}}</p>
-        <p class="sidebar-role">{{.User.Jabatan}}</p>
-      </div>
+      <p class="eyebrow">ORECON PUTRA PERKASA</p>
     </div>
     <nav class="sidebar-nav" aria-label="Menu utama">
       {{range .NavItems}}
@@ -61,7 +57,13 @@
           </ol>
         </nav>
       </div>
-      <p class="topbar-date">{{.Today}}</p>
+      <div class="topbar-meta">
+        <p class="topbar-date">{{.Today}}</p>
+        <div class="topbar-user">
+          <p class="topbar-user-name">{{.User.NamaLengkap}}</p>
+          <p class="topbar-user-role">{{.User.Jabatan}}</p>
+        </div>
+      </div>
     </header>
     <main class="app-shell">
 {{end}}

@@ -1,0 +1,150 @@
+{{define "produksi"}}
+{{template "appShellOpen" .}}
+  <h1 class="page-title">{{.PageTitle}}</h1>
+
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <form method="post" action="/produksi" class="stack-form" data-loading-form data-produksi-form>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">INFORMASI UMUM &amp; LOKASI</p>
+          <h2>Detail pekerjaan</h2>
+        </div>
+      </div>
+
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="tanggal">Tanggal</label>
+          <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
+        </div>
+        <div>
+          <label for="project">Project</label>
+          <select id="project" name="project" required>
+            <option value="" {{if not .Form.Project}}selected{{end}} disabled>Pilih…</option>
+            {{range .ProjectOptions}}<option value="{{.}}" {{if eq . $.Form.Project}}selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label for="supplier">Supplier</label>
+          <select id="supplier" name="supplier" required>
+            <option value="" {{if not .Form.Supplier}}selected{{end}} disabled>Pilih…</option>
+            {{range .SupplierOptions}}<option value="{{.}}" {{if eq . $.Form.Supplier}}selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label for="quary">Quary</label>
+          <select id="quary" name="quary" required>
+            <option value="" {{if not .Form.Quary}}selected{{end}} disabled>Pilih…</option>
+            {{range .QuaryOptions}}<option value="{{.}}" {{if eq . $.Form.Quary}}selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label for="kategori">Kategori</label>
+          <select id="kategori" name="kategori" required>
+            <option value="" {{if not .Form.Kategori}}selected{{end}} disabled>Pilih…</option>
+            {{range .KategoriOptions}}<option value="{{.}}" {{if eq . $.Form.Kategori}}selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label for="lokasi">Lokasi</label>
+          <input id="lokasi" name="lokasi" type="text" value="{{.Form.Lokasi}}" placeholder="Ketik lokasi…" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="layer">Layer</label>
+          <select id="layer" name="layer" required>
+            <option value="" {{if not .Form.Layer}}selected{{end}} disabled>Pilih…</option>
+            {{range .LayerOptions}}<option value="{{.}}" {{if eq . $.Form.Layer}}selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">DATA UNIT &amp; MUATAN</p>
+          <h2>Unit dump truck</h2>
+        </div>
+      </div>
+
+      <label for="nopol">NOPOL Unit <span class="hint">(ketik untuk cari)</span></label>
+      <input id="nopol" name="nopol" type="text" list="unitList" value="{{.Form.Nopol}}" placeholder="Ketik atau pilih NOPOL…" autocomplete="off" data-nopol required>
+      <datalist id="unitList">
+        {{range .Units}}
+        <option value="{{.Nopol}}"
+          data-driver="{{.Driver}}"
+          data-panjang="{{printf "%g" .Panjang}}"
+          data-lebar="{{printf "%g" .Lebar}}"
+          data-tinggi="{{printf "%g" .Tinggi}}"
+          data-jenis="{{.Keterangan}}">{{.Nopol}} — {{.Driver}}</option>
+        {{end}}
+      </datalist>
+
+      <label for="driver">Driver</label>
+      <input id="driver" type="text" placeholder="Otomatis dari sheet Unit DT…" disabled data-unit-field="driver">
+
+      <div class="form-grid form-grid-4">
+        <div>
+          <label for="panjang">P (Panjang — m)</label>
+          <input id="panjang" type="text" placeholder="Auto" disabled data-unit-field="panjang">
+        </div>
+        <div>
+          <label for="lebar">L (Lebar — m)</label>
+          <input id="lebar" type="text" placeholder="Auto" disabled data-unit-field="lebar">
+        </div>
+        <div>
+          <label for="tinggi">T (Tinggi bak — m)</label>
+          <input id="tinggi" type="text" placeholder="Auto" disabled data-unit-field="tinggi">
+        </div>
+        <div>
+          <label for="tt">TT (tinggi tambah — m) <span class="hint">(opsional)</span></label>
+          <input id="tt" name="tt" type="number" value="{{.Form.TT}}" placeholder="Input TT…" step="0.01" min="0">
+        </div>
+      </div>
+
+      <label for="jenis">Keterangan / jenis DT</label>
+      <input id="jenis" type="text" placeholder="Otomatis dari sheet Unit DT…" disabled data-unit-field="jenis">
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">KALKULASI OTOMATIS</p>
+          <h2>Pratinjau</h2>
+        </div>
+      </div>
+      <dl class="calc-grid">
+        <div>
+          <dt>TF [T + (TT / 2)] — m</dt>
+          <dd data-calc="tf">0.00 m</dd>
+        </div>
+        <div>
+          <dt>Volume [(P × L × TF) / 10⁶]</dt>
+          <dd class="accent-blue" data-calc="volume">0.0000 m³</dd>
+        </div>
+        <div>
+          <dt>Volume OPP (10 / 28)</dt>
+          <dd class="accent-green" data-calc="opp">0 m³</dd>
+        </div>
+        <div>
+          <dt>Deviasi (Volume − OPP)</dt>
+          <dd class="accent-amber" data-calc="deviasi">0.0000 m³</dd>
+        </div>
+      </dl>
+      <p class="hint">Pratinjau saja. Nilai yang disimpan dihitung ulang di server dari data sheet Unit DT.</p>
+    </section>
+
+    <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+      <span class="spinner" aria-hidden="true" hidden></span>
+      <span data-submit-label>Simpan data produksi</span>
+    </button>
+  </form>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/produksi.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

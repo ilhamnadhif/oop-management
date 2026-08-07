@@ -18,6 +18,7 @@ type TestRepository struct {
 	activities []*model.LoginActivity
 	attendance []*model.Attendance
 	unitDT     []*model.UnitDT
+	produksi   []*model.Produksi
 }
 
 func NewTestRepository() *TestRepository {
@@ -61,6 +62,46 @@ func (r *TestRepository) CreateUnitDT(_ context.Context, unit *model.UnitDT) err
 	stored := *unit
 	r.unitDT = append(r.unitDT, &stored)
 	return nil
+}
+
+func (r *TestRepository) ListUnitDT(_ context.Context) ([]model.UnitDT, error) {
+	return r.UnitDTList(), nil
+}
+
+func (r *TestRepository) MaxProduksiSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, produksi := range r.produksi {
+		trimmed := strings.TrimSpace(produksi.ProduksiID)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateProduksi(_ context.Context, produksi *model.Produksi) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := *produksi
+	r.produksi = append(r.produksi, &stored)
+	return nil
+}
+
+// ProduksiList exposes stored production rows to tests.
+func (r *TestRepository) ProduksiList() []model.Produksi {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.Produksi, 0, len(r.produksi))
+	for _, produksi := range r.produksi {
+		rows = append(rows, *produksi)
+	}
+	return rows
 }
 
 // UnitDTList exposes stored units to tests.

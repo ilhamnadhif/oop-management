@@ -42,6 +42,7 @@ input, select { width: 100%; padding: 0.78rem 0.85rem; border: 1px solid var(--l
 input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(43, 156, 150, 0.13); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.2rem 1rem; }
 .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .form-grid > div { display: grid; gap: 0.65rem; }
 textarea { width: 100%; padding: 0.78rem 0.85rem; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--white); font: inherit; outline: none; resize: vertical; transition: border-color 0.15s, box-shadow 0.15s; }
 textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(43, 156, 150, 0.13); }
@@ -73,11 +74,12 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .app-shell { width: min(1180px, 100%); margin: 0 auto; padding: clamp(1rem, 4vw, 2.5rem); }
 .page-title { margin-bottom: 1.25rem; font-size: clamp(1.4rem, 3vw, 2rem); }
 
-.sidebar { display: flex; width: 264px; flex-direction: column; flex-shrink: 0; padding: 1.5rem 1.1rem; border-right: 1px solid var(--line); background: var(--white); }
+/* The sidebar stays put while the page scrolls: sticky with its own full-height
+   box, and it scrolls internally only when the menu outgrows the viewport. */
+.sidebar { position: sticky; top: 0; display: flex; width: 264px; height: 100vh; flex-direction: column; flex-shrink: 0; align-self: flex-start; overflow-y: auto; padding: 1.5rem 1.1rem; border-right: 1px solid var(--line); background: var(--white); }
 .sidebar-brand { display: flex; align-items: center; gap: 0.75rem; padding-bottom: 1.3rem; border-bottom: 1px solid var(--line); }
 .sidebar-brand .brand-logo { height: 42px; margin-bottom: 0; }
-.sidebar-user { margin-bottom: 0; color: var(--navy-dark); font-size: 0.92rem; font-weight: 800; }
-.sidebar-role { margin-bottom: 0; color: var(--muted); font-size: 0.78rem; }
+.sidebar-brand .eyebrow { margin-bottom: 0; }
 .sidebar-nav { display: grid; gap: 0.25rem; padding-top: 1.1rem; }
 .sidebar-link { padding: 0.7rem 0.85rem; border-radius: 11px; color: var(--navy-dark); text-decoration: none; font-size: 0.92rem; font-weight: 700; }
 .sidebar-link:hover { background: #eef3f5; }
@@ -90,7 +92,11 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .topbar, .panel-heading, .action-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .topbar { padding: 0.9rem clamp(1rem, 4vw, 2.5rem); border-bottom: 1px solid var(--line); background: var(--white); }
 .topbar-brand { display: flex; align-items: center; gap: 0.9rem; }
+.topbar-meta { display: flex; align-items: center; gap: 1rem; }
 .topbar-date { margin-bottom: 0; color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
+.topbar-user { padding-left: 1rem; border-left: 1px solid var(--line); text-align: right; }
+.topbar-user-name { margin-bottom: 0; color: var(--navy-dark); font-size: 0.9rem; font-weight: 800; line-height: 1.25; }
+.topbar-user-role { margin-bottom: 0; color: var(--muted); font-size: 0.76rem; }
 .menu-toggle { display: none; padding: 0.45rem; border: 0; border-radius: 10px; color: var(--navy); background: #eef3f5; cursor: pointer; }
 
 .breadcrumb ol { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.85rem; }
@@ -100,6 +106,13 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .breadcrumb [aria-current="page"] { color: var(--navy-dark); font-weight: 700; }
 
 .panel-empty { margin-bottom: 0; color: var(--muted); font-size: 0.9rem; }
+
+.calc-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 0 0 0.9rem; padding: 1.1rem; border-radius: 14px; background: #f5f8f9; }
+.calc-grid dt { margin-bottom: 0.35rem; color: var(--muted); font-size: 0.8rem; }
+.calc-grid dd { margin: 0; color: var(--navy-dark); font-size: 1.3rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.calc-grid .accent-blue { color: #2563eb; }
+.calc-grid .accent-green { color: var(--success); }
+.calc-grid .accent-amber { color: #b8791f; }
 .panel { padding: clamp(1.1rem, 3vw, 1.6rem); border: 1px solid var(--line); border-radius: 20px; background: var(--white); box-shadow: 0 10px 32px rgba(23, 63, 95, 0.06); }
 .panel + .panel, .clock-hero + .panel { margin-top: 1.25rem; }
 .panel-heading { align-items: flex-start; margin-bottom: 1.25rem; }
@@ -155,14 +168,19 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 }
 
 @media (max-width: 720px) {
-  .form-grid, .form-grid-3 { grid-template-columns: 1fr; }
+  .form-grid, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; }
+  .calc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { flex-direction: row; align-items: center; }
   .video-frame, .video-frame video { min-height: 220px; }
   #attendanceMap { height: 240px; }
   .action-row { flex-wrap: wrap; justify-content: stretch; }
   .action-row .button { flex: 1 1 auto; }
   .topbar-brand { gap: 0.6rem; }
+  /* The name stays; the date is the first thing to give up the width. */
   .topbar-date { display: none; }
+  .topbar-user { padding-left: 0; border-left: 0; }
+  .topbar-user-name { font-size: 0.82rem; }
+  .topbar-user-role { font-size: 0.7rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -32,7 +32,7 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 	auth := service.NewAuthService(store, location, nowFunc)
 	attendance := service.NewAttendanceService(store, location, nowFunc)
 	webSessions := session.NewManager(24*time.Hour, false)
-	server, err := NewServer(auth, attendance, service.NewUnitDTService(store, location, nowFunc), webSessions, location, nowFunc, 2*1024*1024, photo.MaxOutputChars)
+	server, err := NewServer(auth, attendance, service.NewUnitDTService(store, location, nowFunc), service.NewProduksiService(store, location, nowFunc), webSessions, location, nowFunc, 2*1024*1024, photo.MaxOutputChars)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestLoginFailureUsesGenericMessage(t *testing.T) {
 	auth := service.NewAuthService(store, time.Local, func() time.Time { return now })
 	attendance := service.NewAttendanceService(store, time.Local, func() time.Time { return now })
 	webSessions := session.NewManager(time.Hour, false)
-	server, err := NewServer(auth, attendance, service.NewUnitDTService(store, time.Local, func() time.Time { return now }), webSessions, time.Local, func() time.Time { return now }, 2*1024*1024, photo.MaxOutputChars)
+	server, err := NewServer(auth, attendance, service.NewUnitDTService(store, time.Local, func() time.Time { return now }), service.NewProduksiService(store, time.Local, func() time.Time { return now }), webSessions, time.Local, func() time.Time { return now }, 2*1024*1024, photo.MaxOutputChars)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
