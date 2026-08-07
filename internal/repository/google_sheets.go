@@ -353,7 +353,7 @@ func produksiToRow(produksi *model.Produksi) []interface{} {
 		formatFloat(produksi.Volume), formatFloat(produksi.VolumeOPP), formatFloat(produksi.Deviasi),
 		produksi.CreatedBy, produksi.CreatedByID,
 		formatDateTime(produksi.CreatedAt), formatDateTime(produksi.UpdatedAt),
-	}
+}
 }
 
 func (r *GoogleSheetsRepository) AppendActivity(ctx context.Context, activity *model.LoginActivity) error {
