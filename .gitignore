@@ -1,6 +1,7 @@
 .env
 *.json
 credentials/
+vps.txt
 
 # Go tooling
 /bin/

@@ -58,7 +58,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("OPP HRIS Absensi listening on http://localhost:%s (backend=%s, timezone=%s)", cfg.Port, cfg.StorageBackend, cfg.TimezoneName)
+		log.Printf("OPP HRIS Absensi listening on http://localhost:%s (Google Sheets, timezone=%s)", cfg.Port, cfg.TimezoneName)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("http server: %v", err)
 		}
@@ -73,9 +73,6 @@ func main() {
 }
 
 func buildStore(ctx context.Context, cfg config.Config) (repository.Store, error) {
-	if cfg.StorageBackend == "memory" {
-		return repository.NewMemoryRepository(), nil
-	}
 	serviceClient, err := sheets.NewService(ctx,
 		option.WithCredentialsFile(cfg.GoogleCredentialsFile),
 		option.WithScopes(sheets.SpreadsheetsScope),

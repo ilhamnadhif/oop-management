@@ -26,7 +26,6 @@ WORKDIR /app
 COPY --from=build /out/opp-absensi /app/opp-absensi
 
 ENV PORT=8080 \
-    STORAGE_BACKEND=google \
     APP_TIMEZONE=Asia/Jakarta \
     SESSION_COOKIE_SECURE=true
 

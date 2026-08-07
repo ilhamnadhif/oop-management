@@ -16,7 +16,7 @@ import (
 )
 
 func TestClockInOutAndDuplicateRules(t *testing.T) {
-	store := repository.NewMemoryRepository()
+	store := repository.NewTestRepository()
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 1, 0, 0, location)
 	user := &model.User{UserID: "usr_1", NRP: "123456", NamaLengkap: "Budi", Jabatan: "Staff", StatusPengguna: model.StatusAktif}
@@ -51,7 +51,7 @@ func TestClockInOutAndDuplicateRules(t *testing.T) {
 }
 
 func TestClockOutRequiresClockInAndValidLocation(t *testing.T) {
-	store := repository.NewMemoryRepository()
+	store := repository.NewTestRepository()
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 17, 0, 0, 0, location)
 	user := &model.User{UserID: "usr_2", NRP: "654321", NamaLengkap: "Sari", Jabatan: "Staff", StatusPengguna: model.StatusAktif}

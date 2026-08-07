@@ -15,13 +15,14 @@ MVP aplikasi absensi server-rendered menggunakan Go, HTML template, JavaScript v
 
 Go 1.26 atau lebih baru diperlukan.
 
-Untuk smoke test tanpa Google Sheets, gunakan memory backend:
+Mode aplikasi selalu menggunakan Google Sheets, termasuk saat dijalankan di lokal. Isi `.env` dengan Spreadsheet ID dan path credential service account, lalu jalankan:
 
 ```bash
-STORAGE_BACKEND=memory go run ./cmd/web
+set -a
+source .env
+set +a
+go run ./cmd/web
 ```
-
-Mode memory hanya untuk pengembangan; data hilang saat proses berhenti.
 
 ## Konfigurasi Google Sheets
 
@@ -61,7 +62,6 @@ Untuk aplikasi yang berjalan di Google Cloud, lebih aman memakai service account
 ### Menjalankan dengan Google Sheets
 
 ```bash
-export STORAGE_BACKEND=google
 export GOOGLE_SPREADSHEET_ID="1AbCDeFGHIjkLMNopQR"
 export GOOGLE_APPLICATION_CREDENTIALS="$PWD/credentials/service-account.json"
 export APP_TIMEZONE=Asia/Jakarta
@@ -73,7 +73,6 @@ Saat startup aplikasi akan membuat tiga sheet dan header jika belum tersedia. He
 Contoh environment variable minimum:
 
 ```bash
-export STORAGE_BACKEND=google
 export GOOGLE_SPREADSHEET_ID="..."
 export GOOGLE_APPLICATION_CREDENTIALS="/path/service-account.json"
 export APP_TIMEZONE=Asia/Jakarta
@@ -95,7 +94,6 @@ Jalankan dengan credential yang di-mount read-only. Credential tidak disalin ke 
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e STORAGE_BACKEND=google \
   -e GOOGLE_SPREADSHEET_ID="1AbCDeFGHIjkLMNopQR" \
   -e GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google-service-account.json \
   -e SESSION_COOKIE_SECURE=false \

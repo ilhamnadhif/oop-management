@@ -12,7 +12,7 @@ import (
 )
 
 func TestRegisterAndAuthenticate(t *testing.T) {
-	store := repository.NewMemoryRepository()
+	store := repository.NewTestRepository()
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, time.FixedZone("WIB", 7*60*60))
 	auth := NewAuthService(store, now.Location(), func() time.Time { return now })
 
@@ -46,7 +46,7 @@ func TestRegisterAndAuthenticate(t *testing.T) {
 }
 
 func TestRegisterRejectsDuplicateAndInvalidInput(t *testing.T) {
-	store := repository.NewMemoryRepository()
+	store := repository.NewTestRepository()
 	auth := NewAuthService(store, time.Local, time.Now)
 	input := RegisterInput{
 		TanggalGabung: "2026-08-07",
@@ -69,7 +69,7 @@ func TestRegisterRejectsDuplicateAndInvalidInput(t *testing.T) {
 }
 
 func TestInactiveAndWrongPasswordAreLoggedAsFailed(t *testing.T) {
-	store := repository.NewMemoryRepository()
+	store := repository.NewTestRepository()
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, time.Local)
 	auth := NewAuthService(store, time.Local, func() time.Time { return now })
 	_, err := auth.Register(context.Background(), RegisterInput{
