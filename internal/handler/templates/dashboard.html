@@ -11,7 +11,7 @@
 
   <section class="panel action-card">
     <div class="action-summary">
-      <p class="eyebrow">STATUS HARI INI</p>
+      <p class="eyebrow">{{template "icon" "clock"}}STATUS HARI INI</p>
       <h2>{{if not .HasClockIn}}Belum Clock In{{else if not .HasClockOut}}Sudah Clock In{{else}}Sudah Clock Out{{end}}</h2>
       {{if .Attendance}}{{if .Attendance.DurasiMenit}}
       <p class="action-times">Durasi kerja {{.Attendance.DurasiMenit}} menit</p>
@@ -47,7 +47,7 @@
   <section class="panel location-panel">
     <div class="panel-heading">
       <div>
-        <p class="eyebrow">LOKASI GPS</p>
+        <p class="eyebrow">{{template "icon" "pin"}}LOKASI GPS</p>
         <h2>Titik absensi</h2>
       </div>
       <span class="camera-indicator" id="locationIndicator">Mengambil lokasi…</span>
@@ -58,7 +58,7 @@
     </div>
     <p class="location-chip" id="locationChip" role="status" hidden></p>
     <div class="action-row">
-      <button class="button subtle" type="button" id="refreshLocation">Perbarui lokasi</button>
+      <button class="button subtle" type="button" id="refreshLocation">{{template "icon" "refresh"}}Perbarui lokasi</button>
     </div>
   </section>
 </div>
@@ -68,7 +68,7 @@
   <div class="camera-dialog" role="dialog" aria-modal="true" aria-labelledby="cameraModalTitle">
     <div class="panel-heading">
       <div>
-        <p class="eyebrow">BUKTI WAJAH</p>
+        <p class="eyebrow">{{template "icon" "camera"}}BUKTI WAJAH</p>
         <h2 id="cameraModalTitle">Ambil foto selfie</h2>
       </div>
       <span class="camera-indicator" id="cameraIndicator">Menyiapkan kamera…</span>
@@ -79,8 +79,8 @@
     </div>
     <p class="camera-status" id="cameraStatus" role="status">Pastikan wajah terlihat jelas sebelum absen.</p>
     <div class="action-row">
-      <button class="button subtle" type="button" id="cancelCapture">Batal</button>
-      <button class="button primary" type="button" id="confirmCapture" disabled>Ambil Foto</button>
+      <button class="button subtle" type="button" id="cancelCapture">{{template "icon" "close"}}Batal</button>
+      <button class="button primary" type="button" id="confirmCapture" disabled>{{template "icon" "camera"}}Ambil Foto</button>
     </div>
   </div>
 </div>

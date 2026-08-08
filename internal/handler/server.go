@@ -22,7 +22,7 @@ import (
 	"opp-management/internal/session"
 )
 
-//go:embed templates/*.html static/css/* static/js/* static/img/* static/vendor/leaflet/leaflet.js static/vendor/leaflet/leaflet.css static/vendor/leaflet/images/*
+//go:embed templates/*.html static/css/* static/js/* static/img/* static/fonts/* static/vendor/leaflet/leaflet.js static/vendor/leaflet/leaflet.css static/vendor/leaflet/images/*
 var assetFiles embed.FS
 
 type Server struct {
@@ -167,7 +167,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
 	mux.HandleFunc("/absensi/clock-out", s.handleClockOut)
 	mux.HandleFunc("/healthz", s.handleHealth)
-	mux.Handle("/static/", http.FileServer(http.FS(assetFiles)))
+	mux.Handle("/static/", staticHandler())
 	return securityHeaders(mux)
 }
 

@@ -75,9 +75,20 @@ func TestSidebarMarksActivePageAndKeepsLogoutLast(t *testing.T) {
 	for path, label := range active {
 		page := fetchAuthedPage(t, client, testServer.URL+path)
 
-		marker := `aria-current="page">` + label + `<`
-		if !strings.Contains(page, marker) {
+		// Look inside the nav itself. Matching on the whole page would also hit
+		// the breadcrumb's aria-current, which would keep this passing even if
+		// the sidebar stopped marking anything.
+		nav := navSection(t, page)
+		activeAt := strings.Index(nav, `aria-current="page"`)
+		if activeAt < 0 {
+			t.Fatalf("%s: no menu item is marked active", path)
+		}
+		linkEnd := strings.Index(nav[activeAt:], "</a>")
+		if linkEnd < 0 || !strings.Contains(nav[activeAt:activeAt+linkEnd], ">"+label+"<") {
 			t.Fatalf("%s: active menu item is not %q", path, label)
+		}
+		if strings.Count(nav, `aria-current="page"`) != 1 {
+			t.Fatalf("%s: %d menu items marked active, want 1", path, strings.Count(nav, `aria-current="page"`))
 		}
 		// Breadcrumb names the current page.
 		if !strings.Contains(page, `<li aria-current="page">`+label+`</li>`) {

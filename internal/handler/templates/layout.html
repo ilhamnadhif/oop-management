@@ -32,12 +32,12 @@
     <nav class="sidebar-nav" aria-label="Menu utama">
       {{range .NavItems}}
       <a class="sidebar-link {{if eq .Key $.ActiveNav}}active{{end}}" href="{{.Path}}"
-        {{if eq .Key $.ActiveNav}}aria-current="page"{{end}}>{{.Label}}</a>
+        {{if eq .Key $.ActiveNav}}aria-current="page"{{end}}>{{template "icon" .Icon}}<span>{{.Label}}</span></a>
       {{end}}
     </nav>
     <form class="sidebar-logout" method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button class="button subtle" type="submit">Keluar</button>
+      <button class="button subtle" type="submit">{{template "icon" "logout"}}Keluar</button>
     </form>
   </aside>
   <div class="sidebar-scrim" id="sidebarScrim" hidden></div>

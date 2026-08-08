@@ -1,0 +1,29 @@
+{{/* icon renders one inline SVG by name. Inline rather than an icon font
+     because the CSP allows same-origin assets only, and a sprite sheet would be
+     another request for a handful of glyphs.
+
+     Every icon shares one geometry: 24x24 viewBox, current colour, 1.75 stroke.
+     aria-hidden throughout - each icon sits next to its own label, so announcing
+     it would only repeat that label. */}}
+{{define "icon"}}
+{{- $d := "" -}}
+{{- if eq . "clock" -}}{{$d = "M12 7v5l3 2"}}
+{{- else if eq . "truck" -}}{{$d = "M3 16V7a1 1 0 0 1 1-1h9v10M13 11h4l3 3v2M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM8 17.5h8"}}
+{{- else if eq . "chart" -}}{{$d = "M4 19h16M7 16V9M12 16V5M17 16v-4"}}
+{{- else if eq . "info" -}}{{$d = "M12 16v-4M12 8h.01"}}
+{{- else if eq . "pin" -}}{{$d = "M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11Z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"}}
+{{- else if eq . "camera" -}}{{$d = "M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"}}
+{{- else if eq . "calculator" -}}{{$d = "M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 18h4"}}
+{{- else if eq . "save" -}}{{$d = "M5 4h11l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z M8 4v5h7M8 19v-5h8v5"}}
+{{- else if eq . "refresh" -}}{{$d = "M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"}}
+{{- else if eq . "login" -}}{{$d = "M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"}}
+{{- else if eq . "logout" -}}{{$d = "M14 17l5-5-5-5M19 12H7M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5"}}
+{{- else if eq . "user-plus" -}}{{$d = "M14 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M8.5 10.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM18 8v6M21 11h-6"}}
+{{- else if eq . "close" -}}{{$d = "M7 7l10 10M17 7L7 17"}}
+{{- else if eq . "list" -}}{{$d = "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"}}
+{{- end -}}
+<svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{{- if eq . "clock"}}<circle cx="12" cy="12" r="9"></circle>{{end}}
+{{- if eq . "info"}}<circle cx="12" cy="12" r="9"></circle>{{end}}
+<path d="{{$d}}"></path></svg>
+{{- end}}
