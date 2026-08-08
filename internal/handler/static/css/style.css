@@ -305,3 +305,16 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
   .filter-form input { min-width: 0; width: 100%; }
   .filter-form > div { flex: 1 1 100%; }
 }
+
+/* Creatable combobox. The list is absolutely positioned over the form, so it
+   needs to sit above neighbouring panels but below the camera modal. */
+.combobox { position: relative; }
+.combobox-input { padding-right: 2.6rem; }
+.combobox-toggle { position: absolute; top: 50%; right: 0.5rem; display: grid; padding: 0.3rem; transform: translateY(-50%); place-items: center; border: 0; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; }
+.combobox-toggle:hover { color: var(--navy); }
+.combobox[data-open] .combobox-toggle { color: var(--teal); }
+.combobox-list { position: absolute; z-index: 40; top: calc(100% + 4px); right: 0; left: 0; max-height: 240px; margin: 0; padding: 0.3rem; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--white); box-shadow: 0 16px 40px rgba(16, 47, 72, 0.16); list-style: none; }
+.combobox-option { padding: 0.6rem 0.7rem; border-radius: 8px; color: var(--ink); font-size: 0.9rem; cursor: pointer; }
+.combobox-option:hover, .combobox-option.active { background: #eef3f5; }
+.combobox-option.combobox-create { color: var(--teal); font-weight: 600; }
+.combobox-empty { padding: 0.6rem 0.7rem; color: var(--muted); font-size: 0.88rem; }

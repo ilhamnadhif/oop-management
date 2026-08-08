@@ -101,6 +101,75 @@ func TestUnitDTDriverFieldIsCreatable(t *testing.T) {
 	if !strings.Contains(page, `<option value="Slamet">`) {
 		t.Fatal("driver suggestions do not include a registered name")
 	}
+	if !strings.Contains(page, "/static/js/combobox.js") {
+		t.Fatal("the combobox enhancer is not loaded")
+	}
+}
+
+// The custom combobox enhances the native markup rather than replacing it, so
+// the plain input and datalist must still be in the HTML: if the script fails
+// to load the field still works.
+func TestComboboxDegradesToNativeMarkup(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	for _, path := range []string{"/produksi", "/unit-dt", "/unit-a2b"} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, "<datalist") {
+			t.Fatalf("%s: no datalist left for the no-script case", path)
+		}
+		if !strings.Contains(page, "/static/js/combobox.js") {
+			t.Fatalf("%s: the combobox enhancer is not loaded", path)
+		}
+	}
+
+	body := fetchPage(t, testServer.URL+"/static/js/combobox.js")
+	if len(body) == 0 {
+		t.Fatal("combobox.js is empty")
+	}
+	// Keyboard support and the create row are the reason this exists at all.
+	for _, fragment := range []string{"ArrowDown", "Escape", "aria-expanded", `Buat "`} {
+		if !strings.Contains(body, fragment) {
+			t.Fatalf("combobox.js is missing %q", fragment)
+		}
+	}
+	// Selecting a value dispatches an input event for other scripts. Without a
+	// guard that event lands back on the combobox and reopens the list it just
+	// closed.
+	if !strings.Contains(body, "settingValue") {
+		t.Fatal("combobox.js has no guard against its own dispatched input event")
+	}
+	// produksi.js reads the unit datalist to fill the dimensions, so the element
+	// must survive the upgrade even though the attribute pointing at it does not.
+	if strings.Contains(body, "datalist.remove()") {
+		t.Fatal("combobox.js removes the datalist other scripts depend on")
+	}
+	// Closed-set fields opt out of the create row.
+	if !strings.Contains(body, "data-no-create") {
+		t.Fatal("combobox.js has no way to mark a picker as a closed set")
+	}
+}
+
+// The production preview reads each unit's dimensions out of the datalist, so
+// the element has to reach the browser and stay reachable by id.
+func TestProduksiUnitDatalistSurvivesTheComboboxUpgrade(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedUnit(t, store)
+	client := loggedInClient(t, testServer)
+	page := fetchAuthedPage(t, client, testServer.URL+"/produksi")
+
+	if !strings.Contains(page, `<datalist id="unitList">`) {
+		t.Fatal("the unit datalist is missing from the page")
+	}
+	if !strings.Contains(page, `data-panjang="375"`) {
+		t.Fatal("the unit datalist carries no dimensions for produksi.js to read")
+	}
+	// Load order matters: produksi.js runs after the enhancer.
+	comboboxAt := strings.Index(page, "/static/js/combobox.js")
+	produksiAt := strings.Index(page, "/static/js/produksi.js")
+	if comboboxAt < 0 || produksiAt < 0 || produksiAt < comboboxAt {
+		t.Fatal("produksi.js must load after combobox.js")
+	}
 }
 
 func TestUnitDTSubmitStoresUnit(t *testing.T) {

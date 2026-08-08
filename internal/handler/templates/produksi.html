@@ -72,8 +72,8 @@
         </div>
       </div>
 
-      <label for="nopol">NOPOL Unit <span class="hint">(ketik untuk cari)</span></label>
-      <input id="nopol" name="nopol" type="text" list="unitList" value="{{.Form.Nopol}}" placeholder="Ketik atau pilih NOPOL…" autocomplete="off" data-nopol required>
+      <label for="nopol">NOPOL Unit <span class="hint">(hanya unit terdaftar)</span></label>
+      <input id="nopol" name="nopol" type="text" list="unitList" value="{{.Form.Nopol}}" placeholder="Pilih NOPOL terdaftar…" autocomplete="off" data-nopol data-no-create data-empty-text="Nopol belum terdaftar di Unit DT" required>
       <datalist id="unitList">
         {{range .Units}}
         <option value="{{.Nopol}}"
@@ -146,6 +146,7 @@
   </form>
 {{template "appShellClose" .}}
 <script src="/static/js/auth.js" defer></script>
+<script src="/static/js/combobox.js" defer></script>
 <script src="/static/js/produksi.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}

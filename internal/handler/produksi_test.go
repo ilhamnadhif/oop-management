@@ -103,6 +103,48 @@ func TestProduksiAcceptsNewPickerValues(t *testing.T) {
 	}
 }
 
+// Nopol is the one picker that must stay a closed set: the row it produces
+// carries the unit's dimensions, so an unregistered plate has nothing to
+// attach. The UI must not offer to create one, and the server must refuse it.
+func TestProduksiNopolPickerIsNotCreatable(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedUnit(t, store)
+	client := loggedInClient(t, testServer)
+	page := fetchAuthedPage(t, client, testServer.URL+"/produksi")
+
+	nopolTag := tagAt(t, page, `id="nopol"`)
+	if !strings.Contains(nopolTag, "data-no-create") {
+		t.Fatalf("nopol picker still offers to create values: %s", nopolTag)
+	}
+	if !strings.Contains(nopolTag, `data-empty-text=`) {
+		t.Fatal("nopol picker has no message for an unregistered plate")
+	}
+
+	// Every other picker stays creatable.
+	for _, id := range []string{"project", "supplier", "quary", "kategori", "layer", "lokasi"} {
+		if strings.Contains(tagAt(t, page, `id="`+id+`"`), "data-no-create") {
+			t.Fatalf("%s should still be creatable", id)
+		}
+	}
+
+	// And the server is the real guard: it refuses a plate the register has
+	// never seen, whatever the browser allowed.
+	csrf := csrfFromForm(t, page)
+	form := validProduksiForm(csrf)
+	form.Set("nopol", "B 9999 ZZZ")
+	response, err := client.PostForm(testServer.URL+"/produksi", form)
+	if err != nil {
+		t.Fatalf("post produksi: %v", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", response.StatusCode)
+	}
+	if len(store.ProduksiList()) != 0 {
+		t.Fatal("a row was stored for an unregistered plate")
+	}
+}
+
 func TestProduksiSubmitStoresCalculatedRow(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	seedUnit(t, store)
