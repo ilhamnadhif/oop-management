@@ -29,6 +29,7 @@ type Store interface {
 	UnitA2BExists(ctx context.Context, idUnit string) (bool, error)
 	MaxUnitA2BNumber(ctx context.Context) (int, error)
 	CreateUnitA2B(ctx context.Context, unit *model.UnitA2B) error
+	ListUnitA2B(ctx context.Context) ([]model.UnitA2B, error)
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	CreateAttendance(ctx context.Context, attendance *model.Attendance) error
 	UpdateAttendance(ctx context.Context, rowNumber int, attendance *model.Attendance) error

@@ -1,7 +1,5 @@
 {{define "unit_a2b"}}
 {{template "appShellOpen" .}}
-  <h1 class="page-title">{{.PageTitle}}</h1>
-
   {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
@@ -45,7 +43,10 @@
         </div>
         <div>
           <label for="merek_type">Merek / type</label>
-          <input id="merek_type" name="merek_type" type="text" value="{{.Form.MerekType}}" placeholder="Komatsu PC200 / CAT 320" autocomplete="off" required>
+          <input id="merek_type" name="merek_type" type="text" list="merekList" value="{{.Form.MerekType}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="merekList">
+            {{range .Options.MerekType}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
         <div>
           <label for="fuel_storage">Fuel storage — kapasitas tangki (liter)</label>
@@ -57,7 +58,10 @@
         </div>
         <div>
           <label for="lokasi">Lokasi unit</label>
-          <input id="lokasi" name="lokasi" type="text" value="{{.Form.Lokasi}}" placeholder="Ketik lokasi…" autocomplete="off" required>
+          <input id="lokasi" name="lokasi" type="text" list="lokasiList" value="{{.Form.Lokasi}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="lokasiList">
+            {{range .Options.Lokasi}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
         <div>
           <label for="hm_awal">HM awal unit</label>

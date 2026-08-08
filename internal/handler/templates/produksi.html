@@ -1,7 +1,5 @@
 {{define "produksi"}}
 {{template "appShellOpen" .}}
-  <h1 class="page-title">{{.PageTitle}}</h1>
-
   {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
@@ -23,42 +21,45 @@
         </div>
         <div>
           <label for="project">Project</label>
-          <select id="project" name="project" required>
-            <option value="" {{if not .Form.Project}}selected{{end}} disabled>Pilih…</option>
-            {{range .ProjectOptions}}<option value="{{.}}" {{if eq . $.Form.Project}}selected{{end}}>{{.}}</option>{{end}}
-          </select>
+          <input id="project" name="project" type="text" list="projectList" value="{{.Form.Project}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="projectList">
+            {{range .Options.Project}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
         <div>
           <label for="supplier">Supplier</label>
-          <select id="supplier" name="supplier" required>
-            <option value="" {{if not .Form.Supplier}}selected{{end}} disabled>Pilih…</option>
-            {{range .SupplierOptions}}<option value="{{.}}" {{if eq . $.Form.Supplier}}selected{{end}}>{{.}}</option>{{end}}
-          </select>
+          <input id="supplier" name="supplier" type="text" list="supplierList" value="{{.Form.Supplier}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="supplierList">
+            {{range .Options.Supplier}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
         <div>
           <label for="quary">Quary</label>
-          <select id="quary" name="quary" required>
-            <option value="" {{if not .Form.Quary}}selected{{end}} disabled>Pilih…</option>
-            {{range .QuaryOptions}}<option value="{{.}}" {{if eq . $.Form.Quary}}selected{{end}}>{{.}}</option>{{end}}
-          </select>
+          <input id="quary" name="quary" type="text" list="quaryList" value="{{.Form.Quary}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="quaryList">
+            {{range .Options.Quary}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
         <div>
           <label for="kategori">Kategori</label>
-          <select id="kategori" name="kategori" required>
-            <option value="" {{if not .Form.Kategori}}selected{{end}} disabled>Pilih…</option>
-            {{range .KategoriOptions}}<option value="{{.}}" {{if eq . $.Form.Kategori}}selected{{end}}>{{.}}</option>{{end}}
-          </select>
+          <input id="kategori" name="kategori" type="text" list="kategoriList" value="{{.Form.Kategori}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="kategoriList">
+            {{range .Options.Kategori}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
         <div>
           <label for="lokasi">Lokasi</label>
-          <input id="lokasi" name="lokasi" type="text" value="{{.Form.Lokasi}}" placeholder="Ketik lokasi…" autocomplete="off" required>
+          <input id="lokasi" name="lokasi" type="text" list="lokasiList" value="{{.Form.Lokasi}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="lokasiList">
+            {{range .Options.Lokasi}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
         <div>
           <label for="layer">Layer</label>
-          <select id="layer" name="layer" required>
-            <option value="" {{if not .Form.Layer}}selected{{end}} disabled>Pilih…</option>
-            {{range .LayerOptions}}<option value="{{.}}" {{if eq . $.Form.Layer}}selected{{end}}>{{.}}</option>{{end}}
-          </select>
+          <input id="layer" name="layer" type="text" list="layerList" value="{{.Form.Layer}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="layerList">
+            {{range .Options.Layer}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
       </div>
     </section>

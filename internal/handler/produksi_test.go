@@ -46,14 +46,14 @@ func TestProduksiFormRendersOptionsAndUnits(t *testing.T) {
 
 	for _, fragment := range []string{
 		`value="2026-08-07"`, // today is preselected
-		`<option value="PCPM"`,
-		`<option value="HPP"`,
-		`<option value="HS"`,
-		`<option value="Replace"`,
-		`<option value="Timbunan"`,
-		`<option value="Akses"`,
-		`<option value="L1"`,
-		`<option value="L5"`,
+		// Creatable pickers: a text input backed by a datalist of what the
+		// sheet already holds.
+		`list="projectList"`, `list="supplierList"`, `list="quaryList"`,
+		`list="kategoriList"`, `list="layerList"`, `list="lokasiList"`,
+		`<option value="PCPM">`,
+		`<option value="HS">`,
+		`<option value="Replace">`,
+		`<option value="L5">`,
 		`name="lokasi"`,
 		`id="unitList"`,
 		// The unit's own data rides along on the option, so picking a plate
@@ -69,9 +69,37 @@ func TestProduksiFormRendersOptionsAndUnits(t *testing.T) {
 		}
 	}
 
-	// Every dropdown starts on the placeholder rather than a real value.
-	if strings.Count(page, `disabled>Pilih…</option>`) != 5 {
-		t.Fatalf("expected 5 unselected dropdowns, got %d", strings.Count(page, `disabled>Pilih…</option>`))
+	// Nothing is preselected, and no picker is a closed <select> any more.
+	if strings.Contains(page, `<select id="kategori"`) {
+		t.Fatal("kategori is still a closed dropdown")
+	}
+	if got := strings.Count(page, `placeholder="Pilih atau ketik…"`); got != 6 {
+		t.Fatalf("expected 6 creatable pickers, got %d", got)
+	}
+}
+
+// A value typed into a picker that has never been used before must be saved.
+func TestProduksiAcceptsNewPickerValues(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedUnit(t, store)
+	client := loggedInClient(t, testServer)
+	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
+
+	form := validProduksiForm(csrf)
+	form.Set("kategori", "Bongkar")
+	form.Set("lokasi", "63+575")
+	response, err := client.PostForm(testServer.URL+"/produksi", form)
+	if err != nil {
+		t.Fatalf("post produksi: %v", err)
+	}
+	response.Body.Close()
+
+	rows := store.ProduksiList()
+	if len(rows) != 1 {
+		t.Fatalf("stored %d rows, want 1", len(rows))
+	}
+	if rows[0].Kategori != "Bongkar" || rows[0].Lokasi != "63+575" {
+		t.Fatalf("new picker values were not saved: %+v", rows[0])
 	}
 }
 

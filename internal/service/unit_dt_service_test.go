@@ -300,3 +300,54 @@ func TestCreateUnitDTKeteranganDefaultsAndValidates(t *testing.T) {
 		t.Fatalf("unlisted keterangan: err = %v, want ErrValidation", err)
 	}
 }
+
+// The driver field suggests names already in the register but must still accept
+// a new hire.
+func TestUnitDTDriverSuggestionsComeFromTheRegister(t *testing.T) {
+	service, _, user := newUnitDTFixture(t)
+
+	first := validUnitInput(t)
+	first.Driver = "Slamet"
+	if _, err := service.Create(context.Background(), user, first); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+
+	drivers, err := service.Drivers(context.Background())
+	if err != nil {
+		t.Fatalf("drivers: %v", err)
+	}
+	found := false
+	for _, driver := range drivers {
+		if driver == "Slamet" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("driver suggestions %v do not include the name just used", drivers)
+	}
+
+	// A differently-cased entry adopts the existing spelling, so one person does
+	// not appear as two.
+	second := validUnitInput(t)
+	second.Nopol = "B 4321 XYZ"
+	second.Driver = "  slamet "
+	unit, err := service.Create(context.Background(), user, second)
+	if err != nil {
+		t.Fatalf("second create: %v", err)
+	}
+	if unit.Driver != "Slamet" {
+		t.Fatalf("Driver = %q, want the existing spelling Slamet", unit.Driver)
+	}
+
+	// A name nobody has used is kept as typed.
+	third := validUnitInput(t)
+	third.Nopol = "B 5555 QQQ"
+	third.Driver = "Rahmat"
+	unit, err = service.Create(context.Background(), user, third)
+	if err != nil {
+		t.Fatalf("third create: %v", err)
+	}
+	if unit.Driver != "Rahmat" {
+		t.Fatalf("Driver = %q, want Rahmat", unit.Driver)
+	}
+}

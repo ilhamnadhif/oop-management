@@ -88,6 +88,21 @@ func TestUnitDTFormRendersFields(t *testing.T) {
 	}
 }
 
+// The driver field is a creatable picker backed by names already registered.
+func TestUnitDTDriverFieldIsCreatable(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedUnit(t, store)
+	client := loggedInClient(t, testServer)
+	page := fetchAuthedPage(t, client, testServer.URL+"/unit-dt")
+
+	if !strings.Contains(page, `list="driverList"`) {
+		t.Fatal("driver field is not backed by a datalist")
+	}
+	if !strings.Contains(page, `<option value="Slamet">`) {
+		t.Fatal("driver suggestions do not include a registered name")
+	}
+}
+
 func TestUnitDTSubmitStoresUnit(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	client := loggedInClient(t, testServer)

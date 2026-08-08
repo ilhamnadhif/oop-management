@@ -1,8 +1,6 @@
 {{define "dashboard"}}
 {{template "appShellOpen" .}}
 <div data-attendance-dashboard data-csrf-token="{{.CSRFToken}}">
-  <h1 class="page-title">{{.PageTitle}}</h1>
-
   <section class="clock-hero">
     <p class="clock-now" id="clockNow" data-clock-start="{{.ClockNow}}">{{.ClockNow}}</p>
     <p class="clock-date">{{.Today}}</p>

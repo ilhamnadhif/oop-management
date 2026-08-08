@@ -168,18 +168,19 @@ func TestCreateProduksiRejectsUnknownNopol(t *testing.T) {
 	}
 }
 
-func TestCreateProduksiRejectsUnlistedOptions(t *testing.T) {
+// The pickers are creatable, so every one of them still has to be filled in,
+// but an unfamiliar value is no longer a reason to refuse the row.
+func TestCreateProduksiRequiresEveryPicker(t *testing.T) {
 	produksi, _, user := newProduksiFixture(t)
 
 	for name, mutate := range map[string]func(*ProduksiInput){
-		"project":  func(in *ProduksiInput) { in.Project = "LAIN" },
-		"supplier": func(in *ProduksiInput) { in.Supplier = "LAIN" },
-		"quary":    func(in *ProduksiInput) { in.Quary = "LAIN" },
-		"kategori": func(in *ProduksiInput) { in.Kategori = "Bongkar" },
-		"layer":    func(in *ProduksiInput) { in.Layer = "L9" },
-		"empty":    func(in *ProduksiInput) { in.Project = "" },
-		"tanggal":  func(in *ProduksiInput) { in.Tanggal = "07/08/2026" },
+		"project":  func(in *ProduksiInput) { in.Project = "" },
+		"supplier": func(in *ProduksiInput) { in.Supplier = "  " },
+		"quary":    func(in *ProduksiInput) { in.Quary = "" },
+		"kategori": func(in *ProduksiInput) { in.Kategori = " " },
+		"layer":    func(in *ProduksiInput) { in.Layer = "" },
 		"lokasi":   func(in *ProduksiInput) { in.Lokasi = "  " },
+		"tanggal":  func(in *ProduksiInput) { in.Tanggal = "07/08/2026" },
 		"tt":       func(in *ProduksiInput) { in.TT = "-1" },
 	} {
 		input := validProduksiInput()
@@ -188,6 +189,90 @@ func TestCreateProduksiRejectsUnlistedOptions(t *testing.T) {
 			t.Fatalf("%s: err = %v, want ErrValidation", name, err)
 		}
 	}
+}
+
+// A value nobody has used before is accepted and kept as typed.
+func TestCreateProduksiAcceptsNewOptionValues(t *testing.T) {
+	produksi, _, user := newProduksiFixture(t)
+
+	input := validProduksiInput()
+	input.Project = "PCPM 2"
+	input.Kategori = "Bongkar"
+	input.Layer = "L9"
+	input.Lokasi = "63+575"
+
+	row, err := produksi.Create(context.Background(), user, input)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if row.Project != "PCPM 2" || row.Kategori != "Bongkar" || row.Layer != "L9" || row.Lokasi != "63+575" {
+		t.Fatalf("new values were not kept: %+v", row)
+	}
+}
+
+// Once a spelling exists, a differently-cased entry adopts it. Otherwise
+// "replace" and "Replace" become two categories and per-category totals split.
+func TestCreateProduksiAdoptsExistingSpelling(t *testing.T) {
+	produksi, _, user := newProduksiFixture(t)
+
+	first := validProduksiInput()
+	first.Kategori = "Bongkar"
+	if _, err := produksi.Create(context.Background(), user, first); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+
+	second := validProduksiInput()
+	second.Kategori = "  bongkar  "
+	second.Lokasi = "Blok A"
+	row, err := produksi.Create(context.Background(), user, second)
+	if err != nil {
+		t.Fatalf("second create: %v", err)
+	}
+	if row.Kategori != "Bongkar" {
+		t.Fatalf("Kategori = %q, want the existing spelling Bongkar", row.Kategori)
+	}
+}
+
+// The pickers offer what the sheet already holds, merged with the seeds.
+func TestProduksiOptionsComeFromTheSheet(t *testing.T) {
+	produksi, store, user := newProduksiFixture(t)
+
+	input := validProduksiInput()
+	input.Kategori = "Bongkar"
+	input.Lokasi = "63+575"
+	if _, err := produksi.Create(context.Background(), user, input); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	_ = store
+
+	options, err := produksi.Options(context.Background())
+	if err != nil {
+		t.Fatalf("options: %v", err)
+	}
+	if !contains(options.Kategori, "Bongkar") {
+		t.Fatalf("Kategori options %v do not include the value just used", options.Kategori)
+	}
+	// Seeds survive alongside whatever the sheet holds.
+	for _, want := range []string{"Replace", "Timbunan", "Akses"} {
+		if !contains(options.Kategori, want) {
+			t.Fatalf("Kategori options %v lost the seed %q", options.Kategori, want)
+		}
+	}
+	if !contains(options.Lokasi, "63+575") {
+		t.Fatalf("Lokasi options %v do not include the value just used", options.Lokasi)
+	}
+	if !contains(options.Project, "PCPM") {
+		t.Fatalf("Project options %v lost the seed", options.Project)
+	}
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestCreateProduksiNormalisesOptionCasing(t *testing.T) {

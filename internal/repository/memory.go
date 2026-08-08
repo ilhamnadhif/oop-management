@@ -140,6 +140,10 @@ func (r *TestRepository) CreateUnitA2B(_ context.Context, unit *model.UnitA2B) e
 	return nil
 }
 
+func (r *TestRepository) ListUnitA2B(_ context.Context) ([]model.UnitA2B, error) {
+	return r.UnitA2BList(), nil
+}
+
 // UnitA2BList exposes stored A2B units to tests.
 func (r *TestRepository) UnitA2BList() []model.UnitA2B {
 	r.mu.RLock()

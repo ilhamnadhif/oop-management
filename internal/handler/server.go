@@ -71,6 +71,8 @@ type ShellPageData struct {
 	ActiveNav  string
 	PageTitle  string
 	Breadcrumb string
+	// UserInitial is the single letter shown in the sidebar avatar.
+	UserInitial string
 }
 
 type UnitDTFormData struct {
@@ -86,6 +88,7 @@ type UnitDTPageData struct {
 	ShellPageData
 	Form              UnitDTFormData
 	KeteranganOptions []string
+	DriverOptions     []string
 	NextUnitID        string
 	Error             string
 	Success           string
@@ -106,6 +109,7 @@ type UnitA2BPageData struct {
 	ShellPageData
 	Form       UnitA2BFormData
 	NextNumber int
+	Options    service.UnitA2BOptions
 	Error      string
 	Success    string
 }
@@ -136,15 +140,11 @@ type OverviewPageData struct {
 
 type ProduksiPageData struct {
 	ShellPageData
-	Form            ProduksiFormData
-	Units           []model.UnitDT
-	ProjectOptions  []string
-	SupplierOptions []string
-	QuaryOptions    []string
-	KategoriOptions []string
-	LayerOptions    []string
-	Error           string
-	Success         string
+	Form    ProduksiFormData
+	Units   []model.UnitDT
+	Options service.ProduksiOptions
+	Error   string
+	Success string
 }
 
 type DashboardPageData struct {
@@ -378,16 +378,26 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 	now := s.now().In(s.location)
 	item, _ := navItemByKey(navKey)
 	return ShellPageData{
-		Title:      item.Label,
-		User:       user,
-		Today:      formatIndonesianDate(now),
-		ClockNow:   now.Format("15:04"),
-		CSRFToken:  sessionValue.CSRFToken,
-		NavItems:   navItemsFor(user.Jabatan),
-		ActiveNav:  navKey,
-		PageTitle:  item.Label,
-		Breadcrumb: item.Label,
+		Title:       item.Label,
+		User:        user,
+		Today:       formatIndonesianDate(now),
+		ClockNow:    now.Format("15:04"),
+		CSRFToken:   sessionValue.CSRFToken,
+		NavItems:    navItemsFor(user.Jabatan),
+		ActiveNav:   navKey,
+		PageTitle:   item.Label,
+		Breadcrumb:  item.Label,
+		UserInitial: firstLetter(user.NamaLengkap),
 	}
+}
+
+// firstLetter returns the avatar letter. It walks runes rather than bytes so a
+// non-ASCII name does not produce a broken half-character.
+func firstLetter(name string) string {
+	for _, r := range strings.TrimSpace(name) {
+		return strings.ToUpper(string(r))
+	}
+	return "?"
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -543,10 +553,16 @@ func (s *Server) renderUnitA2B(w http.ResponseWriter, r *http.Request, user *mod
 	if err != nil {
 		log.Printf("preview unit a2b number: %v", err)
 	}
+	options, err := s.unitA2B.Options(r.Context())
+	if err != nil {
+		// The pickers fall back to free typing, which still works.
+		log.Printf("load unit a2b options: %v", err)
+	}
 	s.render(w, "unit_a2b", UnitA2BPageData{
 		ShellPageData: s.shellData(user, sessionValue, "unit-a2b"),
 		Form:          form,
 		NextNumber:    next,
+		Options:       options,
 		Error:         errMessage,
 		Success:       success,
 	}, status)
@@ -717,17 +733,19 @@ func (s *Server) renderProduksi(w http.ResponseWriter, r *http.Request, user *mo
 			errMessage = "Daftar unit gagal dimuat"
 		}
 	}
+	options, err := s.produksi.Options(r.Context())
+	if err != nil {
+		// The pickers fall back to typing freely, which still works, so this
+		// must not take the form down.
+		log.Printf("load produksi options: %v", err)
+	}
 	s.render(w, "produksi", ProduksiPageData{
-		ShellPageData:   s.shellData(user, sessionValue, "produksi"),
-		Form:            form,
-		Units:           units,
-		ProjectOptions:  service.ProjectOptions,
-		SupplierOptions: service.SupplierOptions,
-		QuaryOptions:    service.QuaryOptions,
-		KategoriOptions: service.KategoriOptions,
-		LayerOptions:    service.LayerOptions,
-		Error:           errMessage,
-		Success:         success,
+		ShellPageData: s.shellData(user, sessionValue, "produksi"),
+		Form:          form,
+		Units:         units,
+		Options:       options,
+		Error:         errMessage,
+		Success:       success,
 	}, status)
 }
 
@@ -744,8 +762,20 @@ func (s *Server) handleUnitDT(w http.ResponseWriter, r *http.Request) {
 		ShellPageData:     s.shellData(user, sessionValue, "unit-dt"),
 		Form:              UnitDTFormData{Keterangan: service.DefaultKeterangan},
 		KeteranganOptions: service.KeteranganOptions,
+		DriverOptions:     s.driverOptions(r),
 		NextUnitID:        s.nextUnitID(r),
 	}, http.StatusOK)
+}
+
+// driverOptions backs the driver picker. A failure only costs the suggestions,
+// so the form still renders and the field can be typed into.
+func (s *Server) driverOptions(r *http.Request) []string {
+	drivers, err := s.unitDT.Drivers(r.Context())
+	if err != nil {
+		log.Printf("load unit dt drivers: %v", err)
+		return nil
+	}
+	return drivers
 }
 
 // nextUnitID is a preview only. A failure here must not block the form, so the
@@ -839,6 +869,7 @@ func (s *Server) handleUnitDTCreate(w http.ResponseWriter, r *http.Request) {
 		ShellPageData:     s.shellData(user, sessionValue, "unit-dt"),
 		Form:              UnitDTFormData{Keterangan: service.DefaultKeterangan},
 		KeteranganOptions: service.KeteranganOptions,
+		DriverOptions:     s.driverOptions(r),
 		NextUnitID:        s.nextUnitID(r),
 		Success:           "Unit " + unit.UnitID + " (" + unit.Nopol + ") berhasil disimpan.",
 	}, http.StatusOK)
@@ -852,6 +883,7 @@ func (s *Server) renderUnitDTError(w http.ResponseWriter, r *http.Request, user 
 		ShellPageData:     s.shellData(user, sessionValue, "unit-dt"),
 		Form:              form,
 		KeteranganOptions: service.KeteranganOptions,
+		DriverOptions:     s.driverOptions(r),
 		NextUnitID:        s.nextUnitID(r),
 		Error:             message,
 	}, status)

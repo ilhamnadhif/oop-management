@@ -1,7 +1,5 @@
 {{define "unit_dt"}}
 {{template "appShellOpen" .}}
-  <h1 class="page-title">{{.PageTitle}}</h1>
-
   {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
@@ -41,7 +39,10 @@
       </div>
 
       <label for="driver">Driver</label>
-      <input id="driver" name="driver" type="text" value="{{.Form.Driver}}" placeholder="Nama driver" autocomplete="off" required>
+      <input id="driver" name="driver" type="text" list="driverList" value="{{.Form.Driver}}" placeholder="Pilih atau ketik nama driver…" autocomplete="off" required>
+      <datalist id="driverList">
+        {{range .DriverOptions}}<option value="{{.}}"></option>{{end}}
+      </datalist>
 
       <label for="keterangan">Keterangan</label>
       <select id="keterangan" name="keterangan" required>

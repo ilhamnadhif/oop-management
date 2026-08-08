@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,8 +14,9 @@ import (
 	"opp-management/internal/repository"
 )
 
-// Closed option lists. Each one is rendered by the form and enforced here, so a
-// direct POST cannot introduce a value the reports do not expect.
+// Seed options. The form offers whatever the Produksi sheet already contains
+// plus these, so a fresh sheet still has something to pick from - Kategori in
+// particular is empty across every imported row.
 var (
 	ProjectOptions  = []string{"PCPM"}
 	SupplierOptions = []string{"HPP"}
@@ -22,6 +24,75 @@ var (
 	KategoriOptions = []string{"Replace", "Timbunan", "Akses"}
 	LayerOptions    = []string{"L1", "L2", "L3", "L4", "L5"}
 )
+
+// ProduksiOptions is what each picker offers. The fields are suggestions, not
+// a closed set: an operator may type a value that is not listed yet.
+type ProduksiOptions struct {
+	Project  []string
+	Supplier []string
+	Quary    []string
+	Kategori []string
+	Layer    []string
+	Lokasi   []string
+}
+
+// optionsCacheTTL keeps the form from re-reading thousands of rows on every
+// render. New values only appear as fast as they are typed, so a minute of
+// staleness costs nothing.
+const optionsCacheTTL = time.Minute
+
+// Options lists the distinct values already used in the sheet, merged with the
+// seed lists above.
+func (s *ProduksiService) Options(ctx context.Context) (ProduksiOptions, error) {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
+	if s.optionsAt.After(time.Time{}) && s.now().Sub(s.optionsAt) < optionsCacheTTL {
+		return s.options, nil
+	}
+
+	rows, err := s.store.ListProduksi(ctx)
+	if err != nil {
+		return ProduksiOptions{}, fmt.Errorf("read produksi options: %w", err)
+	}
+	options := ProduksiOptions{
+		Project:  distinctValues(ProjectOptions, rows, func(r model.Produksi) string { return r.Project }),
+		Supplier: distinctValues(SupplierOptions, rows, func(r model.Produksi) string { return r.Supplier }),
+		Quary:    distinctValues(QuaryOptions, rows, func(r model.Produksi) string { return r.Quary }),
+		Kategori: distinctValues(KategoriOptions, rows, func(r model.Produksi) string { return r.Kategori }),
+		Layer:    distinctValues(LayerOptions, rows, func(r model.Produksi) string { return r.Layer }),
+		Lokasi:   distinctValues(nil, rows, func(r model.Produksi) string { return r.Lokasi }),
+	}
+	s.options = options
+	s.optionsAt = s.now()
+	return options, nil
+}
+
+// distinctValues merges the seeds with whatever the sheet holds, keeping the
+// first spelling seen for any value that differs only in case.
+func distinctValues[T any](seed []string, rows []T, pick func(T) string) []string {
+	seen := make(map[string]string)
+	var values []string
+	add := func(value string) {
+		value = strings.Join(strings.Fields(value), " ")
+		if value == "" {
+			return
+		}
+		key := strings.ToUpper(value)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = value
+		values = append(values, value)
+	}
+	for _, value := range seed {
+		add(value)
+	}
+	for _, row := range rows {
+		add(pick(row))
+	}
+	sort.Strings(values)
+	return values
+}
 
 // volumeOPPByJenisDT is the nominal payload each truck class is credited with.
 var volumeOPPByJenisDT = map[string]float64{
@@ -34,6 +105,10 @@ type ProduksiService struct {
 	location *time.Location
 	now      NowFunc
 	mu       sync.Mutex
+
+	optionsMu sync.Mutex
+	options   ProduksiOptions
+	optionsAt time.Time
 }
 
 type ProduksiInput struct {
@@ -95,29 +170,35 @@ func (s *ProduksiService) Create(ctx context.Context, user *model.User, input Pr
 	if _, err := time.Parse("2006-01-02", tanggal); err != nil {
 		return nil, fmt.Errorf("%w: tanggal wajib valid", ErrValidation)
 	}
-	project, err := pickOption("Project", input.Project, ProjectOptions)
+	// The pickers accept new values, so the job here is to require one and to
+	// settle on a single spelling - not to reject anything unfamiliar.
+	options, err := s.Options(ctx)
 	if err != nil {
 		return nil, err
 	}
-	supplier, err := pickOption("Supplier", input.Supplier, SupplierOptions)
+	project, err := adoptOption("Project", input.Project, options.Project)
 	if err != nil {
 		return nil, err
 	}
-	quary, err := pickOption("Quary", input.Quary, QuaryOptions)
+	supplier, err := adoptOption("Supplier", input.Supplier, options.Supplier)
 	if err != nil {
 		return nil, err
 	}
-	kategori, err := pickOption("Kategori", input.Kategori, KategoriOptions)
+	quary, err := adoptOption("Quary", input.Quary, options.Quary)
 	if err != nil {
 		return nil, err
 	}
-	layer, err := pickOption("Layer", input.Layer, LayerOptions)
+	kategori, err := adoptOption("Kategori", input.Kategori, options.Kategori)
 	if err != nil {
 		return nil, err
 	}
-	lokasi := strings.TrimSpace(input.Lokasi)
-	if lokasi == "" {
-		return nil, fmt.Errorf("%w: lokasi wajib diisi", ErrValidation)
+	layer, err := adoptOption("Layer", input.Layer, options.Layer)
+	if err != nil {
+		return nil, err
+	}
+	lokasi, err := adoptOption("Lokasi", input.Lokasi, options.Lokasi)
+	if err != nil {
+		return nil, err
 	}
 	// TT is the manual top-up height. Leaving it blank means a level load, so
 	// an empty or zero value is legitimate.
@@ -175,7 +256,17 @@ func (s *ProduksiService) Create(ctx context.Context, user *model.User, input Pr
 	if err := s.store.CreateProduksi(ctx, produksi); err != nil {
 		return nil, fmt.Errorf("create produksi: %w", err)
 	}
+	// A value typed just now has to be offered - and adopted - by the very next
+	// submission. Without this the cache hides it for a minute and the same
+	// value gets stored twice under two spellings.
+	s.invalidateOptions()
 	return produksi, nil
+}
+
+func (s *ProduksiService) invalidateOptions() {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
+	s.optionsAt = time.Time{}
 }
 
 func (s *ProduksiService) findUnit(ctx context.Context, nopol string) (model.UnitDT, error) {
@@ -206,14 +297,21 @@ func parseOptionalDimension(label, value string) (float64, error) {
 	return parsed, nil
 }
 
-func pickOption(label, value string, options []string) (string, error) {
+// adoptOption normalises whitespace and, when the value matches something the
+// sheet already holds apart from case, adopts that spelling. Without it
+// "replace" and "Replace" become two categories and every per-category report
+// splits in half.
+func adoptOption(label, value string, options []string) (string, error) {
 	value = strings.Join(strings.Fields(value), " ")
+	if value == "" {
+		return "", fmt.Errorf("%w: %s wajib diisi", ErrValidation, label)
+	}
 	for _, option := range options {
 		if strings.EqualFold(option, value) {
 			return option, nil
 		}
 	}
-	return "", fmt.Errorf("%w: %s wajib dipilih", ErrValidation, label)
+	return value, nil
 }
 
 // round2 and round4 keep the stored figures at the precision the form displays,

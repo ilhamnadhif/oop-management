@@ -21,6 +21,42 @@ type UnitA2BService struct {
 	location *time.Location
 	now      NowFunc
 	mu       sync.Mutex
+
+	optionsMu sync.Mutex
+	options   UnitA2BOptions
+	optionsAt time.Time
+}
+
+// UnitA2BOptions is what the pickers suggest. These are suggestions, not a
+// closed set: a machine of an unfamiliar make must still be registerable.
+type UnitA2BOptions struct {
+	MerekType []string
+	Lokasi    []string
+}
+
+// Options lists the values already used in the register.
+func (s *UnitA2BService) Options(ctx context.Context) (UnitA2BOptions, error) {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
+	if s.optionsAt.After(time.Time{}) && s.now().Sub(s.optionsAt) < optionsCacheTTL {
+		return s.options, nil
+	}
+	units, err := s.store.ListUnitA2B(ctx)
+	if err != nil {
+		return UnitA2BOptions{}, fmt.Errorf("read unit a2b options: %w", err)
+	}
+	s.options = UnitA2BOptions{
+		MerekType: distinctValues(nil, units, func(u model.UnitA2B) string { return u.MerekType }),
+		Lokasi:    distinctValues(nil, units, func(u model.UnitA2B) string { return u.Lokasi }),
+	}
+	s.optionsAt = s.now()
+	return s.options, nil
+}
+
+func (s *UnitA2BService) invalidateOptions() {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
+	s.optionsAt = time.Time{}
 }
 
 type UnitA2BInput struct {
@@ -77,13 +113,19 @@ func (s *UnitA2BService) Create(ctx context.Context, user *model.User, input Uni
 	if namaUnit == "" {
 		return nil, fmt.Errorf("%w: nama unit wajib diisi", ErrValidation)
 	}
-	merekType := strings.TrimSpace(input.MerekType)
-	if merekType == "" {
-		return nil, fmt.Errorf("%w: merek/type wajib diisi", ErrValidation)
+	// Merek and lokasi suggest what the register already holds but accept new
+	// values; adopting an existing spelling keeps one make from appearing twice.
+	options, err := s.Options(ctx)
+	if err != nil {
+		return nil, err
 	}
-	lokasi := strings.TrimSpace(input.Lokasi)
-	if lokasi == "" {
-		return nil, fmt.Errorf("%w: lokasi unit wajib diisi", ErrValidation)
+	merekType, err := adoptOption("Merek/type", input.MerekType, options.MerekType)
+	if err != nil {
+		return nil, err
+	}
+	lokasi, err := adoptOption("Lokasi unit", input.Lokasi, options.Lokasi)
+	if err != nil {
+		return nil, err
 	}
 	fuelStorage, err := parsePositive("Fuel storage", input.FuelStorage)
 	if err != nil {
@@ -141,6 +183,9 @@ func (s *UnitA2BService) Create(ctx context.Context, user *model.User, input Uni
 	if err := s.store.CreateUnitA2B(ctx, unit); err != nil {
 		return nil, fmt.Errorf("create unit a2b: %w", err)
 	}
+	// A value typed just now must reach the next submission, or the same make
+	// gets stored again under a different spelling.
+	s.invalidateOptions()
 	return unit, nil
 }
 

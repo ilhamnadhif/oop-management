@@ -81,6 +81,27 @@ func TestUnitA2BFormRendersEverySection(t *testing.T) {
 	}
 }
 
+// Merek and lokasi are creatable pickers backed by the register.
+func TestUnitA2BPickersAreCreatable(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/unit-a2b"))
+
+	response := postUnitA2B(t, client, testServer, csrf, validUnitA2BFields(), false)
+	response.Body.Close()
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/unit-a2b")
+	for _, fragment := range []string{
+		`list="merekList"`, `list="lokasiList"`,
+		`<option value="Komatsu PC200">`,
+		`<option value="Blok A">`,
+	} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("unit a2b form missing %q", fragment)
+		}
+	}
+}
+
 func TestUnitA2BSubmitStoresUnit(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	client := loggedInClient(t, testServer)

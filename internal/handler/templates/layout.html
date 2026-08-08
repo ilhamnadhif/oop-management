@@ -35,10 +35,17 @@
         {{if eq .Key $.ActiveNav}}aria-current="page"{{end}}>{{template "icon" .Icon}}<span>{{.Label}}</span></a>
       {{end}}
     </nav>
-    <form class="sidebar-logout" method="post" action="/logout">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button class="button subtle" type="submit">{{template "icon" "logout"}}Keluar</button>
-    </form>
+    <div class="sidebar-account">
+      <span class="account-avatar" aria-hidden="true">{{.UserInitial}}</span>
+      <div class="account-identity">
+        <p class="account-name">{{.User.NamaLengkap}}</p>
+        <p class="account-role">{{.User.Jabatan}}</p>
+      </div>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="account-logout" type="submit" title="Keluar" aria-label="Keluar">{{template "icon" "logout"}}</button>
+      </form>
+    </div>
   </aside>
   <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
 
@@ -50,22 +57,21 @@
             <path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path>
           </svg>
         </button>
-        <nav class="breadcrumb" aria-label="Breadcrumb">
-          <ol>
-            <li><a href="/dashboard">Beranda</a></li>
-            <li aria-current="page">{{.Breadcrumb}}</li>
-          </ol>
-        </nav>
+        <span class="topbar-logo">{{template "brandLogo"}}</span>
+        <p class="topbar-title">{{.PageTitle}}</p>
       </div>
-      <div class="topbar-meta">
-        <p class="topbar-date">{{.Today}}</p>
-        <div class="topbar-user">
-          <p class="topbar-user-name">{{.User.NamaLengkap}}</p>
-          <p class="topbar-user-role">{{.User.Jabatan}}</p>
-        </div>
-      </div>
+      <p class="topbar-date">{{.Today}}</p>
     </header>
     <main class="app-shell">
+      {{/* Title and breadcrumb are rendered here so every page gets the same
+           pairing and no page can drift out of step. */}}
+      <h1 class="page-title">{{.PageTitle}}</h1>
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/dashboard">Beranda</a></li>
+          <li aria-current="page">{{.Breadcrumb}}</li>
+        </ol>
+      </nav>
 {{end}}
 
 {{define "appShellClose"}}

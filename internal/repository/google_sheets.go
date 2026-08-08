@@ -469,6 +469,36 @@ func (r *GoogleSheetsRepository) MaxUnitA2BNumber(ctx context.Context) (int, err
 	return highest, nil
 }
 
+// ListUnitA2B reads columns A:I, stopping before the foto column so the picker
+// suggestions do not drag base64 images along with them.
+func (r *GoogleSheetsRepository) ListUnitA2B(ctx context.Context) ([]model.UnitA2B, error) {
+	rows, err := r.readRows(ctx, unitA2BSheet, "I")
+	if err != nil {
+		return nil, err
+	}
+	units := make([]model.UnitA2B, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, 9)
+		idUnit := strings.TrimSpace(cellString(row[2]))
+		if idUnit == "" {
+			continue
+		}
+		number, _ := strconv.Atoi(strings.TrimSpace(cellString(row[0])))
+		units = append(units, model.UnitA2B{
+			NoUrut:      number,
+			TanggalIn:   cellString(row[1]),
+			IDUnit:      idUnit,
+			NamaUnit:    cellString(row[3]),
+			MerekType:   cellString(row[4]),
+			FuelStorage: parseFloatCell(row[5]),
+			FRUnit:      parseFloatCell(row[6]),
+			Lokasi:      cellString(row[7]),
+			HMAwal:      parseFloatCell(row[8]),
+		})
+	}
+	return units, nil
+}
+
 func (r *GoogleSheetsRepository) CreateUnitA2B(ctx context.Context, unit *model.UnitA2B) error {
 	return r.appendRow(ctx, unitA2BSheet, unitA2BToRow(unit))
 }

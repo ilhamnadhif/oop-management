@@ -192,3 +192,55 @@ func TestCreateUnitA2BPhotoIsOptionalButValidated(t *testing.T) {
 		t.Fatalf("junk photo: err = %v, want ErrInvalidPhoto", err)
 	}
 }
+
+// Merek and lokasi suggest what the register holds, accept new values, and
+// settle on one spelling.
+func TestUnitA2BMerekSuggestionsComeFromTheRegister(t *testing.T) {
+	service, _, user := newUnitA2BFixture(t)
+
+	if _, err := service.Create(context.Background(), user, validUnitA2BInput(t)); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+
+	options, err := service.Options(context.Background())
+	if err != nil {
+		t.Fatalf("options: %v", err)
+	}
+	if !containsValue(options.MerekType, "Komatsu PC200") {
+		t.Fatalf("merek suggestions %v do not include the value just used", options.MerekType)
+	}
+	if !containsValue(options.Lokasi, "Blok A") {
+		t.Fatalf("lokasi suggestions %v do not include the value just used", options.Lokasi)
+	}
+
+	sameMake := validUnitA2BInput(t)
+	sameMake.IDUnit = "EXCA-02"
+	sameMake.MerekType = "  komatsu   pc200 "
+	unit, err := service.Create(context.Background(), user, sameMake)
+	if err != nil {
+		t.Fatalf("second create: %v", err)
+	}
+	if unit.MerekType != "Komatsu PC200" {
+		t.Fatalf("MerekType = %q, want the existing spelling", unit.MerekType)
+	}
+
+	newMake := validUnitA2BInput(t)
+	newMake.IDUnit = "DZR-01"
+	newMake.MerekType = "Sakai SV526D"
+	unit, err = service.Create(context.Background(), user, newMake)
+	if err != nil {
+		t.Fatalf("third create: %v", err)
+	}
+	if unit.MerekType != "Sakai SV526D" {
+		t.Fatalf("MerekType = %q, want Sakai SV526D", unit.MerekType)
+	}
+}
+
+func containsValue(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}

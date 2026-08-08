@@ -67,6 +67,34 @@ type UnitDTService struct {
 	location *time.Location
 	now      NowFunc
 	mu       sync.Mutex
+
+	optionsMu sync.Mutex
+	drivers   []string
+	optionsAt time.Time
+}
+
+// Drivers lists the names already used in the register, so the form can suggest
+// them without turning the field into a closed list: a new hire must still be
+// typeable.
+func (s *UnitDTService) Drivers(ctx context.Context) ([]string, error) {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
+	if s.optionsAt.After(time.Time{}) && s.now().Sub(s.optionsAt) < optionsCacheTTL {
+		return s.drivers, nil
+	}
+	units, err := s.store.ListUnitDT(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read unit dt drivers: %w", err)
+	}
+	s.drivers = distinctValues(nil, units, func(u model.UnitDT) string { return u.Driver })
+	s.optionsAt = s.now()
+	return s.drivers, nil
+}
+
+func (s *UnitDTService) invalidateDrivers() {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
+	s.optionsAt = time.Time{}
 }
 
 type UnitDTInput struct {
@@ -110,9 +138,15 @@ func (s *UnitDTService) Create(ctx context.Context, user *model.User, input Unit
 	if err != nil {
 		return nil, err
 	}
-	driver := strings.TrimSpace(input.Driver)
-	if driver == "" {
-		return nil, fmt.Errorf("%w: driver wajib diisi", ErrValidation)
+	// The driver field suggests known names but accepts new ones; adopting an
+	// existing spelling keeps one person from appearing as two.
+	drivers, err := s.Drivers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	driver, err := adoptOption("Driver", input.Driver, drivers)
+	if err != nil {
+		return nil, err
 	}
 	keterangan, ok := canonicalKeterangan(input.Keterangan)
 	if !ok {
@@ -161,6 +195,9 @@ func (s *UnitDTService) Create(ctx context.Context, user *model.User, input Unit
 	if err := s.store.CreateUnitDT(ctx, unit); err != nil {
 		return nil, fmt.Errorf("create unit dt: %w", err)
 	}
+	// A name typed just now must be offered to the next submission, or the same
+	// driver gets stored again under a different spelling.
+	s.invalidateDrivers()
 	return unit, nil
 }
 
