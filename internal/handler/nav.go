@@ -15,6 +15,7 @@ type NavItem struct {
 var navItems = []NavItem{
 	{Key: "absensi", Label: "Absensi", Path: "/dashboard", Icon: "clock"},
 	{Key: "produksi", Label: "Produksi", Path: "/produksi", Icon: "chart"},
+	{Key: "produksi-overview", Label: "Produksi Overview", Path: "/produksi/overview", Icon: "activity"},
 	{Key: "unit-dt", Label: "Unit DT", Path: "/unit-dt", Icon: "truck"},
 }
 

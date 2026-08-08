@@ -1,0 +1,218 @@
+{{define "chartFigure"}}
+<div class="chart-frame">
+  {{if .Empty}}
+  <p class="panel-empty">Belum ada data pada rentang ini.</p>
+  {{else}}
+  <svg class="chart" viewBox="0 0 {{printf "%.0f" .Width}} {{printf "%.0f" .Height}}" preserveAspectRatio="xMidYMid meet" role="img">
+    {{range .Ticks}}
+    <line class="chart-grid" x1="{{printf "%.1f" $.PlotLeft}}" y1="{{printf "%.1f" .Y}}" x2="{{printf "%.1f" $.PlotRight}}" y2="{{printf "%.1f" .Y}}"></line>
+    <text class="chart-tick" x="{{printf "%.1f" (sub $.PlotLeft 8.0)}}" y="{{printf "%.1f" (add .Y 4.0)}}" text-anchor="end">{{.Value}}</text>
+    {{end}}
+    {{range .Bars}}
+    <rect class="chart-bar {{if .Series}}series-{{.Series}}{{end}}" x="{{printf "%.1f" .X}}" y="{{printf "%.1f" .Y}}" width="{{printf "%.1f" .Width}}" height="{{printf "%.1f" .Height}}" rx="2">
+      <title>{{.Label}}: {{.Value}}</title>
+    </rect>
+    {{if .Badge}}
+    <rect class="chart-badge {{if .Series}}series-{{.Series}}{{end}}" x="{{printf "%.1f" .BadgeX}}" y="{{printf "%.1f" .BadgeY}}" width="{{printf "%.1f" .BadgeWidth}}" height="16" rx="8"></rect>
+    <text class="chart-badge-text" x="{{printf "%.1f" (add .BadgeX (div .BadgeWidth 2.0))}}" y="{{printf "%.1f" (add .BadgeY 11.5)}}" text-anchor="middle">{{.Value}}</text>
+    {{end}}
+    {{end}}
+    {{if .Line}}<polyline class="chart-line" points="{{.Line}}"></polyline>{{end}}
+    {{range .XLabels}}
+    <text class="chart-axis" x="{{printf "%.1f" .X}}" y="{{printf "%.1f" .Y}}"
+      {{if .Angle}}transform="rotate({{printf "%.0f" .Angle}} {{printf "%.1f" .X}} {{printf "%.1f" .Y}})" text-anchor="end"{{else}}text-anchor="middle"{{end}}>{{.Text}}</text>
+    {{end}}
+  </svg>
+  {{end}}
+</div>
+{{end}}
+
+{{define "lineFigure"}}
+<div class="chart-frame">
+  {{if .Empty}}
+  <p class="panel-empty">Belum ada data pada rentang ini.</p>
+  {{else}}
+  <svg class="chart" viewBox="0 0 {{printf "%.0f" .Width}} {{printf "%.0f" .Height}}" preserveAspectRatio="xMidYMid meet" role="img">
+    {{range .Ticks}}
+    <line class="chart-grid" x1="{{printf "%.1f" $.PlotLeft}}" y1="{{printf "%.1f" .Y}}" x2="{{printf "%.1f" $.PlotRight}}" y2="{{printf "%.1f" .Y}}"></line>
+    <text class="chart-tick" x="{{printf "%.1f" (sub $.PlotLeft 8.0)}}" y="{{printf "%.1f" (add .Y 4.0)}}" text-anchor="end">{{.Value}}</text>
+    {{end}}
+    <path class="chart-curve" d="{{.Path}}"></path>
+    {{range .Dots}}
+    <circle class="chart-dot" cx="{{printf "%.1f" .X}}" cy="{{printf "%.1f" .Y}}" r="3">
+      <title>{{.Label}}: {{.Value}}</title>
+    </circle>
+    {{if .Badge}}
+    <rect class="chart-badge" x="{{printf "%.1f" .BadgeX}}" y="{{printf "%.1f" .BadgeY}}" width="{{printf "%.1f" .BadgeWidth}}" height="16" rx="8"></rect>
+    <text class="chart-badge-text" x="{{printf "%.1f" .X}}" y="{{printf "%.1f" (add .BadgeY 11.5)}}" text-anchor="middle">{{.Value}}</text>
+    {{end}}
+    {{end}}
+    {{range .XLabels}}
+    <text class="chart-axis" x="{{printf "%.1f" .X}}" y="{{printf "%.1f" .Y}}"
+      transform="rotate({{printf "%.0f" .Angle}} {{printf "%.1f" .X}} {{printf "%.1f" .Y}})" text-anchor="end">{{.Text}}</text>
+    {{end}}
+  </svg>
+  {{end}}
+</div>
+{{end}}
+
+{{define "produksi_overview"}}
+{{template "appShellOpen" .}}
+  <h1 class="page-title">{{.PageTitle}}</h1>
+
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel filter-panel">
+    <div>
+      <p class="eyebrow">{{template "icon" "info"}}DATA TERAKHIR DIMUAT</p>
+      <h2>{{if .Overview}}{{.Overview.LastUpdated}}{{else}}-{{end}}</h2>
+    </div>
+    <form class="filter-form" method="get" action="/produksi/overview">
+      <div>
+        <label for="from">Dari tanggal</label>
+        <input id="from" name="from" type="date" value="{{.From}}">
+      </div>
+      <div>
+        <label for="to">Sampai tanggal</label>
+        <input id="to" name="to" type="date" value="{{.To}}">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/produksi/overview">Reset</a>
+    </form>
+    <p class="hint filter-note">{{if .Overview}}{{if .Overview.Monthly}}Tanpa rentang tanggal, grafik dikelompokkan per bulan sejak bulan pertama sampai bulan ini.{{else}}Rentang tanggal aktif, grafik dikelompokkan per hari.{{end}}{{end}}</p>
+  </section>
+
+  {{with .Overview}}
+  <section class="kpi-grid">
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TOTAL PRODUKSI</p>
+        <p class="kpi-value">{{printf "%.2f" .TotalVolume}} <small>m³</small></p>
+        <p class="kpi-note">Total volume dari sheet Produksi</p>
+      </div>
+      <span class="kpi-icon green">{{template "icon" "cube"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TOTAL RITASE</p>
+        <p class="kpi-value">{{.TotalRitase}}</p>
+        <p class="kpi-note">Jumlah trip muatan tercatat</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "list"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">UNIT DT AKTIF</p>
+        <p class="kpi-value">{{.ActiveUnits}}</p>
+        <p class="kpi-note">Unit beroperasi pada periode ini</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "truck"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">STOCK FUEL</p>
+        <p class="kpi-value">0.00 <small>L</small></p>
+        <p class="kpi-note">Belum ada sumber data BBM</p>
+      </div>
+      <span class="kpi-icon amber">{{template "icon" "fuel"}}</span>
+    </article>
+  </section>
+
+  <section class="chart-grid">
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "chart"}}PRODUKSI PER {{if .Monthly}}BULAN{{else}}TANGGAL{{end}}</p>
+          <h2>Volume {{if .Monthly}}bulanan{{else}}harian{{end}} (m³)</h2>
+        </div>
+      </div>
+      {{template "lineFigure" $.VolumeChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "list"}}RITASE DT KECIL VS DT BESAR</p>
+          <h2>Jumlah trip {{if .Monthly}}bulanan{{else}}harian{{end}}</h2>
+        </div>
+        <p class="chart-legend"><span class="swatch kecil"></span>DT Kecil <span class="swatch besar"></span>DT Besar</p>
+      </div>
+      {{template "chartFigure" $.RitaseChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "truck"}}UNIT AKTIF PER {{if .Monthly}}BULAN{{else}}TANGGAL{{end}}</p>
+          <h2>Jumlah unit beroperasi</h2>
+        </div>
+      </div>
+      {{template "chartFigure" $.UnitChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "calculator"}}VOLUME VS VOLUME OPP</p>
+          <h2>Realisasi terhadap nominal</h2>
+        </div>
+        <p class="chart-legend"><span class="swatch real"></span>Volume Real <span class="swatch opp"></span>Volume OPP</p>
+      </div>
+      {{template "chartFigure" $.CompareChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "percent"}}PRODUKSI PER LOKASI</p>
+          <h2>Porsi volume</h2>
+        </div>
+      </div>
+      {{if .HasLokasi}}
+      <ul class="share-list">
+        {{range .LokasiShares}}
+        <li>
+          <div class="share-head"><span>{{.Lokasi}}</span><strong>{{printf "%.2f" .Percent}}%</strong></div>
+          <div class="share-track"><div class="share-fill" style="width: {{printf "%.2f" .Percent}}%"></div></div>
+          <p class="share-note">{{printf "%.2f" .Volume}} m³</p>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="panel-empty">Belum ada data lokasi. Kolom Lokasi terisi begitu operator mengisinya lewat form Produksi.</p>
+      {{end}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "trophy"}}TOP 5 DT PALING PRODUKTIF</p>
+          <h2>Berdasarkan volume</h2>
+        </div>
+      </div>
+      {{if .TopUnits}}
+      <table class="rank-table">
+        <thead>
+          <tr><th>Nopol</th><th class="numeric">Rit</th><th class="numeric">Vol (m³)</th><th class="numeric">m³/rit</th></tr>
+        </thead>
+        <tbody>
+          {{range .TopUnits}}
+          <tr>
+            <td>{{.Nopol}}</td>
+            <td class="numeric">{{.Ritase}}</td>
+            <td class="numeric">{{printf "%.2f" .Volume}}</td>
+            <td class="numeric accent">{{printf "%.2f" .VolumePerRitase}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <p class="hint">m³/rit adalah volume dibagi jumlah ritase. Sheet Produksi tidak menyimpan jam kerja, jadi angka per jam tidak bisa dihitung.</p>
+      {{else}}
+      <p class="panel-empty">Belum ada data pada rentang ini.</p>
+      {{end}}
+    </article>
+  </section>
+  {{end}}
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

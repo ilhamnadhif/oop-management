@@ -30,6 +30,7 @@ type Server struct {
 	attendance     *service.AttendanceService
 	unitDT         *service.UnitDTService
 	produksi       *service.ProduksiService
+	overview       *service.OverviewService
 	sessions       *session.Manager
 	location       *time.Location
 	now            service.NowFunc
@@ -101,6 +102,18 @@ type ProduksiFormData struct {
 	TT       string
 }
 
+type OverviewPageData struct {
+	ShellPageData
+	Overview     *service.Overview
+	From         string
+	To           string
+	VolumeChart  *Chart
+	RitaseChart  *Chart
+	UnitChart    *Chart
+	CompareChart *Chart
+	Error        string
+}
+
 type ProduksiPageData struct {
 	ShellPageData
 	Form            ProduksiFormData
@@ -124,7 +137,7 @@ type DashboardPageData struct {
 	HasClockOut   bool
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
 	if location == nil {
 		location = time.Local
 	}
@@ -137,7 +150,13 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 	if maxPhotoChars <= 0 {
 		maxPhotoChars = photo.MaxOutputChars
 	}
-	templates, err := template.New("pages").ParseFS(assetFiles, "templates/*.html")
+	// The chart template positions gridline labels relative to the plot edges,
+	// which needs arithmetic the template language does not provide.
+	templates, err := template.New("pages").Funcs(template.FuncMap{
+		"add": func(a, b float64) float64 { return a + b },
+		"sub": func(a, b float64) float64 { return a - b },
+		"div": func(a, b float64) float64 { return a / b },
+	}).ParseFS(assetFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
@@ -146,6 +165,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		attendance:     attendance,
 		unitDT:         unitDT,
 		produksi:       produksi,
+		overview:       overview,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -163,6 +183,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/dashboard", s.handleDashboard)
 	mux.HandleFunc("/produksi", s.handleProduksi)
+	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
 	mux.HandleFunc("/absensi/clock-out", s.handleClockOut)
@@ -390,6 +411,92 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 	s.renderProduksi(w, r, user, sessionValue, ProduksiFormData{
 		Tanggal: s.produksi.Today(),
 	}, "", "", http.StatusOK)
+}
+
+func (s *Server) handleProduksiOverview(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+
+	from := strings.TrimSpace(r.URL.Query().Get("from"))
+	to := strings.TrimSpace(r.URL.Query().Get("to"))
+	data := OverviewPageData{
+		ShellPageData: s.shellData(user, sessionValue, "produksi-overview"),
+		From:          from,
+		To:            to,
+	}
+
+	overview, err := s.overview.Build(r.Context(), from, to)
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
+		} else {
+			log.Printf("build overview: %v", err)
+			data.Error = "Gagal memuat data produksi"
+		}
+		s.render(w, "produksi_overview", data, http.StatusOK)
+		return
+	}
+
+	data.Overview = overview
+	// The filter inputs echo whatever the aggregation settled on, so a reversed
+	// range shows the corrected order rather than what was typed.
+	data.From = overview.From
+	data.To = overview.To
+	data.VolumeChart = BuildLineChart(seriesLabels(overview.Series), seriesVolumes(overview.Series), 0)
+	data.RitaseChart = BuildStackedChart(seriesLabels(overview.Series), seriesKecil(overview.Series), seriesBesar(overview.Series))
+	data.UnitChart = BuildValueChart(seriesLabels(overview.Series), seriesUnits(overview.Series), 0)
+	data.CompareChart = BuildGroupedChart(seriesLabels(overview.Series), seriesVolumes(overview.Series), seriesOPP(overview.Series))
+	s.render(w, "produksi_overview", data, http.StatusOK)
+}
+
+func seriesLabels(points []service.DatePoint) []string {
+	labels := make([]string, len(points))
+	for i, point := range points {
+		labels[i] = point.Label
+	}
+	return labels
+}
+
+func seriesVolumes(points []service.DatePoint) []float64 {
+	values := make([]float64, len(points))
+	for i, point := range points {
+		values[i] = point.Volume
+	}
+	return values
+}
+
+func seriesOPP(points []service.DatePoint) []float64 {
+	values := make([]float64, len(points))
+	for i, point := range points {
+		values[i] = point.VolumeOPP
+	}
+	return values
+}
+
+func seriesUnits(points []service.DatePoint) []float64 {
+	values := make([]float64, len(points))
+	for i, point := range points {
+		values[i] = float64(point.Units)
+	}
+	return values
+}
+
+func seriesKecil(points []service.DatePoint) []int {
+	values := make([]int, len(points))
+	for i, point := range points {
+		values[i] = point.Kecil
+	}
+	return values
+}
+
+func seriesBesar(points []service.DatePoint) []int {
+	values := make([]int, len(points))
+	for i, point := range points {
+		values[i] = point.Besar
+	}
+	return values
 }
 
 func (s *Server) handleProduksiCreate(w http.ResponseWriter, r *http.Request) {

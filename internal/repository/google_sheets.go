@@ -369,6 +369,47 @@ func (r *GoogleSheetsRepository) CreateProduksiBatch(ctx context.Context, rows [
 	return nil
 }
 
+// ListProduksi reads the columns the dashboard aggregates over, stopping at T.
+// The trailing audit columns are of no use to a chart and this sheet already
+// holds thousands of rows.
+func (r *GoogleSheetsRepository) ListProduksi(ctx context.Context) ([]model.Produksi, error) {
+	rows, err := r.readRows(ctx, produksiSheet, "T")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.Produksi, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, 20)
+		tanggal := strings.TrimSpace(cellString(row[1]))
+		if tanggal == "" {
+			continue
+		}
+		result = append(result, model.Produksi{
+			ProduksiID: cellString(row[0]),
+			Tanggal:    tanggal,
+			Project:    cellString(row[2]),
+			Supplier:   cellString(row[3]),
+			Quary:      cellString(row[4]),
+			Kategori:   cellString(row[5]),
+			Lokasi:     cellString(row[6]),
+			Layer:      cellString(row[7]),
+			UnitID:     cellString(row[8]),
+			Nopol:      cellString(row[9]),
+			Driver:     cellString(row[10]),
+			JenisDT:    cellString(row[11]),
+			Panjang:    parseFloatCell(row[12]),
+			Lebar:      parseFloatCell(row[13]),
+			Tinggi:     parseFloatCell(row[14]),
+			TT:         parseFloatCell(row[15]),
+			TF:         parseFloatCell(row[16]),
+			Volume:     parseFloatCell(row[17]),
+			VolumeOPP:  parseFloatCell(row[18]),
+			Deviasi:    parseFloatCell(row[19]),
+		})
+	}
+	return result, nil
+}
+
 func produksiToRow(produksi *model.Produksi) []interface{} {
 	return []interface{}{
 		produksi.ProduksiID, produksi.Tanggal, produksi.Project, produksi.Supplier,

@@ -141,6 +141,9 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .calc-grid .accent-amber { color: #b8791f; }
 .panel { padding: clamp(1.4rem, 3.5vw, 2.1rem); border: 1px solid var(--line); border-radius: 20px; background: var(--white); box-shadow: 0 10px 32px rgba(23, 63, 95, 0.06); }
 .panel + .panel, .clock-hero + .panel { margin-top: 1.6rem; }
+/* Panels laid out by a grid are siblings too, and the stacking margin above
+   would push every card but the first down and shorten it inside its row. */
+.kpi-grid > .panel, .chart-grid > .panel { margin-top: 0; }
 .panel-heading { align-items: flex-start; margin-bottom: 1.6rem; }
 
 .clock-hero { padding: clamp(1.4rem, 5vw, 2.4rem) 1.5rem; border-radius: 20px; color: var(--white); background: linear-gradient(120deg, var(--navy), #256a7d); box-shadow: 0 18px 40px rgba(23, 63, 95, 0.16); text-align: center; }
@@ -211,4 +214,81 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }
+}
+
+/* Produksi Overview */
+.filter-panel { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1.2rem; }
+.filter-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; }
+.filter-form > div { display: grid; gap: 0.35rem; }
+.filter-form label { color: var(--muted); font-size: 0.78rem; }
+.filter-form input { width: auto; min-width: 165px; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.6rem; }
+/* Grid rows stretch, so the panels already match; it is the content inside
+   that has to fill the card or one note wrapping to two lines leaves a gap. */
+.kpi-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; min-height: 132px; }
+.kpi-card > div { display: flex; flex: 1; flex-direction: column; }
+.kpi-card .kpi-note { margin-top: auto; }
+.kpi-card .eyebrow { min-height: 1.1rem; }
+.kpi-value { margin-bottom: 0.3rem; color: var(--navy-dark); font-size: clamp(1.5rem, 2.4vw, 2rem); font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.kpi-value small { font-size: 0.85rem; font-weight: 400; color: var(--muted); }
+.kpi-note { margin-bottom: 0; color: var(--muted); font-size: 0.76rem; }
+.kpi-icon { display: grid; width: 40px; height: 40px; flex-shrink: 0; place-items: center; border-radius: 12px; }
+.kpi-icon.green { color: #1c7a52; background: #e7f5ee; }
+.kpi-icon.blue { color: #2563eb; background: #e8effd; }
+.kpi-icon.purple { color: #6d3fd4; background: #efe9fc; }
+.kpi-icon.amber { color: #b8791f; background: #fdf1de; }
+
+.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
+.chart-frame { width: 100%; }
+.chart { display: block; width: 100%; height: auto; }
+.chart-grid line, .chart-grid-line { stroke: var(--line); }
+.chart .chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-bar { fill: #2563eb; }
+.chart-bar.series-kecil { fill: var(--orange); }
+.chart-bar.series-besar { fill: var(--success); }
+.chart-bar.series-compare-0 { fill: #2563eb; }
+.chart-bar.series-compare-1 { fill: var(--orange); }
+.chart-line { fill: none; stroke: #102f48; stroke-width: 1.6; stroke-linejoin: round; }
+.chart-curve { fill: none; stroke: #2563eb; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.chart-dot { fill: var(--white); stroke: #2563eb; stroke-width: 2; }
+.chart-badge { fill: #2563eb; }
+.chart-badge.series-kecil { fill: var(--orange); }
+.chart-badge.series-besar { fill: var(--success); }
+.chart-badge.series-opp { fill: var(--orange); }
+.chart-badge.series-real { fill: #2563eb; }
+.chart-badge-text { fill: var(--white); font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart-tick, .chart-axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-legend { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0; color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.swatch.kecil { background: var(--orange); }
+.swatch.besar { background: var(--success); }
+.swatch.real { background: #2563eb; }
+.swatch.opp { background: var(--orange); }
+.chart-bar.series-real { fill: #2563eb; }
+.chart-bar.series-opp { fill: var(--orange); }
+.filter-note { flex-basis: 100%; margin: 0.4rem 0 0; }
+
+.share-list { display: grid; gap: 1rem; margin: 0; padding: 0; list-style: none; }
+.share-head { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.35rem; font-size: 0.88rem; }
+.share-head strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.share-track { height: 10px; overflow: hidden; border-radius: 999px; background: #eef2f4; }
+.share-fill { height: 100%; border-radius: 999px; background: var(--teal); }
+.share-note { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.76rem; }
+
+.rank-table { width: 100%; border-collapse: collapse; }
+.rank-table th { padding: 0 0 0.6rem; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.06em; text-align: left; text-transform: uppercase; }
+.rank-table td { padding: 0.75rem 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.rank-table tr:last-child td { border-bottom: 0; }
+.rank-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.rank-table .accent { color: var(--success); font-weight: 600; }
+
+@media (max-width: 1100px) {
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chart-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .filter-form input { min-width: 0; width: 100%; }
+  .filter-form > div { flex: 1 1 100%; }
 }
