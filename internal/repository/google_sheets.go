@@ -19,6 +19,8 @@ const (
 	unitDTSheet     = "Unit DT"
 	produksiSheet   = "Produksi"
 	unitA2BSheet    = "Unit A2B"
+	notaSheet       = "Nota"
+	notaItemSheet   = "Nota Item"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -69,6 +71,19 @@ func NewGoogleSheetsRepository(service *sheets.Service, spreadsheetID string, lo
 	return &GoogleSheetsRepository{service: service, spreadsheetID: spreadsheetID, location: location}
 }
 
+// The attachments sit at the end of the header sheet so the columns before
+// them can be read without dragging base64 images along.
+var notaHeaders = []string{
+	"nota_id", "tanggal", "pic", "metode_pembayaran", "status_pembayaran",
+	"penerima_reimburse", "kategori", "sub_kategori", "jenis_perjalanan_dinas",
+	"total", "foto_kwitansi", "bukti_transfer",
+	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+}
+
+var notaItemHeaders = []string{
+	"nota_id", "baris", "nama_produk", "satuan", "volume", "harga", "subtotal",
+}
+
 func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 	spreadsheet, err := r.service.Spreadsheets.Get(r.spreadsheetID).Fields("sheets.properties").Context(ctx).Do()
 	if err != nil {
@@ -82,7 +97,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, unitA2BSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, unitA2BSheet, notaSheet, notaItemSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -108,6 +123,8 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: unitDTSheet, headers: unitDTHeaders},
 		{name: produksiSheet, headers: produksiHeaders},
 		{name: unitA2BSheet, headers: unitA2BHeaders},
+		{name: notaSheet, headers: notaHeaders},
+		{name: notaItemSheet, headers: notaItemHeaders},
 	} {
 		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
 			return err
@@ -512,6 +529,117 @@ func unitA2BToRow(unit *model.UnitA2B) []interface{} {
 	}
 }
 
+// MaxNotaSequence reports the highest number issued under a prefix, which is
+// one day's worth of notes. Taking the maximum rather than a row count keeps a
+// deleted row from handing its number to the next nota.
+func (r *GoogleSheetsRepository) MaxNotaSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, notaSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+// CreateNota writes the header first and the lines after it. Sheets has no
+// transaction: a header without its lines reads as a nota totalling more than
+// its detail, which is visible and fixable, while orphaned lines belong to
+// nothing and cannot be traced back.
+func (r *GoogleSheetsRepository) CreateNota(ctx context.Context, nota *model.Nota) error {
+	if err := r.appendRow(ctx, notaSheet, notaToRow(nota)); err != nil {
+		return err
+	}
+	if len(nota.Items) == 0 {
+		return nil
+	}
+	rows := make([][]interface{}, 0, len(nota.Items))
+	for _, item := range nota.Items {
+		rows = append(rows, notaItemToRow(nota.NotaID, item))
+	}
+	return r.appendRows(ctx, notaItemSheet, rows)
+}
+
+// ListNota reads the header columns only, stopping before the attachments.
+func (r *GoogleSheetsRepository) ListNota(ctx context.Context) ([]model.Nota, error) {
+	rows, err := r.readRows(ctx, notaSheet, "J")
+	if err != nil {
+		return nil, err
+	}
+	notas := make([]model.Nota, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, 10)
+		notaID := strings.TrimSpace(cellString(row[0]))
+		if notaID == "" {
+			continue
+		}
+		notas = append(notas, model.Nota{
+			NotaID:            notaID,
+			Tanggal:           cellString(row[1]),
+			PIC:               cellString(row[2]),
+			MetodePembayaran:  cellString(row[3]),
+			StatusPembayaran:  cellString(row[4]),
+			PenerimaReimburse: cellString(row[5]),
+			Kategori:          cellString(row[6]),
+			SubKategori:       cellString(row[7]),
+			JenisPerjalanan:   cellString(row[8]),
+			Total:             parseFloatCell(row[9]),
+		})
+	}
+	return notas, nil
+}
+
+// ListNotaItems reads every line in the detail sheet.
+func (r *GoogleSheetsRepository) ListNotaItems(ctx context.Context) ([]model.NotaItem, error) {
+	rows, err := r.readRows(ctx, notaItemSheet, "G")
+	if err != nil {
+		return nil, err
+	}
+	items := make([]model.NotaItem, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, 7)
+		notaID := strings.TrimSpace(cellString(row[0]))
+		if notaID == "" {
+			continue
+		}
+		baris, _ := strconv.Atoi(strings.TrimSpace(cellString(row[1])))
+		items = append(items, model.NotaItem{
+			NotaID:     notaID,
+			Baris:      baris,
+			NamaProduk: cellString(row[2]),
+			Satuan:     cellString(row[3]),
+			Volume:     parseFloatCell(row[4]),
+			Harga:      parseFloatCell(row[5]),
+			Subtotal:   parseFloatCell(row[6]),
+		})
+	}
+	return items, nil
+}
+
+func notaToRow(nota *model.Nota) []interface{} {
+	return []interface{}{
+		nota.NotaID, nota.Tanggal, nota.PIC, nota.MetodePembayaran, nota.StatusPembayaran,
+		nota.PenerimaReimburse, nota.Kategori, nota.SubKategori, nota.JenisPerjalanan,
+		formatFloat(nota.Total), nota.FotoKwitansi, nota.BuktiTransfer,
+		nota.CreatedBy, nota.CreatedByID,
+		formatDateTime(nota.CreatedAt), formatDateTime(nota.UpdatedAt),
+	}
+}
+
+func notaItemToRow(notaID string, item model.NotaItem) []interface{} {
+	return []interface{}{
+		notaID, strconv.Itoa(item.Baris), item.NamaProduk, item.Satuan,
+		formatFloat(item.Volume), formatFloat(item.Harga), formatFloat(item.Subtotal),
+	}
+}
+
 func (r *GoogleSheetsRepository) AppendActivity(ctx context.Context, activity *model.LoginActivity) error {
 	return r.appendRow(ctx, activitySheet, activityToRow(activity))
 }
@@ -551,6 +679,21 @@ func (r *GoogleSheetsRepository) readRows(ctx context.Context, sheetName, endCol
 		return nil, fmt.Errorf("read rows from %s: %w", sheetName, err)
 	}
 	return values.Values, nil
+}
+
+// appendRows writes several rows in one request. One request per row would
+// spend a round trip per line of a nota and burn the per-minute write quota.
+func (r *GoogleSheetsRepository) appendRows(ctx context.Context, sheetName string, rows [][]interface{}) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	rangeName := fmt.Sprintf("%s!A:A", quoteSheet(sheetName))
+	_, err := r.service.Spreadsheets.Values.Append(r.spreadsheetID, rangeName, &sheets.ValueRange{Values: rows}).
+		ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("append rows to %s: %w", sheetName, err)
+	}
+	return nil
 }
 
 func (r *GoogleSheetsRepository) appendRow(ctx context.Context, sheetName string, row []interface{}) error {

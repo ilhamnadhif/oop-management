@@ -21,6 +21,10 @@ var navItems = []NavItem{
 		{Key: "produksi-input", Label: "Input Data", Path: "/produksi", Icon: "list"},
 		{Key: "produksi-export", Label: "Export Data", Path: "/produksi/export", Icon: "save"},
 	}},
+	{Key: "nota", Label: "Nota", Icon: "receipt", Children: []NavItem{
+		{Key: "nota-input", Label: "Input Data", Path: "/nota", Icon: "list"},
+		{Key: "nota-export", Label: "Export Data", Path: "/nota/export", Icon: "save"},
+	}},
 	{Key: "unit", Label: "Unit", Icon: "truck", Children: []NavItem{
 		{Key: "unit-dt", Label: "Unit DT", Path: "/unit-dt", Icon: "truck"},
 		{Key: "unit-a2b", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube"},

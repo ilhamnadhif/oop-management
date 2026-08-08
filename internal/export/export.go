@@ -8,6 +8,8 @@ package export
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +42,10 @@ type Column struct {
 	// Decimals is how many the PDF prints; the XLSX keeps the raw number and
 	// carries the format instead, so the value stays usable in a formula.
 	Decimals int
+	// Money prints the PDF cell the way rupiah is written here: thousands
+	// separated by dots. Six unbroken digits are hard to read at 6pt, and a
+	// misread figure on an expense report is an argument about money.
+	Money bool
 }
 
 func (m Meta) periodLabel() string {
@@ -77,6 +83,33 @@ func formatIndonesianDate(value time.Time) string {
 }
 
 // FormatFloat trims trailing zeros so a whole number does not read as 7.5000.
+// FormatMoney writes 110000 as "110.000". Whole rupiah only: the decimals are
+// always zero in practice and would cost width the columns do not have.
+func FormatMoney(value float64) string {
+	whole := int64(math.Round(value))
+	sign := ""
+	if whole < 0 {
+		sign, whole = "-", -whole
+	}
+	digits := strconv.FormatInt(whole, 10)
+	var grouped strings.Builder
+	for i, digit := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			grouped.WriteByte('.')
+		}
+		grouped.WriteRune(digit)
+	}
+	return sign + grouped.String()
+}
+
+// FormatCell renders a numeric cell the way its column asks for.
+func FormatCell(value float64, column Column) string {
+	if column.Money {
+		return FormatMoney(value)
+	}
+	return FormatFloat(value, column.Decimals)
+}
+
 func FormatFloat(value float64, decimals int) string {
 	text := fmt.Sprintf("%.*f", decimals, value)
 	if strings.Contains(text, ".") {

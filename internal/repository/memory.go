@@ -20,6 +20,7 @@ type TestRepository struct {
 	unitDT     []*model.UnitDT
 	produksi   []*model.Produksi
 	unitA2B    []*model.UnitA2B
+	nota       []*model.Nota
 }
 
 func NewTestRepository() *TestRepository {
@@ -142,6 +143,58 @@ func (r *TestRepository) CreateUnitA2B(_ context.Context, unit *model.UnitA2B) e
 
 func (r *TestRepository) ListUnitA2B(_ context.Context) ([]model.UnitA2B, error) {
 	return r.UnitA2BList(), nil
+}
+
+func (r *TestRepository) MaxNotaSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, nota := range r.nota {
+		if !strings.HasPrefix(nota.NotaID, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(nota.NotaID, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateNota(_ context.Context, nota *model.Nota) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := *nota
+	stored.Items = append([]model.NotaItem(nil), nota.Items...)
+	r.nota = append(r.nota, &stored)
+	return nil
+}
+
+func (r *TestRepository) ListNota(_ context.Context) ([]model.Nota, error) {
+	return r.NotaList(), nil
+}
+
+func (r *TestRepository) ListNotaItems(_ context.Context) ([]model.NotaItem, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	items := make([]model.NotaItem, 0)
+	for _, nota := range r.nota {
+		items = append(items, nota.Items...)
+	}
+	return items, nil
+}
+
+// NotaList exposes stored notes to tests, without their line items.
+func (r *TestRepository) NotaList() []model.Nota {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	notas := make([]model.Nota, 0, len(r.nota))
+	for _, nota := range r.nota {
+		stored := *nota
+		stored.Items = append([]model.NotaItem(nil), nota.Items...)
+		notas = append(notas, stored)
+	}
+	return notas
 }
 
 // UnitA2BList exposes stored A2B units to tests.

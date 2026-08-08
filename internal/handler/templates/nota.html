@@ -1,0 +1,165 @@
+{{define "nota"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <form method="post" action="/nota" class="stack-form" enctype="multipart/form-data" data-nota-form data-loading-form>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "receipt"}}1. DETAIL TRANSAKSI</p>
+          <h2>Identitas nota</h2>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="nota_id">No transaksi <span class="hint">(otomatis)</span></label>
+          <input id="nota_id" type="text" value="{{.NextID}}" disabled>
+        </div>
+        <div>
+          <label for="tanggal">Tanggal transaksi</label>
+          <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
+        </div>
+        <div>
+          <label for="pic">PIC <span class="hint">(penanggung jawab)</span></label>
+          <input id="pic" name="pic" type="text" list="picList" value="{{.Form.PIC}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="picList">
+            {{range .Options.PIC}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+        <div>
+          <label for="metode">Metode pembayaran</label>
+          <select id="metode" name="metode" required>
+            <option value="">— Pilih metode —</option>
+            {{range .MetodeOptions}}
+            <option value="{{.Value}}"{{if eq $.Form.Metode .Value}} selected{{end}}>{{.Label}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div>
+          <label>Status pembayaran</label>
+          {{/* Derived from the method, never submitted: how the money moved
+               decides the status, so the browser has no say in it. */}}
+          <p class="pay-status{{if .Form.IsCA}} paid{{end}}" data-pay-status>
+            <span class="pay-status-icon" aria-hidden="true">{{if .Form.IsCA}}{{template "icon" "check"}}{{else}}{{template "icon" "clock"}}{{end}}</span>
+            <span data-pay-status-label>{{.Form.Status}}</span>
+          </p>
+        </div>
+        <div data-reimburse-field{{if .Form.IsCA}} hidden{{end}}>
+          <label for="penerima_reimburse" class="required-label">Nama penerima reimburse *</label>
+          <input id="penerima_reimburse" name="penerima_reimburse" type="text" value="{{.Form.PenerimaReimburse}}" placeholder="Masukkan nama penerima…" autocomplete="off">
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "tag"}}2. KATEGORI BIAYA</p>
+          <h2>Pos pembebanan</h2>
+        </div>
+      </div>
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="kategori">Kategori</label>
+          <select id="kategori" name="kategori" required>
+            <option value="">— Pilih kategori —</option>
+            {{range .KategoriOptions}}
+            <option value="{{.Nama}}"{{if eq $.Form.Kategori .Nama}} selected{{end}}>{{.Nama}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div>
+          <label for="sub_kategori">Sub kategori</label>
+          {{/* Grouped by category so the pairing survives without JavaScript;
+               the script narrows the list to the category in use. */}}
+          <select id="sub_kategori" name="sub_kategori" required>
+            <option value="">— Pilih sub kategori —</option>
+            {{range .KategoriOptions}}
+            <optgroup label="{{.Nama}}" data-kategori="{{.Nama}}">
+              {{$kategori := .Nama}}
+              {{range .Sub}}
+              <option value="{{.}}" data-kategori="{{$kategori}}"{{if and (eq $.Form.Kategori $kategori) (eq $.Form.SubKategori .)}} selected{{end}}>{{.}}</option>
+              {{end}}
+            </optgroup>
+            {{end}}
+          </select>
+        </div>
+        <div data-perjalanan-field{{if ne .Form.SubKategori .PerjalananDinas}} hidden{{end}}>
+          <label for="jenis_perjalanan" class="required-label">Jenis perjalanan dinas *</label>
+          <select id="jenis_perjalanan" name="jenis_perjalanan">
+            <option value="">— Pilih jenis —</option>
+            {{range .JenisOptions}}
+            <option value="{{.}}"{{if eq $.Form.JenisPerjalanan .}} selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "cube"}}3. DETAIL PRODUK / ITEM NOTA</p>
+          <h2>Rincian belanja</h2>
+        </div>
+        <button class="button subtle" type="button" data-add-item>{{template "icon" "plus"}}Tambah item</button>
+      </div>
+
+      <div class="nota-items" data-item-list>
+        {{range .Form.Items}}
+        <div class="nota-item" data-item-row>
+          <input name="item_nama" type="text" value="{{.NamaProduk}}" placeholder="Nama produk / detail nota" autocomplete="off">
+          <input name="item_satuan" type="text" value="{{.Satuan}}" placeholder="Satuan (Sat)" autocomplete="off">
+          <input name="item_volume" type="number" value="{{.Volume}}" placeholder="Vol" step="0.01" min="0">
+          {{/* Text rather than number: a number input will not display the
+               thousand separators, and the value is stripped back to digits
+               before it is submitted. */}}
+          <input name="item_harga" type="text" inputmode="numeric" value="{{.Harga}}" placeholder="Harga (Rp)" autocomplete="off" data-money>
+          <span class="nota-item-total" data-item-total>Rp 0</span>
+          <button class="icon-button danger" type="button" data-remove-item aria-label="Hapus item">{{template "icon" "trash"}}</button>
+        </div>
+        {{end}}
+      </div>
+
+      <p class="nota-total">
+        <span>Total nota</span>
+        <strong data-nota-total>Rp 0</strong>
+      </p>
+      <p class="hint">Total dihitung ulang di server dari setiap baris item.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "paperclip"}}4. LAMPIRAN DOKUMEN</p>
+          <h2>Bukti pengeluaran</h2>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="foto_kwitansi" class="required-label">Foto kwitansi *</label>
+          <input id="foto_kwitansi" name="foto_kwitansi" type="file" accept="image/*" required>
+          <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
+        </div>
+        <div data-transfer-field{{if not .Form.IsCA}} hidden{{end}}>
+          <label for="bukti_transfer" class="required-label">Bukti transfer *</label>
+          <input id="bukti_transfer" name="bukti_transfer" type="file" accept="image/*">
+          <p class="hint">Wajib untuk pembayaran CA.</p>
+        </div>
+      </div>
+    </section>
+
+    <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+      <span class="spinner" aria-hidden="true" hidden></span>
+      {{template "icon" "save"}}<span data-submit-label>Simpan nota</span>
+    </button>
+  </form>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/combobox.js" defer></script>
+<script src="/static/js/nota.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

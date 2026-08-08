@@ -131,3 +131,49 @@ type Attendance struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
+
+// Payment methods and the payment status each one implies. A cash advance is
+// money already handed out, so the nota records it as settled; a reimbursement
+// is money the company still owes the person who paid.
+const (
+	NotaMetodeCA        = "CA"
+	NotaMetodeReimburse = "REIMBURSE"
+
+	NotaStatusSudahDibayar = "SUDAH DIBAYAR"
+	NotaStatusBelumDibayar = "BELUM DIBAYAR"
+)
+
+// Nota is one expense note. Total is the sum of its items, stored alongside the
+// header so a reader of the sheet does not have to add the detail rows up.
+type Nota struct {
+	NotaID            string
+	Tanggal           string
+	PIC               string
+	MetodePembayaran  string
+	StatusPembayaran  string
+	PenerimaReimburse string
+	Kategori          string
+	SubKategori       string
+	JenisPerjalanan   string
+	Total             float64
+	FotoKwitansi      string
+	BuktiTransfer     string
+	CreatedBy         string
+	CreatedByID       string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	Items             []NotaItem
+}
+
+// NotaItem is one line of a nota. It lives in its own sheet: keeping the lines
+// beside the header would repeat the attachments, which are base64 images tens
+// of thousands of characters long, once per line.
+type NotaItem struct {
+	NotaID     string
+	Baris      int
+	NamaProduk string
+	Satuan     string
+	Volume     float64
+	Harga      float64
+	Subtotal   float64
+}

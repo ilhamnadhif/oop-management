@@ -217,6 +217,26 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .camera-modal { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 1rem; background: rgba(16, 47, 72, 0.62); }
 .camera-dialog { width: min(520px, 100%); max-height: 92vh; overflow-y: auto; padding: clamp(1.1rem, 3vw, 1.6rem); border-radius: 20px; background: var(--white); box-shadow: 0 24px 60px rgba(16, 47, 72, 0.35); }
 
+/* A nota is one line per purchase, so the rows are a grid rather than a table:
+   on a phone each line stacks instead of scrolling sideways. */
+.nota-items { display: grid; gap: 0.6rem; }
+.nota-item { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(84px, auto) auto; align-items: center; gap: 0.6rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.nota-item input { background: var(--white); }
+.nota-item-total { font-size: 0.85rem; font-weight: 600; color: var(--navy); text-align: right; font-variant-numeric: tabular-nums; }
+.nota-total { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 0.9rem 1.1rem; border-left: 4px solid var(--navy); border-radius: 12px; background: #eef3f7; font-size: 0.9rem; }
+.nota-total strong { font-size: 1.15rem; color: var(--navy); font-variant-numeric: tabular-nums; }
+
+.icon-button { display: grid; place-items: center; padding: 0.5rem; border: 1px solid var(--line); border-radius: 10px; background: var(--white); color: var(--muted); cursor: pointer; }
+.icon-button.danger:hover { border-color: var(--danger); color: var(--danger); background: #fff0f0; }
+.icon-button:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
+
+/* The status is derived from the payment method, so it reads as a stated fact
+   rather than another control someone could set. */
+.pay-status { display: inline-flex; align-items: center; gap: 0.45rem; justify-self: start; padding: 0.45rem 0.85rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--danger); background: #fdeeee; }
+.pay-status.paid { color: var(--success); background: #eaf6ef; }
+.pay-status-icon { display: grid; place-items: center; }
+.required-label { color: var(--danger); }
+
 /* Below this width the sidebar slides off-canvas and the hamburger is the only
    way back to it, so the toggle and the drawer must appear together. */
 @media (max-width: 900px) {
@@ -231,6 +251,11 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 
 @media (max-width: 720px) {
   .form-grid, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; }
+  /* Six fields side by side become unreadable on a phone; the line stacks and
+     keeps its own total and delete button on one row. */
+  .nota-item { grid-template-columns: 1fr auto; }
+  .nota-item input[name="item_nama"] { grid-column: 1 / -1; }
+  .nota-item-total { text-align: left; }
   .calc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { flex-direction: row; align-items: center; }
   .video-frame, .video-frame video { min-height: 220px; }

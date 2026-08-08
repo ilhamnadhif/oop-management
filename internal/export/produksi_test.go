@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pdf/fpdf"
 	"github.com/xuri/excelize/v2"
 
 	"opp-management/internal/model"
@@ -182,6 +183,66 @@ func TestProduksiPDFHandlesThousandsOfRows(t *testing.T) {
 func TestPDFTextIsTransliterated(t *testing.T) {
 	if got := tr("Volume 10 m³ · 2 × 3 — selesai"); strings.ContainsAny(got, "³·×—") {
 		t.Fatalf("tr left characters the core fonts cannot encode: %q", got)
+	}
+}
+
+// Nothing in a report may be shortened: a name cut to "Faturrahman Al..." reads
+// as if that were the name. Long text wraps onto further lines instead.
+func TestWrapCellKeepsEveryCharacter(t *testing.T) {
+	pdf := fpdf.New("L", "mm", "A4", "")
+	pdf.AddPage()
+	pdf.SetFont("Helvetica", "", bodyFont)
+
+	for _, text := range []string{
+		"Faturrahman Al Rasyid Nugroho",
+		"Konsumsi rapat mingguan divisi produksi",
+		"KODEPRODUKPANJANGTANPASPASIYANGSANGATPANJANG",
+	} {
+		lines := wrapCell(pdf, text, 20)
+		joined := strings.Join(lines, "")
+		if strings.Contains(joined, "...") || strings.Contains(joined, "\u2026") {
+			t.Fatalf("%q was shortened: %v", text, lines)
+		}
+		// Spaces are where the breaks happen, so they are the only characters
+		// that may go missing.
+		if strings.ReplaceAll(joined, " ", "") != strings.ReplaceAll(text, " ", "") {
+			t.Fatalf("%q came back as %q", text, joined)
+		}
+		for _, line := range lines {
+			if pdf.GetStringWidth(line) > 20 {
+				t.Fatalf("line %q is wider than its column", line)
+			}
+		}
+	}
+}
+
+// A wrapped row is taller, so a long report grows pages rather than losing rows.
+func TestLongTextGrowsTheReportInsteadOfBeingCut(t *testing.T) {
+	rows := make([]model.Produksi, 40)
+	for i := range rows {
+		rows[i] = model.Produksi{
+			ProduksiID: "PRD-2026-0001", Tanggal: "2026-08-07",
+			Lokasi: "Blok A Utara Sektor Tiga Belas Bagian Selatan",
+			Driver: "Faturrahman Al Rasyid Nugroho",
+			Nopol:  "KB 8721 BF", JenisDT: "DT KECIL", Volume: 10, VolumeOPP: 10,
+		}
+	}
+	long, err := ProduksiPDF(rows, sampleMeta())
+	if err != nil {
+		t.Fatalf("render long: %v", err)
+	}
+	short := make([]model.Produksi, len(rows))
+	copy(short, rows)
+	for i := range short {
+		short[i].Lokasi = "Blok A"
+		short[i].Driver = "Budi"
+	}
+	brief, err := ProduksiPDF(short, sampleMeta())
+	if err != nil {
+		t.Fatalf("render short: %v", err)
+	}
+	if len(long) <= len(brief) {
+		t.Fatal("the long names cost nothing, so they were not printed in full")
 	}
 }
 

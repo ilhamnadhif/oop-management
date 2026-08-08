@@ -166,7 +166,12 @@ func newStyles(file *excelize.File) (sheetStyles, error) {
 	}); err != nil {
 		return styles, err
 	}
-	if styles.text, err = file.NewStyle(&excelize.Style{Border: cellBorder("DCE4E9")}); err != nil {
+	// Wrapped, so a long name grows its row instead of disappearing behind the
+	// neighbouring cell.
+	if styles.text, err = file.NewStyle(&excelize.Style{
+		Alignment: &excelize.Alignment{Vertical: "top", WrapText: true},
+		Border:    cellBorder("DCE4E9"),
+	}); err != nil {
 		return styles, err
 	}
 	if styles.number, err = file.NewStyle(&excelize.Style{

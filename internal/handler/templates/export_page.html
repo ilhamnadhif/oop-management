@@ -1,4 +1,6 @@
-{{define "produksi_export"}}
+{{/* One page serves every export that filters by date: the paths and the
+     sentence describing the report come from the handler. */}}
+{{define "export_page"}}
 {{template "appShellOpen" .}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
@@ -9,7 +11,7 @@
         <h2>Pilih periode</h2>
       </div>
     </div>
-    <form class="filter-form" method="get" action="/produksi/export">
+    <form class="filter-form" method="get" action="{{.BasePath}}">
       <div>
         <label for="from">Dari tanggal</label>
         <input id="from" name="from" type="date" value="{{.From}}">
@@ -19,7 +21,7 @@
         <input id="to" name="to" type="date" value="{{.To}}">
       </div>
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
-      <a class="button subtle" href="/produksi/export">Reset</a>
+      <a class="button subtle" href="{{.BasePath}}">Reset</a>
       <p class="hint filter-note">Kosongkan keduanya untuk mengunduh seluruh periode.</p>
     </form>
   </section>
@@ -32,15 +34,12 @@
       </div>
     </div>
     {{if .Rows}}
-    <p class="panel-empty">
-      Kop laporan memakai logo dan nama {{.Company}}. PDF dicetak mendatar karena
-      tabelnya 20 kolom, dan halaman terakhir memuat blok tanda tangan.
-    </p>
+    <p class="panel-empty">{{.Note}}</p>
     <div class="action-row export-actions">
-      <a class="button primary" href="/produksi/export/download?format=xlsx{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
+      <a class="button primary" href="{{.BasePath}}/download?format=xlsx{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
         {{template "icon" "save"}}Unduh XLSX
       </a>
-      <a class="button subtle" href="/produksi/export/download?format=pdf{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
+      <a class="button subtle" href="{{.BasePath}}/download?format=pdf{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
         {{template "icon" "save"}}Unduh PDF
       </a>
     </div>

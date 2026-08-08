@@ -17,6 +17,8 @@ const (
 	bodyFont    = 6.0
 	headerFont  = 6.5
 	rowHeight   = 4.6
+	lineHeight  = 3.4
+	cellPadding = 1.2
 	headerFill  = "173F5F"
 	stripeFill  = "F4F7F9"
 	borderGrey  = "DCE4E9"
@@ -112,10 +114,13 @@ func drawTableHeader(pdf *fpdf.Fpdf, columns []Column) {
 	pdf.SetFillColor(hexToRGB(headerFill))
 	pdf.SetDrawColor(hexToRGB(headerFill))
 	pdf.SetLineWidth(0.1)
-	for _, column := range columns {
-		pdf.CellFormat(column.Width, 6, tr(column.Header), "1", 0, "C", true, 0, "")
+
+	headers := make([]string, len(columns))
+	for i, column := range columns {
+		headers[i] = column.Header
 	}
-	pdf.Ln(-1)
+	drawCells(pdf, columns, headers, alignHeader, 6)
+
 	pdf.SetTextColor(28, 40, 51)
 	pdf.SetDrawColor(hexToRGB(borderGrey))
 }
@@ -127,17 +132,107 @@ func drawRow(pdf *fpdf.Fpdf, columns []Column, cells []string, stripe bool) {
 		pdf.SetFillColor(255, 255, 255)
 	}
 	pdf.SetFont("Helvetica", "", bodyFont)
-	for i, column := range columns {
-		align := "L"
-		if column.Numeric {
-			align = "R"
-		}
-		if i == 0 {
-			align = "C"
-		}
-		pdf.CellFormat(column.Width, rowHeight, tr(fit(pdf, cells[i], column.Width-1.6)), "1", 0, align, true, 0, "")
+	drawCells(pdf, columns, cells, alignBody, rowHeight)
+}
+
+type cellAlign func(index int, column Column) string
+
+func alignHeader(int, Column) string { return "C" }
+
+func alignBody(index int, column Column) string {
+	switch {
+	case index == 0:
+		return "C"
+	case column.Numeric:
+		return "R"
+	default:
+		return "L"
 	}
-	pdf.Ln(-1)
+}
+
+// drawCells writes one band of the table. Text too long for its column wraps
+// onto further lines and the whole band grows to fit: a report that quietly
+// shortened a name would be read as if that were the name.
+func drawCells(pdf *fpdf.Fpdf, columns []Column, cells []string, align cellAlign, minHeight float64) {
+	wrapped := make([][]string, len(columns))
+	longest := 1
+	for i, column := range columns {
+		text := ""
+		if i < len(cells) {
+			text = cells[i]
+		}
+		wrapped[i] = wrapCell(pdf, tr(text), column.Width-1.6)
+		if len(wrapped[i]) > longest {
+			longest = len(wrapped[i])
+		}
+	}
+	height := float64(longest)*lineHeight + cellPadding
+	if height < minHeight {
+		height = minHeight
+	}
+
+	// A band is drawn as one piece, so the page break has to happen before it
+	// starts rather than in the middle of a wrapped cell.
+	_, pageHeight := pdf.GetPageSize()
+	_, _, _, bottomMargin := pdf.GetMargins()
+	if pdf.GetY()+height > pageHeight-bottomMargin {
+		pdf.AddPage()
+	}
+
+	top := pdf.GetY()
+	left := pageMargin
+	for i, column := range columns {
+		pdf.Rect(left, top, column.Width, height, "FD")
+		textTop := top + (height-float64(len(wrapped[i]))*lineHeight)/2
+		for j, line := range wrapped[i] {
+			pdf.SetXY(left, textTop+float64(j)*lineHeight)
+			pdf.CellFormat(column.Width, lineHeight, line, "", 0, align(i, column), false, 0, "")
+		}
+		left += column.Width
+	}
+	pdf.SetXY(pageMargin, top+height)
+}
+
+// wrapCell breaks text to fit a column width, on spaces where it can and
+// mid-word where a single word is wider than the column.
+func wrapCell(pdf *fpdf.Fpdf, text string, width float64) []string {
+	if text == "" || pdf.GetStringWidth(text) <= width {
+		return []string{text}
+	}
+	lines := make([]string, 0, 2)
+	current := ""
+	for _, word := range strings.Fields(text) {
+		candidate := word
+		if current != "" {
+			candidate = current + " " + word
+		}
+		if pdf.GetStringWidth(candidate) <= width {
+			current = candidate
+			continue
+		}
+		if current != "" {
+			lines = append(lines, current)
+			current = ""
+		}
+		// A word longer than the column has to be cut somewhere; cutting it
+		// across lines keeps every character, which dropping the tail would not.
+		for pdf.GetStringWidth(word) > width {
+			cut := len(word)
+			for cut > 1 && pdf.GetStringWidth(word[:cut]) > width {
+				cut--
+			}
+			lines = append(lines, word[:cut])
+			word = word[cut:]
+		}
+		current = word
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	if len(lines) == 0 {
+		return []string{""}
+	}
+	return lines
 }
 
 func drawTotals(pdf *fpdf.Fpdf, table Table) {
@@ -149,11 +244,17 @@ func drawTotals(pdf *fpdf.Fpdf, table Table) {
 	for _, column := range table.Columns[:start] {
 		labelWidth += column.Width
 	}
+
+	_, pageHeight := pdf.GetPageSize()
+	_, _, _, bottomMargin := pdf.GetMargins()
+	if pdf.GetY()+6 > pageHeight-bottomMargin {
+		pdf.AddPage()
+	}
 	pdf.CellFormat(labelWidth, 6, tr(fmt.Sprintf("TOTAL  (%d baris)", len(table.Rows))), "1", 0, "R", true, 0, "")
 	for i := start; i < len(table.Columns); i++ {
 		text := ""
 		if value, ok := table.Totals[i]; ok {
-			text = FormatFloat(value, table.Columns[i].Decimals)
+			text = FormatCell(value, table.Columns[i])
 		}
 		pdf.CellFormat(table.Columns[i].Width, 6, tr(text), "1", 0, "R", true, 0, "")
 	}
@@ -201,20 +302,6 @@ func drawSignature(pdf *fpdf.Fpdf, meta Meta) {
 		pdf.SetFont("Helvetica", "", 9)
 		pdf.CellFormat(blockWidth, 5, tr(title), "", 2, "C", false, 0, "")
 	}
-}
-
-// fit shortens text that would otherwise spill into the next column.
-func fit(pdf *fpdf.Fpdf, text string, width float64) string {
-	if text == "" || pdf.GetStringWidth(text) <= width {
-		return text
-	}
-	for len(text) > 1 {
-		text = text[:len(text)-1]
-		if pdf.GetStringWidth(text+"…") <= width {
-			return text + "…"
-		}
-	}
-	return text
 }
 
 // tr keeps the output to characters the core PDF fonts can encode. Embedding a

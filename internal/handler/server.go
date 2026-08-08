@@ -33,6 +33,7 @@ type Server struct {
 	produksi       *service.ProduksiService
 	overview       *service.OverviewService
 	unitA2B        *service.UnitA2BService
+	nota           *service.NotaService
 	company        string
 	signatory      export.Signatory
 	sessions       *session.Manager
@@ -133,12 +134,16 @@ type ProduksiFormData struct {
 
 type ExportPageData struct {
 	ShellPageData
-	From    string
-	To      string
-	Rows    int
-	Error   string
-	Ready   bool
-	Company string
+	From string
+	To   string
+	Rows int
+	// BasePath is where the filter posts back to and where the downloads hang
+	// off, so one template serves every date-filtered export.
+	BasePath string
+	Note     string
+	Error    string
+	Ready    bool
+	Company  string
 }
 
 type OverviewPageData struct {
@@ -178,7 +183,7 @@ type Branding struct {
 	Signatory export.Signatory
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
 	if strings.TrimSpace(branding.Company) == "" {
 		branding.Company = "PT Orecon Putra Perkasa"
 	}
@@ -211,6 +216,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		produksi:       produksi,
 		overview:       overview,
 		unitA2B:        unitA2B,
+		nota:           nota,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -237,6 +243,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
+	mux.HandleFunc("/nota", s.handleNota)
+	mux.HandleFunc("/nota/export", s.handleNotaExport)
+	mux.HandleFunc("/nota/export/download", s.handleNotaDownload)
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
 	mux.HandleFunc("/absensi/clock-out", s.handleClockOut)
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -488,8 +497,11 @@ func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
 		ShellPageData: s.shellData(user, sessionValue, "produksi-export"),
 		From:          from,
 		To:            to,
-		Ready:         true,
-		Company:       s.company,
+		BasePath:      "/produksi/export",
+		Note: fmt.Sprintf("Kop laporan memakai logo dan nama %s. PDF dicetak mendatar karena "+
+			"tabelnya 20 kolom, dan halaman terakhir memuat blok tanda tangan.", s.company),
+		Ready:   true,
+		Company: s.company,
 	}
 	rows, appliedFrom, appliedTo, err := s.produksi.RowsBetween(r.Context(), from, to)
 	if err != nil {
@@ -499,13 +511,13 @@ func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
 			log.Printf("count produksi for export: %v", err)
 			data.Error = "Gagal memuat data produksi"
 		}
-		s.render(w, "produksi_export", data, http.StatusOK)
+		s.render(w, "export_page", data, http.StatusOK)
 		return
 	}
 	data.Rows = len(rows)
 	data.From = appliedFrom
 	data.To = appliedTo
-	s.render(w, "produksi_export", data, http.StatusOK)
+	s.render(w, "export_page", data, http.StatusOK)
 }
 
 // handleProduksiDownload streams the report itself.
@@ -550,6 +562,98 @@ func (s *Server) handleProduksiDownload(w http.ResponseWriter, r *http.Request) 
 	}
 
 	filename := fmt.Sprintf("laporan-produksi-%s.%s", exportPeriodSlug(from, to), extension)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	// A report is a snapshot of a moving sheet; a cached copy would quietly go
+	// stale behind the person downloading it.
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(payload)
+}
+
+func (s *Server) handleNotaExport(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	from := strings.TrimSpace(r.URL.Query().Get("from"))
+	to := strings.TrimSpace(r.URL.Query().Get("to"))
+
+	data := ExportPageData{
+		ShellPageData: s.shellData(user, sessionValue, "nota-export"),
+		From:          from,
+		To:            to,
+		BasePath:      "/nota/export",
+		Note: fmt.Sprintf("Kop laporan memakai logo dan nama %s. Satu baris mewakili satu item "+
+			"nota, sehingga rinciannya tetap terlihat, dan halaman terakhir memuat blok tanda tangan.", s.company),
+		Ready:   true,
+		Company: s.company,
+	}
+	rows, appliedFrom, appliedTo, err := s.nota.RowsBetween(r.Context(), from, to)
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
+		} else {
+			log.Printf("count nota for export: %v", err)
+			data.Error = "Gagal memuat data nota"
+		}
+		s.render(w, "export_page", data, http.StatusOK)
+		return
+	}
+	// The report has one row per item, so the count on the page has to be the
+	// number of rows the file will hold, not the number of notes.
+	data.Rows = countNotaItems(rows)
+	data.From = appliedFrom
+	data.To = appliedTo
+	s.render(w, "export_page", data, http.StatusOK)
+}
+
+func countNotaItems(rows []model.Nota) int {
+	total := 0
+	for _, nota := range rows {
+		total += len(nota.Items)
+	}
+	return total
+}
+
+func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.requireUser(w, r); !ok {
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format != "xlsx" && format != "pdf" {
+		http.Error(w, "format tidak dikenal", http.StatusBadRequest)
+		return
+	}
+
+	rows, from, to, err := s.nota.RowsBetween(r.Context(),
+		r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			http.Error(w, strings.TrimPrefix(err.Error(), "validation error: "), http.StatusUnprocessableEntity)
+			return
+		}
+		log.Printf("read nota for export: %v", err)
+		http.Error(w, "Gagal memuat data nota", http.StatusInternalServerError)
+		return
+	}
+
+	meta := s.exportMeta("Laporan Nota", from, to)
+	var payload []byte
+	contentType := "application/pdf"
+	if format == "xlsx" {
+		payload, err = export.NotaXLSX(rows, meta)
+		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	} else {
+		payload, err = export.NotaPDF(rows, meta)
+	}
+	if err != nil {
+		log.Printf("build nota %s: %v", format, err)
+		http.Error(w, "Gagal membuat berkas", http.StatusInternalServerError)
+		return
+	}
+
+	filename := fmt.Sprintf("laporan-nota-%s.%s", exportPeriodSlug(from, to), format)
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
@@ -1156,6 +1260,202 @@ func (s *Server) renderUnitDTError(w http.ResponseWriter, r *http.Request, user 
 // readOptionalPhoto normalises an uploaded image to the same compressed data
 // URL the attendance photos use. An absent file yields an empty value; only a
 // file that is present but unreadable is an error.
+// NotaFormData is the form as typed, so a rejected submission comes back
+// filled in rather than blank.
+type NotaFormData struct {
+	Tanggal           string
+	PIC               string
+	Metode            string
+	PenerimaReimburse string
+	Kategori          string
+	SubKategori       string
+	JenisPerjalanan   string
+	Items             []service.NotaItemInput
+}
+
+// Status is what the badge shows while typing. The stored status is decided by
+// the service; this only mirrors it so the form does not lie about it.
+func (f NotaFormData) Status() string { return service.StatusFor(f.Metode) }
+
+func (f NotaFormData) IsCA() bool { return f.Metode == model.NotaMetodeCA }
+
+type NotaPageData struct {
+	ShellPageData
+	Form            NotaFormData
+	NextID          string
+	Options         service.NotaOptions
+	MetodeOptions   []service.NotaMetode
+	KategoriOptions []service.NotaKategori
+	JenisOptions    []string
+	PerjalananDinas string
+	Error           string
+	Success         string
+}
+
+func (s *Server) handleNota(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handleNotaCreate(w, r)
+		return
+	}
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	s.renderNota(w, r, user, sessionValue, NotaFormData{Tanggal: s.nota.Today()}, "", "", http.StatusOK)
+}
+
+func (s *Server) handleNotaCreate(w http.ResponseWriter, r *http.Request) {
+	sessionValue, ok := s.currentSession(r)
+	if !ok {
+		redirect(w, r, "/login")
+		return
+	}
+	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
+	if err != nil || user.StatusPengguna != model.StatusAktif {
+		s.sessions.Delete(r, w)
+		redirect(w, r, "/login")
+		return
+	}
+
+	// A nota carries two attachments, so the body allowance is twice the
+	// single-photo one before the form fields are counted.
+	maxBody := 2*s.maxUploadBytes + 128*1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseMultipartForm(maxBody); err != nil {
+		s.renderNota(w, r, user, sessionValue, NotaFormData{}, "Form tidak valid atau file terlalu besar", "", http.StatusUnprocessableEntity)
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+	if !s.sessions.ValidCSRFToken(r.FormValue("csrf_token"), sessionValue) {
+		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
+		return
+	}
+
+	form := NotaFormData{
+		Tanggal:           strings.TrimSpace(r.FormValue("tanggal")),
+		PIC:               strings.TrimSpace(r.FormValue("pic")),
+		Metode:            strings.ToUpper(strings.TrimSpace(r.FormValue("metode"))),
+		PenerimaReimburse: strings.TrimSpace(r.FormValue("penerima_reimburse")),
+		Kategori:          strings.TrimSpace(r.FormValue("kategori")),
+		SubKategori:       strings.TrimSpace(r.FormValue("sub_kategori")),
+		JenisPerjalanan:   strings.TrimSpace(r.FormValue("jenis_perjalanan")),
+		Items:             notaItemsFromForm(r),
+	}
+
+	kwitansi, err := s.readOptionalPhoto(r, "foto_kwitansi")
+	if err != nil {
+		s.renderNota(w, r, user, sessionValue, form, err.Error(), "", http.StatusUnprocessableEntity)
+		return
+	}
+	transfer, err := s.readOptionalPhoto(r, "bukti_transfer")
+	if err != nil {
+		s.renderNota(w, r, user, sessionValue, form, err.Error(), "", http.StatusUnprocessableEntity)
+		return
+	}
+
+	nota, err := s.nota.Create(r.Context(), user, service.NotaInput{
+		Tanggal:           form.Tanggal,
+		PIC:               form.PIC,
+		Metode:            form.Metode,
+		PenerimaReimburse: form.PenerimaReimburse,
+		Kategori:          form.Kategori,
+		SubKategori:       form.SubKategori,
+		JenisPerjalanan:   form.JenisPerjalanan,
+		Items:             form.Items,
+		FotoKwitansi:      kwitansi,
+		BuktiTransfer:     transfer,
+	})
+	if err != nil {
+		message := "Data nota tidak valid"
+		status := http.StatusUnprocessableEntity
+		switch {
+		case errors.Is(err, service.ErrInvalidPhoto):
+			message = "Lampiran dokumen tidak valid"
+		case errors.Is(err, service.ErrValidation):
+			message = strings.TrimPrefix(err.Error(), "validation error: ")
+		default:
+			log.Printf("create nota: %v", err)
+			message = "Terjadi kesalahan saat menyimpan nota"
+			status = http.StatusInternalServerError
+		}
+		s.renderNota(w, r, user, sessionValue, form, message, "", status)
+		return
+	}
+
+	s.renderNota(w, r, user, sessionValue,
+		NotaFormData{Tanggal: s.nota.Today()},
+		"",
+		fmt.Sprintf("Nota %s tersimpan dengan total Rp %s.", nota.NotaID, formatRupiah(nota.Total)),
+		http.StatusOK)
+}
+
+// notaItemsFromForm reads the repeated line inputs. The four arrays are
+// submitted in parallel, so the shortest one decides how many lines arrived —
+// a browser that sent a partial row must not shift prices onto other products.
+func notaItemsFromForm(r *http.Request) []service.NotaItemInput {
+	nama := r.Form["item_nama"]
+	satuan := r.Form["item_satuan"]
+	volume := r.Form["item_volume"]
+	harga := r.Form["item_harga"]
+	count := len(nama)
+	for _, values := range [][]string{satuan, volume, harga} {
+		if len(values) < count {
+			count = len(values)
+		}
+	}
+	items := make([]service.NotaItemInput, 0, count)
+	for i := 0; i < count; i++ {
+		items = append(items, service.NotaItemInput{
+			NamaProduk: strings.TrimSpace(nama[i]),
+			Satuan:     strings.TrimSpace(satuan[i]),
+			Volume:     strings.TrimSpace(volume[i]),
+			Harga:      strings.TrimSpace(harga[i]),
+		})
+	}
+	return items
+}
+
+func (s *Server) renderNota(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form NotaFormData, errMessage, success string, status int) {
+	if form.Tanggal == "" {
+		form.Tanggal = s.nota.Today()
+	}
+	if len(form.Items) == 0 {
+		form.Items = []service.NotaItemInput{{}}
+	}
+	// The identifier is a preview only; Create assigns the authoritative one,
+	// so a failure here must not keep the form off the screen.
+	nextID, err := s.nota.NextID(r.Context())
+	if err != nil {
+		log.Printf("preview nota id: %v", err)
+	}
+	options, err := s.nota.Options(r.Context())
+	if err != nil {
+		// The picker falls back to free typing, which still works.
+		log.Printf("load nota options: %v", err)
+	}
+	s.render(w, "nota", NotaPageData{
+		ShellPageData:   s.shellData(user, sessionValue, "nota-input"),
+		Form:            form,
+		NextID:          nextID,
+		Options:         options,
+		MetodeOptions:   service.NotaMetodeOptions,
+		KategoriOptions: service.NotaKategoriOptions,
+		JenisOptions:    service.NotaJenisPerjalananOptions,
+		PerjalananDinas: service.NotaSubPerjalananDinas,
+		Error:           errMessage,
+		Success:         success,
+	}, status)
+}
+
+// formatRupiah groups thousands with dots, the way money is written here. The
+// report and the confirmation message have to agree on the figure, so both go
+// through the same formatter.
+func formatRupiah(value float64) string { return export.FormatMoney(value) }
+
 func (s *Server) readOptionalPhoto(r *http.Request, field string) (string, error) {
 	file, _, err := r.FormFile(field)
 	if errors.Is(err, http.ErrMissingFile) {

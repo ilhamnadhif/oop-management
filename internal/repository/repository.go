@@ -30,6 +30,10 @@ type Store interface {
 	MaxUnitA2BNumber(ctx context.Context) (int, error)
 	CreateUnitA2B(ctx context.Context, unit *model.UnitA2B) error
 	ListUnitA2B(ctx context.Context) ([]model.UnitA2B, error)
+	MaxNotaSequence(ctx context.Context, prefix string) (int, error)
+	CreateNota(ctx context.Context, nota *model.Nota) error
+	ListNota(ctx context.Context) ([]model.Nota, error)
+	ListNotaItems(ctx context.Context) ([]model.NotaItem, error)
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	CreateAttendance(ctx context.Context, attendance *model.Attendance) error
 	UpdateAttendance(ctx context.Context, rowNumber int, attendance *model.Attendance) error
