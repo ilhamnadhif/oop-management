@@ -1,0 +1,53 @@
+{{define "produksi_export"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "calculator"}}RENTANG DATA</p>
+        <h2>Pilih periode</h2>
+      </div>
+    </div>
+    <form class="filter-form" method="get" action="/produksi/export">
+      <div>
+        <label for="from">Dari tanggal</label>
+        <input id="from" name="from" type="date" value="{{.From}}">
+      </div>
+      <div>
+        <label for="to">Sampai tanggal</label>
+        <input id="to" name="to" type="date" value="{{.To}}">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/produksi/export">Reset</a>
+      <p class="hint filter-note">Kosongkan keduanya untuk mengunduh seluruh periode.</p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}UNDUH LAPORAN</p>
+        <h2>{{.Rows}} baris siap diunduh</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <p class="panel-empty">
+      Kop laporan memakai logo dan nama {{.Company}}. PDF dicetak mendatar karena
+      tabelnya 20 kolom, dan halaman terakhir memuat blok tanda tangan.
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="/produksi/export/download?format=xlsx{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
+        {{template "icon" "save"}}Unduh XLSX
+      </a>
+      <a class="button subtle" href="/produksi/export/download?format=pdf{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
+        {{template "icon" "save"}}Unduh PDF
+      </a>
+    </div>
+    {{else}}
+    <p class="panel-empty">Tidak ada data pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

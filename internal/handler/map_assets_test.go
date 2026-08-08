@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"opp-management/internal/export"
 	"opp-management/internal/model"
 	"opp-management/internal/photo"
 	"opp-management/internal/repository"
@@ -36,6 +37,7 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *repository.TestRep
 		service.NewUnitA2BService(store, location, nowFunc),
 		session.NewManager(24*time.Hour, false),
 		location, nowFunc, 2*1024*1024, photo.MaxOutputChars,
+		Branding{Company: "PT Orecon Putra Perkasa", Signatory: export.Signatory{Title: "Direktur"}},
 	)
 	if err != nil {
 		t.Fatalf("new server: %v", err)

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/api/sheets/v4"
 
 	"opp-management/internal/config"
+	"opp-management/internal/export"
 	"opp-management/internal/handler"
 	"opp-management/internal/repository"
 	"opp-management/internal/service"
@@ -47,7 +48,15 @@ func main() {
 	overviewService := service.NewOverviewService(store, cfg.Timezone, now)
 	unitA2BService := service.NewUnitA2BService(store, cfg.Timezone, now)
 	sessions := session.NewManager(cfg.SessionTTL, cfg.SessionCookieSecure)
-	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, produksiService, overviewService, unitA2BService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars)
+	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, produksiService, overviewService, unitA2BService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars,
+		handler.Branding{
+			Company: cfg.CompanyName,
+			Signatory: export.Signatory{
+				Name:  cfg.SignatoryName,
+				Title: cfg.SignatoryTitle,
+				Place: cfg.SignatoryPlace,
+			},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}

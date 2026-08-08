@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,6 +80,16 @@ func NewUnitA2BService(store repository.Store, location *time.Location, now NowF
 		now = time.Now
 	}
 	return &UnitA2BService{store: store, location: location, now: now}
+}
+
+// List returns the whole register, oldest number first, for the export.
+func (s *UnitA2BService) List(ctx context.Context) ([]model.UnitA2B, error) {
+	units, err := s.store.ListUnitA2B(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read unit a2b: %w", err)
+	}
+	sort.Slice(units, func(i, j int) bool { return units[i].NoUrut < units[j].NoUrut })
+	return units, nil
 }
 
 // Today is the date the form preselects.

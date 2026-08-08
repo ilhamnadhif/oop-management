@@ -1,0 +1,86 @@
+// Package export renders report files from sheet data.
+//
+// Two formats, because they answer different needs: XLSX keeps every column and
+// stays workable in a spreadsheet, while PDF is the fixed, signable document -
+// landscape, because the production table has twenty columns and portrait
+// cannot hold them legibly.
+package export
+
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+// Signatory is the block printed at the end of a PDF. Every field may be empty:
+// an unnamed signature line is printed rather than a guessed name, because a
+// wrong name on a signed document is worse than a blank one.
+type Signatory struct {
+	Name  string
+	Title string
+	Place string
+}
+
+// Meta is the letterhead: what the report is, which period it covers and who
+// signs it.
+type Meta struct {
+	Company   string
+	Title     string
+	Period    string
+	Generated time.Time
+	Logo      []byte
+	Signatory Signatory
+}
+
+// Column describes one column of a report.
+type Column struct {
+	Header  string
+	Width   float64 // millimetres, PDF only
+	Numeric bool
+	// Decimals is how many the PDF prints; the XLSX keeps the raw number and
+	// carries the format instead, so the value stays usable in a formula.
+	Decimals int
+}
+
+func (m Meta) periodLabel() string {
+	if strings.TrimSpace(m.Period) == "" {
+		return "Seluruh periode"
+	}
+	return m.Period
+}
+
+// SnapshotLabel names the moment a register was taken. A register has no
+// period the way a production report does; what matters is when it was read.
+func SnapshotLabel(at time.Time) string {
+	return "Data per " + formatIndonesianDate(at)
+}
+
+// signedOn renders "9 Agustus 2026", prefixed with a place when one is set.
+func (m Meta) signedOn() string {
+	date := formatIndonesianDate(m.Generated)
+	if place := strings.TrimSpace(m.Signatory.Place); place != "" {
+		return place + ", " + date
+	}
+	return date
+}
+
+var indonesianMonths = [...]string{
+	"Januari", "Februari", "Maret", "April", "Mei", "Juni",
+	"Juli", "Agustus", "September", "Oktober", "November", "Desember",
+}
+
+func formatIndonesianDate(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("%d %s %d", value.Day(), indonesianMonths[int(value.Month())-1], value.Year())
+}
+
+// FormatFloat trims trailing zeros so a whole number does not read as 7.5000.
+func FormatFloat(value float64, decimals int) string {
+	text := fmt.Sprintf("%.*f", decimals, value)
+	if strings.Contains(text, ".") {
+		text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	}
+	return text
+}

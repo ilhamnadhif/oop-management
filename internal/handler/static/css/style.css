@@ -334,3 +334,6 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .combobox-option:hover, .combobox-option.active { background: #eef3f5; }
 .combobox-option.combobox-create { color: var(--teal); font-weight: 600; }
 .combobox-empty { padding: 0.6rem 0.7rem; color: var(--muted); font-size: 0.88rem; }
+
+.export-actions { justify-content: flex-start; gap: 0.75rem; margin-top: 1.2rem; }
+.export-actions .button { text-decoration: none; }

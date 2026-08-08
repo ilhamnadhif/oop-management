@@ -400,20 +400,21 @@ func TestBreadcrumbNamesTheSection(t *testing.T) {
 	}
 }
 
-// The export pages are placeholders, but they must still be real pages behind
-// the session guard rather than 404s.
+// Both export pages are real pages behind the session guard, not 404s.
 func TestExportPagesExistAndAreGuarded(t *testing.T) {
-	testServer := newTestServer(t)
+	testServer, store := newTestServerWithStore(t)
+	seedProduksi(t, store, "2026-08-01", "B 1234 ABC", "DT KECIL", 10.5, 10)
 	client := loggedInClient(t, testServer)
 
-	for _, path := range []string{"/produksi/export", "/unit/export"} {
-		page := fetchAuthedPage(t, client, testServer.URL+path)
-		if !strings.Contains(page, "SEGERA HADIR") {
-			t.Fatalf("%s: does not explain that it is not ready", path)
-		}
-		if !strings.Contains(page, "XLSX") || !strings.Contains(page, "PDF") {
-			t.Fatalf("%s: does not say which formats are coming", path)
-		}
+	produksi := fetchAuthedPage(t, client, testServer.URL+"/produksi/export")
+	if !strings.Contains(produksi, "format=xlsx") || !strings.Contains(produksi, "format=pdf") {
+		t.Fatal("the produksi export page offers no downloads")
+	}
+	// The registers are empty here, so the page names them without offering
+	// buttons; the downloads themselves are covered in unit_export_test.go.
+	unit := fetchAuthedPage(t, client, testServer.URL+"/unit/export")
+	if !strings.Contains(unit, "UNIT DT") || !strings.Contains(unit, "UNIT A2B") {
+		t.Fatal("the unit export page does not list both registers")
 	}
 
 	anonymous := &http.Client{

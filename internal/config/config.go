@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,6 +18,13 @@ type Config struct {
 	SessionCookieSecure   bool
 	MaxUploadBytes        int64
 	MaxPhotoChars         int
+	// Signatory prints on exported reports. Left empty the report shows a blank
+	// signature line, which is the safe default: a guessed name on a signed
+	// document is worse than none.
+	SignatoryName  string
+	SignatoryTitle string
+	SignatoryPlace string
+	CompanyName    string
 }
 
 func Load() (Config, error) {
@@ -56,6 +64,10 @@ func Load() (Config, error) {
 		SessionCookieSecure:   parseBool(getenv("SESSION_COOKIE_SECURE", "false")),
 		MaxUploadBytes:        maxUploadBytes,
 		MaxPhotoChars:         maxPhotoChars,
+		SignatoryName:         strings.TrimSpace(os.Getenv("SIGNATORY_NAME")),
+		SignatoryTitle:        getenv("SIGNATORY_TITLE", "Direktur"),
+		SignatoryPlace:        strings.TrimSpace(os.Getenv("SIGNATORY_PLACE")),
+		CompanyName:           getenv("COMPANY_NAME", "PT Orecon Putra Perkasa"),
 	}
 
 	if cfg.GoogleSpreadsheetID == "" {

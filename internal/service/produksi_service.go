@@ -142,6 +142,49 @@ func (s *ProduksiService) Today() string {
 	return s.now().In(s.location).Format("2006-01-02")
 }
 
+// RowsBetween returns the production rows inside an inclusive date range,
+// oldest first. Either bound may be empty, meaning no bound on that side.
+func (s *ProduksiService) RowsBetween(ctx context.Context, from, to string) ([]model.Produksi, string, string, error) {
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	if from != "" {
+		if _, err := time.Parse("2006-01-02", from); err != nil {
+			return nil, "", "", fmt.Errorf("%w: tanggal awal tidak valid", ErrValidation)
+		}
+	}
+	if to != "" {
+		if _, err := time.Parse("2006-01-02", to); err != nil {
+			return nil, "", "", fmt.Errorf("%w: tanggal akhir tidak valid", ErrValidation)
+		}
+	}
+	// A reversed range would quietly export nothing, which reads as "no data".
+	if from != "" && to != "" && from > to {
+		from, to = to, from
+	}
+
+	all, err := s.store.ListProduksi(ctx)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("read produksi: %w", err)
+	}
+	rows := make([]model.Produksi, 0, len(all))
+	for _, row := range all {
+		if from != "" && row.Tanggal < from {
+			continue
+		}
+		if to != "" && row.Tanggal > to {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Tanggal != rows[j].Tanggal {
+			return rows[i].Tanggal < rows[j].Tanggal
+		}
+		return rows[i].ProduksiID < rows[j].ProduksiID
+	})
+	return rows, from, to, nil
+}
+
 // Units backs the nopol picker on the form.
 func (s *ProduksiService) Units(ctx context.Context) ([]model.UnitDT, error) {
 	return s.store.ListUnitDT(ctx)

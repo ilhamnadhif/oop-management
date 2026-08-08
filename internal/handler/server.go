@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"opp-management/internal/export"
 	"opp-management/internal/model"
 	"opp-management/internal/photo"
 	"opp-management/internal/service"
@@ -32,6 +33,8 @@ type Server struct {
 	produksi       *service.ProduksiService
 	overview       *service.OverviewService
 	unitA2B        *service.UnitA2BService
+	company        string
+	signatory      export.Signatory
 	sessions       *session.Manager
 	location       *time.Location
 	now            service.NowFunc
@@ -128,6 +131,16 @@ type ProduksiFormData struct {
 	TT       string
 }
 
+type ExportPageData struct {
+	ShellPageData
+	From    string
+	To      string
+	Rows    int
+	Error   string
+	Ready   bool
+	Company string
+}
+
 type OverviewPageData struct {
 	ShellPageData
 	Overview     *service.Overview
@@ -159,7 +172,16 @@ type DashboardPageData struct {
 	HasClockOut   bool
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
+// Branding is what appears on exported reports.
+type Branding struct {
+	Company   string
+	Signatory export.Signatory
+}
+
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
+	if strings.TrimSpace(branding.Company) == "" {
+		branding.Company = "PT Orecon Putra Perkasa"
+	}
 	if location == nil {
 		location = time.Local
 	}
@@ -194,6 +216,8 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		now:            now,
 		maxUploadBytes: maxUploadBytes,
 		maxPhotoChars:  maxPhotoChars,
+		company:        branding.Company,
+		signatory:      branding.Signatory,
 		templates:      templates,
 	}, nil
 }
@@ -208,7 +232,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/produksi", s.handleProduksi)
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
+	mux.HandleFunc("/produksi/export/download", s.handleProduksiDownload)
 	mux.HandleFunc("/unit/export", s.handleUnitExport)
+	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
@@ -450,23 +476,237 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 	}, "", "", http.StatusOK)
 }
 
-// The export pages are placeholders until the XLSX and PDF writers land. They
-// exist now so the menu entries lead somewhere that explains itself rather than
-// to a 404 that reads as a broken app.
 func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
-	s.renderComingSoon(w, r, "produksi-export")
-}
-
-func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
-	s.renderComingSoon(w, r, "unit-export")
-}
-
-func (s *Server) renderComingSoon(w http.ResponseWriter, r *http.Request, navKey string) {
 	user, sessionValue, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
-	s.render(w, "coming_soon", s.shellData(user, sessionValue, navKey), http.StatusOK)
+	from := strings.TrimSpace(r.URL.Query().Get("from"))
+	to := strings.TrimSpace(r.URL.Query().Get("to"))
+
+	data := ExportPageData{
+		ShellPageData: s.shellData(user, sessionValue, "produksi-export"),
+		From:          from,
+		To:            to,
+		Ready:         true,
+		Company:       s.company,
+	}
+	rows, appliedFrom, appliedTo, err := s.produksi.RowsBetween(r.Context(), from, to)
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
+		} else {
+			log.Printf("count produksi for export: %v", err)
+			data.Error = "Gagal memuat data produksi"
+		}
+		s.render(w, "produksi_export", data, http.StatusOK)
+		return
+	}
+	data.Rows = len(rows)
+	data.From = appliedFrom
+	data.To = appliedTo
+	s.render(w, "produksi_export", data, http.StatusOK)
+}
+
+// handleProduksiDownload streams the report itself.
+func (s *Server) handleProduksiDownload(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.requireUser(w, r); !ok {
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format != "xlsx" && format != "pdf" {
+		http.Error(w, "format tidak dikenal", http.StatusBadRequest)
+		return
+	}
+
+	rows, from, to, err := s.produksi.RowsBetween(r.Context(),
+		r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			http.Error(w, strings.TrimPrefix(err.Error(), "validation error: "), http.StatusUnprocessableEntity)
+			return
+		}
+		log.Printf("read produksi for export: %v", err)
+		http.Error(w, "Gagal memuat data produksi", http.StatusInternalServerError)
+		return
+	}
+
+	meta := s.exportMeta("Laporan Produksi", from, to)
+	var payload []byte
+	var contentType, extension string
+	if format == "xlsx" {
+		payload, err = export.ProduksiXLSX(rows, meta)
+		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		extension = "xlsx"
+	} else {
+		payload, err = export.ProduksiPDF(rows, meta)
+		contentType = "application/pdf"
+		extension = "pdf"
+	}
+	if err != nil {
+		log.Printf("build produksi %s: %v", format, err)
+		http.Error(w, "Gagal membuat berkas", http.StatusInternalServerError)
+		return
+	}
+
+	filename := fmt.Sprintf("laporan-produksi-%s.%s", exportPeriodSlug(from, to), extension)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	// A report is a snapshot of a moving sheet; a cached copy would quietly go
+	// stale behind the person downloading it.
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(payload)
+}
+
+func (s *Server) exportMeta(title, from, to string) export.Meta {
+	logo, err := assetFiles.ReadFile("static/img/opp-logo.png")
+	if err != nil {
+		// A missing logo costs the letterhead its mark, not the report.
+		log.Printf("read logo for export: %v", err)
+	}
+	return export.Meta{
+		Company:   s.company,
+		Title:     title,
+		Period:    exportPeriodLabel(from, to),
+		Generated: s.now().In(s.location),
+		Logo:      logo,
+		Signatory: s.signatory,
+	}
+}
+
+func exportPeriodLabel(from, to string) string {
+	switch {
+	case from != "" && to != "":
+		return from + " s/d " + to
+	case from != "":
+		return "Sejak " + from
+	case to != "":
+		return "Sampai " + to
+	default:
+		return ""
+	}
+}
+
+func exportPeriodSlug(from, to string) string {
+	switch {
+	case from != "" && to != "":
+		return from + "_" + to
+	case from != "":
+		return "sejak-" + from
+	case to != "":
+		return "sampai-" + to
+	default:
+		return "semua"
+	}
+}
+
+type UnitExportPageData struct {
+	ShellPageData
+	UnitDTRows  int
+	UnitA2BRows int
+	Error       string
+	Company     string
+}
+
+func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	data := UnitExportPageData{
+		ShellPageData: s.shellData(user, sessionValue, "unit-export"),
+		Company:       s.company,
+	}
+
+	dt, err := s.produksi.Units(r.Context())
+	if err != nil {
+		log.Printf("count unit dt for export: %v", err)
+		data.Error = "Gagal memuat data unit"
+	}
+	a2b, err := s.unitA2B.List(r.Context())
+	if err != nil {
+		log.Printf("count unit a2b for export: %v", err)
+		data.Error = "Gagal memuat data unit"
+	}
+	data.UnitDTRows = len(dt)
+	data.UnitA2BRows = len(a2b)
+	s.render(w, "unit_export", data, http.StatusOK)
+}
+
+// handleUnitDownload streams a register. The two registers share one page but
+// are separate files: merging trucks and machines into one sheet would put
+// unrelated columns side by side.
+func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.requireUser(w, r); !ok {
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format != "xlsx" && format != "pdf" {
+		http.Error(w, "format tidak dikenal", http.StatusBadRequest)
+		return
+	}
+	dataset := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("dataset")))
+	if dataset != "dt" && dataset != "a2b" {
+		http.Error(w, "dataset tidak dikenal", http.StatusBadRequest)
+		return
+	}
+
+	var (
+		payload []byte
+		err     error
+		title   string
+		slug    string
+	)
+	if dataset == "dt" {
+		units, listErr := s.produksi.Units(r.Context())
+		if listErr != nil {
+			log.Printf("read unit dt for export: %v", listErr)
+			http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
+			return
+		}
+		title, slug = "Daftar Unit DT", "unit-dt"
+		meta := s.exportMeta(title, "", "")
+		meta.Period = export.SnapshotLabel(meta.Generated)
+		if format == "xlsx" {
+			payload, err = export.UnitDTXLSX(units, meta)
+		} else {
+			payload, err = export.UnitDTPDF(units, meta)
+		}
+	} else {
+		units, listErr := s.unitA2B.List(r.Context())
+		if listErr != nil {
+			log.Printf("read unit a2b for export: %v", listErr)
+			http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
+			return
+		}
+		title, slug = "Daftar Unit A2B", "unit-a2b"
+		meta := s.exportMeta(title, "", "")
+		meta.Period = export.SnapshotLabel(meta.Generated)
+		if format == "xlsx" {
+			payload, err = export.UnitA2BXLSX(units, meta)
+		} else {
+			payload, err = export.UnitA2BPDF(units, meta)
+		}
+	}
+	if err != nil {
+		log.Printf("build %s %s: %v", slug, format, err)
+		http.Error(w, "Gagal membuat berkas", http.StatusInternalServerError)
+		return
+	}
+
+	contentType := "application/pdf"
+	if format == "xlsx" {
+		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	}
+	filename := fmt.Sprintf("daftar-%s.%s", slug, format)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	// A register is a snapshot of a moving sheet; a cached copy would quietly go
+	// stale behind the person downloading it.
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(payload)
 }
 
 func (s *Server) handleUnitA2B(w http.ResponseWriter, r *http.Request) {
