@@ -16,3 +16,4 @@ vps.txt
 cmd/seedunitdt/units.tsv
 cmd/importproduksi/produksi.tsv
 *.xlsx
+cmd/seedunita2b/units.tsv
