@@ -59,6 +59,25 @@ type UnitDT struct {
 	UpdatedAt   time.Time
 }
 
+// UnitA2B is one registered A2B unit. FuelStorage is litres, FRUnit is litres
+// per hour, and HMAwal is the hour meter at registration.
+type UnitA2B struct {
+	NoUrut      int
+	TanggalIn   string
+	IDUnit      string
+	NamaUnit    string
+	MerekType   string
+	FuelStorage float64
+	FRUnit      float64
+	Lokasi      string
+	HMAwal      float64
+	Foto        string
+	CreatedBy   string
+	CreatedByID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // Produksi is one hauling record. Every dimension is metres and every volume
 // is cubic metres.
 type Produksi struct {

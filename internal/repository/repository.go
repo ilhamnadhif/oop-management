@@ -26,6 +26,9 @@ type Store interface {
 	CreateProduksi(ctx context.Context, produksi *model.Produksi) error
 	CreateProduksiBatch(ctx context.Context, rows []*model.Produksi) error
 	ListProduksi(ctx context.Context) ([]model.Produksi, error)
+	UnitA2BExists(ctx context.Context, idUnit string) (bool, error)
+	MaxUnitA2BNumber(ctx context.Context) (int, error)
+	CreateUnitA2B(ctx context.Context, unit *model.UnitA2B) error
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	CreateAttendance(ctx context.Context, attendance *model.Attendance) error
 	UpdateAttendance(ctx context.Context, rowNumber int, attendance *model.Attendance) error

@@ -1,0 +1,89 @@
+{{define "unit_a2b"}}
+{{template "appShellOpen" .}}
+  <h1 class="page-title">{{.PageTitle}}</h1>
+
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <form method="post" action="/unit-a2b" class="stack-form" enctype="multipart/form-data" data-loading-form>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "info"}}1. INFORMASI REGISTRASI</p>
+          <h2>Pendaftaran unit</h2>
+        </div>
+      </div>
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="no_urut">No urut <span class="hint">(otomatis)</span></label>
+          <input id="no_urut" type="text" value="{{.NextNumber}}" disabled>
+        </div>
+        <div>
+          <label for="tanggal">Tanggal input</label>
+          <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
+        </div>
+        <div>
+          <label for="id_unit">ID unit</label>
+          <input id="id_unit" name="id_unit" type="text" value="{{.Form.IDUnit}}" placeholder="EXCA-01 / DT-05" autocomplete="off" required>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "truck"}}2. SPESIFIKASI &amp; OPERASIONAL UNIT</p>
+          <h2>Detail unit</h2>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="nama_unit">Nama unit</label>
+          <input id="nama_unit" name="nama_unit" type="text" value="{{.Form.NamaUnit}}" placeholder="Excavator / Dump Truck / Dozer" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="merek_type">Merek / type</label>
+          <input id="merek_type" name="merek_type" type="text" value="{{.Form.MerekType}}" placeholder="Komatsu PC200 / CAT 320" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="fuel_storage">Fuel storage — kapasitas tangki (liter)</label>
+          <input id="fuel_storage" name="fuel_storage" type="number" value="{{.Form.FuelStorage}}" placeholder="0" step="0.01" min="0.01" required>
+        </div>
+        <div>
+          <label for="fr_unit">FR unit (liter/jam)</label>
+          <input id="fr_unit" name="fr_unit" type="number" value="{{.Form.FRUnit}}" placeholder="8.5" step="0.01" min="0.01" required>
+        </div>
+        <div>
+          <label for="lokasi">Lokasi unit</label>
+          <input id="lokasi" name="lokasi" type="text" value="{{.Form.Lokasi}}" placeholder="Ketik lokasi…" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="hm_awal">HM awal unit</label>
+          <input id="hm_awal" name="hm_awal" type="number" value="{{.Form.HMAwal}}" placeholder="0.0" step="0.1" min="0" required>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "camera"}}3. UPLOAD FOTO UNIT</p>
+          <h2>Foto unit tampak keseluruhan</h2>
+        </div>
+      </div>
+      <label for="foto_unit">Foto unit <span class="hint">(opsional)</span></label>
+      <input id="foto_unit" name="foto_unit" type="file" accept="image/*">
+      <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
+    </section>
+
+    <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+      <span class="spinner" aria-hidden="true" hidden></span>
+      {{template "icon" "save"}}<span data-submit-label>Simpan data Unit A2B</span>
+    </button>
+  </form>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

@@ -31,6 +31,7 @@ type Server struct {
 	unitDT         *service.UnitDTService
 	produksi       *service.ProduksiService
 	overview       *service.OverviewService
+	unitA2B        *service.UnitA2BService
 	sessions       *session.Manager
 	location       *time.Location
 	now            service.NowFunc
@@ -90,6 +91,25 @@ type UnitDTPageData struct {
 	Success           string
 }
 
+type UnitA2BFormData struct {
+	Tanggal     string
+	IDUnit      string
+	NamaUnit    string
+	MerekType   string
+	FuelStorage string
+	FRUnit      string
+	Lokasi      string
+	HMAwal      string
+}
+
+type UnitA2BPageData struct {
+	ShellPageData
+	Form       UnitA2BFormData
+	NextNumber int
+	Error      string
+	Success    string
+}
+
 type ProduksiFormData struct {
 	Tanggal  string
 	Project  string
@@ -137,7 +157,7 @@ type DashboardPageData struct {
 	HasClockOut   bool
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int) (*Server, error) {
 	if location == nil {
 		location = time.Local
 	}
@@ -166,6 +186,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		unitDT:         unitDT,
 		produksi:       produksi,
 		overview:       overview,
+		unitA2B:        unitA2B,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -185,6 +206,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/produksi", s.handleProduksi)
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
+	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
 	mux.HandleFunc("/absensi/clock-out", s.handleClockOut)
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -411,6 +433,123 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 	s.renderProduksi(w, r, user, sessionValue, ProduksiFormData{
 		Tanggal: s.produksi.Today(),
 	}, "", "", http.StatusOK)
+}
+
+func (s *Server) handleUnitA2B(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handleUnitA2BCreate(w, r)
+		return
+	}
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	s.renderUnitA2B(w, r, user, sessionValue, UnitA2BFormData{Tanggal: s.unitA2B.Today()}, "", "", http.StatusOK)
+}
+
+func (s *Server) handleUnitA2BCreate(w http.ResponseWriter, r *http.Request) {
+	sessionValue, ok := s.currentSession(r)
+	if !ok {
+		redirect(w, r, "/login")
+		return
+	}
+	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
+	if err != nil || user.StatusPengguna != model.StatusAktif {
+		s.sessions.Delete(r, w)
+		redirect(w, r, "/login")
+		return
+	}
+
+	// Bound the body before parsing, then check CSRF from the parsed form, the
+	// same order the Unit DT form uses.
+	maxBody := s.maxUploadBytes + 64*1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseMultipartForm(maxBody); err != nil {
+		s.renderUnitA2B(w, r, user, sessionValue, UnitA2BFormData{}, "Form tidak valid atau file terlalu besar", "", http.StatusUnprocessableEntity)
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+	if !s.sessions.ValidCSRFToken(r.FormValue("csrf_token"), sessionValue) {
+		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
+		return
+	}
+
+	form := UnitA2BFormData{
+		Tanggal:     strings.TrimSpace(r.FormValue("tanggal")),
+		IDUnit:      strings.TrimSpace(r.FormValue("id_unit")),
+		NamaUnit:    strings.TrimSpace(r.FormValue("nama_unit")),
+		MerekType:   strings.TrimSpace(r.FormValue("merek_type")),
+		FuelStorage: strings.TrimSpace(r.FormValue("fuel_storage")),
+		FRUnit:      strings.TrimSpace(r.FormValue("fr_unit")),
+		Lokasi:      strings.TrimSpace(r.FormValue("lokasi")),
+		HMAwal:      strings.TrimSpace(r.FormValue("hm_awal")),
+	}
+
+	photoValue, err := s.readOptionalPhoto(r, "foto_unit")
+	if err != nil {
+		s.renderUnitA2B(w, r, user, sessionValue, form, err.Error(), "", http.StatusUnprocessableEntity)
+		return
+	}
+
+	unit, err := s.unitA2B.Create(r.Context(), user, service.UnitA2BInput{
+		Tanggal:     form.Tanggal,
+		IDUnit:      form.IDUnit,
+		NamaUnit:    form.NamaUnit,
+		MerekType:   form.MerekType,
+		FuelStorage: form.FuelStorage,
+		FRUnit:      form.FRUnit,
+		Lokasi:      form.Lokasi,
+		HMAwal:      form.HMAwal,
+		Foto:        photoValue,
+	})
+	if err != nil {
+		message := "Data unit tidak valid"
+		status := http.StatusUnprocessableEntity
+		switch {
+		case errors.Is(err, service.ErrDuplicateUnitA2B):
+			message = "ID unit sudah terdaftar"
+			status = http.StatusConflict
+		case errors.Is(err, service.ErrInvalidPhoto):
+			message = "Foto unit tidak valid"
+		case errors.Is(err, service.ErrValidation):
+			message = strings.TrimPrefix(err.Error(), "validation error: ")
+		default:
+			log.Printf("create unit a2b: %v", err)
+			message = "Terjadi kesalahan saat menyimpan unit"
+			status = http.StatusInternalServerError
+		}
+		s.renderUnitA2B(w, r, user, sessionValue, form, message, "", status)
+		return
+	}
+
+	s.renderUnitA2B(w, r, user, sessionValue,
+		UnitA2BFormData{Tanggal: s.unitA2B.Today()},
+		"",
+		fmt.Sprintf("Unit %s tersimpan sebagai nomor urut %d.", unit.IDUnit, unit.NoUrut),
+		http.StatusOK)
+}
+
+func (s *Server) renderUnitA2B(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form UnitA2BFormData, errMessage, success string, status int) {
+	if form.Tanggal == "" {
+		form.Tanggal = s.unitA2B.Today()
+	}
+	// The running number is a preview only. A failure here must not block the
+	// form, since Create assigns the authoritative number anyway.
+	next, err := s.unitA2B.NextNumber(r.Context())
+	if err != nil {
+		log.Printf("preview unit a2b number: %v", err)
+	}
+	s.render(w, "unit_a2b", UnitA2BPageData{
+		ShellPageData: s.shellData(user, sessionValue, "unit-a2b"),
+		Form:          form,
+		NextNumber:    next,
+		Error:         errMessage,
+		Success:       success,
+	}, status)
 }
 
 func (s *Server) handleProduksiOverview(w http.ResponseWriter, r *http.Request) {

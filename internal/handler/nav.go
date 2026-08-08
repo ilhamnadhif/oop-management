@@ -17,6 +17,7 @@ var navItems = []NavItem{
 	{Key: "produksi", Label: "Produksi", Path: "/produksi", Icon: "chart"},
 	{Key: "produksi-overview", Label: "Produksi Overview", Path: "/produksi/overview", Icon: "activity"},
 	{Key: "unit-dt", Label: "Unit DT", Path: "/unit-dt", Icon: "truck"},
+	{Key: "unit-a2b", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube"},
 }
 
 // navItemsFor returns the menu a user may see. Every role currently sees the

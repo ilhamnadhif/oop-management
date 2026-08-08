@@ -33,6 +33,7 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *repository.TestRep
 		service.NewUnitDTService(store, location, nowFunc),
 		service.NewProduksiService(store, location, nowFunc),
 		service.NewOverviewService(store, location, nowFunc),
+		service.NewUnitA2BService(store, location, nowFunc),
 		session.NewManager(24*time.Hour, false),
 		location, nowFunc, 2*1024*1024, photo.MaxOutputChars,
 	)

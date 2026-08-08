@@ -18,6 +18,7 @@ const (
 	attendanceSheet = "absensi data"
 	unitDTSheet     = "Unit DT"
 	produksiSheet   = "Produksi"
+	unitA2BSheet    = "Unit A2B"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -52,6 +53,12 @@ var produksiHeaders = []string{
 	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
 }
 
+var unitA2BHeaders = []string{
+	"no_urut", "tanggal_input", "id_unit", "nama_unit", "merek_type",
+	"fuel_storage_liter", "fr_unit_liter_per_jam", "lokasi_unit", "hm_awal",
+	"foto_unit", "dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+}
+
 type GoogleSheetsRepository struct {
 	service       *sheets.Service
 	spreadsheetID string
@@ -75,7 +82,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, unitA2BSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -100,6 +107,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: attendanceSheet, headers: attendanceHeaders},
 		{name: unitDTSheet, headers: unitDTHeaders},
 		{name: produksiSheet, headers: produksiHeaders},
+		{name: unitA2BSheet, headers: unitA2BHeaders},
 	} {
 		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
 			return err
@@ -420,6 +428,57 @@ func produksiToRow(produksi *model.Produksi) []interface{} {
 		formatFloat(produksi.Volume), formatFloat(produksi.VolumeOPP), formatFloat(produksi.Deviasi),
 		produksi.CreatedBy, produksi.CreatedByID,
 		formatDateTime(produksi.CreatedAt), formatDateTime(produksi.UpdatedAt),
+	}
+}
+
+// UnitA2BExists reads columns A:C only. The foto column carries a base64 data
+// URL, so a full-width read just to compare identifiers would pull megabytes.
+func (r *GoogleSheetsRepository) UnitA2BExists(ctx context.Context, idUnit string) (bool, error) {
+	rows, err := r.readRows(ctx, unitA2BSheet, "C")
+	if err != nil {
+		return false, err
+	}
+	idUnit = strings.ToUpper(strings.TrimSpace(idUnit))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, 3)
+		if strings.ToUpper(strings.TrimSpace(cellString(row[2]))) == idUnit {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// MaxUnitA2BNumber returns the highest running number in use. It takes the
+// maximum rather than a row count so a deleted row cannot make the next number
+// collide with a surviving one.
+func (r *GoogleSheetsRepository) MaxUnitA2BNumber(ctx context.Context) (int, error) {
+	rows, err := r.readRows(ctx, unitA2BSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		number, err := strconv.Atoi(strings.TrimSpace(cellString(row[0])))
+		if err == nil && number > highest {
+			highest = number
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateUnitA2B(ctx context.Context, unit *model.UnitA2B) error {
+	return r.appendRow(ctx, unitA2BSheet, unitA2BToRow(unit))
+}
+
+func unitA2BToRow(unit *model.UnitA2B) []interface{} {
+	return []interface{}{
+		strconv.Itoa(unit.NoUrut), unit.TanggalIn, unit.IDUnit, unit.NamaUnit, unit.MerekType,
+		formatFloat(unit.FuelStorage), formatFloat(unit.FRUnit), unit.Lokasi, formatFloat(unit.HMAwal),
+		unit.Foto, unit.CreatedBy, unit.CreatedByID,
+		formatDateTime(unit.CreatedAt), formatDateTime(unit.UpdatedAt),
 	}
 }
 

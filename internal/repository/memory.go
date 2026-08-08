@@ -19,6 +19,7 @@ type TestRepository struct {
 	attendance []*model.Attendance
 	unitDT     []*model.UnitDT
 	produksi   []*model.Produksi
+	unitA2B    []*model.UnitA2B
 }
 
 func NewTestRepository() *TestRepository {
@@ -105,6 +106,49 @@ func (r *TestRepository) CreateProduksiBatch(_ context.Context, rows []*model.Pr
 
 func (r *TestRepository) ListProduksi(_ context.Context) ([]model.Produksi, error) {
 	return r.ProduksiList(), nil
+}
+
+func (r *TestRepository) UnitA2BExists(_ context.Context, idUnit string) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	idUnit = strings.ToUpper(strings.TrimSpace(idUnit))
+	for _, unit := range r.unitA2B {
+		if strings.ToUpper(strings.TrimSpace(unit.IDUnit)) == idUnit {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *TestRepository) MaxUnitA2BNumber(_ context.Context) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, unit := range r.unitA2B {
+		if unit.NoUrut > highest {
+			highest = unit.NoUrut
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateUnitA2B(_ context.Context, unit *model.UnitA2B) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := *unit
+	r.unitA2B = append(r.unitA2B, &stored)
+	return nil
+}
+
+// UnitA2BList exposes stored A2B units to tests.
+func (r *TestRepository) UnitA2BList() []model.UnitA2B {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	units := make([]model.UnitA2B, 0, len(r.unitA2B))
+	for _, unit := range r.unitA2B {
+		units = append(units, *unit)
+	}
+	return units
 }
 
 // ProduksiList exposes stored production rows to tests.
