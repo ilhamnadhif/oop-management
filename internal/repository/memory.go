@@ -93,6 +93,16 @@ func (r *TestRepository) CreateProduksi(_ context.Context, produksi *model.Produ
 	return nil
 }
 
+func (r *TestRepository) CreateProduksiBatch(_ context.Context, rows []*model.Produksi) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, produksi := range rows {
+		stored := *produksi
+		r.produksi = append(r.produksi, &stored)
+	}
+	return nil
+}
+
 // ProduksiList exposes stored production rows to tests.
 func (r *TestRepository) ProduksiList() []model.Produksi {
 	r.mu.RLock()

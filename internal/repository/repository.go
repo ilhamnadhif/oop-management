@@ -24,6 +24,7 @@ type Store interface {
 	ListUnitDT(ctx context.Context) ([]model.UnitDT, error)
 	MaxProduksiSequence(ctx context.Context, prefix string) (int, error)
 	CreateProduksi(ctx context.Context, produksi *model.Produksi) error
+	CreateProduksiBatch(ctx context.Context, rows []*model.Produksi) error
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	CreateAttendance(ctx context.Context, attendance *model.Attendance) error
 	UpdateAttendance(ctx context.Context, rowNumber int, attendance *model.Attendance) error

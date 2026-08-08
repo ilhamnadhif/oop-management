@@ -343,6 +343,32 @@ func (r *GoogleSheetsRepository) CreateProduksi(ctx context.Context, produksi *m
 	return r.appendRow(ctx, produksiSheet, produksiToRow(produksi))
 }
 
+// produksiBatchSize caps how many rows travel in one append. Importing a
+// backlog one row at a time would take an hour and trip the per-minute write
+// quota; sending everything in a single request risks a payload the API
+// rejects outright.
+const produksiBatchSize = 500
+
+func (r *GoogleSheetsRepository) CreateProduksiBatch(ctx context.Context, rows []*model.Produksi) error {
+	for start := 0; start < len(rows); start += produksiBatchSize {
+		end := start + produksiBatchSize
+		if end > len(rows) {
+			end = len(rows)
+		}
+		values := make([][]interface{}, 0, end-start)
+		for _, produksi := range rows[start:end] {
+			values = append(values, produksiToRow(produksi))
+		}
+		rangeName := fmt.Sprintf("%s!A:A", quoteSheet(produksiSheet))
+		_, err := r.service.Spreadsheets.Values.Append(r.spreadsheetID, rangeName, &sheets.ValueRange{Values: values}).
+			ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Context(ctx).Do()
+		if err != nil {
+			return fmt.Errorf("append produksi rows %d-%d: %w", start+1, end, err)
+		}
+	}
+	return nil
+}
+
 func produksiToRow(produksi *model.Produksi) []interface{} {
 	return []interface{}{
 		produksi.ProduksiID, produksi.Tanggal, produksi.Project, produksi.Supplier,

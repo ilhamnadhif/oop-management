@@ -10,3 +10,9 @@ vps.txt
 
 # Local OS files
 .DS_Store
+
+# Operational data: plates, drivers and haul volumes. This repository is
+# public, so the seed lists live on disk only.
+cmd/seedunitdt/units.tsv
+cmd/importproduksi/produksi.tsv
+*.xlsx

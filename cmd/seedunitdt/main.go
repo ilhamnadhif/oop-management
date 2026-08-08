@@ -12,7 +12,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,8 +29,10 @@ import (
 	"opp-management/internal/service"
 )
 
-//go:embed units.tsv
-var seedFiles embed.FS
+// defaultSeedFile is read from disk rather than embedded. The list carries
+// plate numbers and driver names, and this repository is public, so the data
+// must not travel inside the binary or the git history.
+const defaultSeedFile = "cmd/seedunitdt/units.tsv"
 
 type seedRow struct {
 	line  int
@@ -40,13 +41,14 @@ type seedRow struct {
 
 func main() {
 	apply := flag.Bool("apply", false, "write the rows to the sheet; without it nothing is written")
+	path := flag.String("file", defaultSeedFile, "TSV holding the units to seed")
 	flag.Parse()
 
-	rows, err := readSeed()
+	rows, err := readSeed(*path)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("%d rows read from units.tsv", len(rows))
+	log.Printf("%d rows read from %s", len(rows), *path)
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -127,8 +129,8 @@ func main() {
 	}
 }
 
-func readSeed() ([]seedRow, error) {
-	file, err := seedFiles.Open("units.tsv")
+func readSeed(path string) ([]seedRow, error) {
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
