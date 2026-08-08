@@ -68,9 +68,11 @@ func TestSidebarMarksActivePageAndKeepsLogoutLast(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	active := map[string]string{
-		"/dashboard": "Absensi",
-		"/produksi":  "Produksi",
-		"/unit-dt":   "Unit DT",
+		"/dashboard":         "Absensi",
+		"/produksi":          "Input Data",
+		"/produksi/overview": "Overview",
+		"/unit-dt":           "Unit DT",
+		"/unit-a2b":          "Unit A2B",
 	}
 	for path, label := range active {
 		page := fetchAuthedPage(t, client, testServer.URL+path)
@@ -162,10 +164,12 @@ func TestBreadcrumbSitsBelowThePageTitle(t *testing.T) {
 
 	titles := map[string]string{
 		"/dashboard":         "Absensi",
-		"/produksi":          "Produksi",
-		"/produksi/overview": "Produksi Overview",
+		"/produksi":          "Input Data",
+		"/produksi/overview": "Overview",
+		"/produksi/export":   "Export Data",
 		"/unit-dt":           "Unit DT",
 		"/unit-a2b":          "Unit A2B",
+		"/unit/export":       "Export Data",
 	}
 	for path, title := range titles {
 		page := fetchAuthedPage(t, client, testServer.URL+path)
@@ -250,6 +254,180 @@ func TestSidebarLogoutIsAProtectedPost(t *testing.T) {
 	// An icon-only control still has to announce itself.
 	if !strings.Contains(sidebar, `aria-label="Keluar"`) {
 		t.Fatal("the logout icon has no accessible name")
+	}
+}
+
+// Pages under a group are nested beneath its heading, and the heading itself is
+// not a link: it has no page of its own.
+func TestSidebarGroupsPagesUnderHeadings(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+	nav := navSection(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
+
+	for _, group := range []string{"Produksi", "Unit"} {
+		heading := `class="sidebar-group-label"`
+		if !strings.Contains(nav, heading) {
+			t.Fatalf("no group headings rendered")
+		}
+		if !strings.Contains(nav, ">"+group+"<") {
+			t.Fatalf("group %q is missing", group)
+		}
+		// A heading must not be a link, or clicking it leads nowhere.
+		if strings.Contains(nav, `href="/produksi"><`) {
+			t.Fatal("a group heading was rendered as a link")
+		}
+	}
+
+	// Every page sits inside a sublist.
+	for _, page := range []string{"Overview", "Input Data", "Export Data", "Unit DT", "Unit A2B"} {
+		at := strings.Index(nav, ">"+page+"<")
+		if at < 0 {
+			t.Fatalf("page %q is missing from the menu", page)
+		}
+		if strings.LastIndex(nav[:at], `class="sidebar-sublist"`) < 0 {
+			t.Fatalf("page %q is not nested under a group", page)
+		}
+	}
+
+	// Absensi stays top level and first.
+	absensiAt := strings.Index(nav, ">Absensi<")
+	firstGroupAt := strings.Index(nav, `class="sidebar-group`)
+	if absensiAt < 0 || firstGroupAt < 0 || absensiAt > firstGroupAt {
+		t.Fatal("Absensi is not the first, ungrouped entry")
+	}
+}
+
+// Groups expand and collapse. The one holding the open page arrives expanded
+// from the server, so the menu never hides where you are - and it works before
+// any script runs.
+func TestSidebarGroupsAreCollapsible(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	nav := navSection(t, fetchAuthedPage(t, client, testServer.URL+"/produksi/overview"))
+
+	if !strings.Contains(nav, "<details class=\"sidebar-group") {
+		t.Fatal("groups are not collapsible")
+	}
+	if !strings.Contains(nav, "<summary class=\"sidebar-group-label\"") {
+		t.Fatal("group headings are not summaries, so they cannot be toggled")
+	}
+
+	produksi := sectionBetween(t, nav, `data-group="produksi"`, "</details>")
+	if !strings.Contains(produksi, "open") {
+		t.Fatal("the group holding the open page is not expanded")
+	}
+
+	// Every other group arrives collapsed: that is the default, and the reason
+	// for collapsing at all.
+	unit := sectionBetween(t, nav, `data-group="unit"`, "</summary>")
+	if strings.Contains(unit, " open") {
+		t.Fatal("an unrelated group arrived expanded")
+	}
+
+	// On a page that belongs to no group, nothing is expanded.
+	dashboard := navSection(t, fetchAuthedPage(t, client, testServer.URL+"/dashboard"))
+	for _, group := range []string{"produksi", "unit"} {
+		opening := sectionBetween(t, dashboard, `data-group="`+group+`"`, "</summary>")
+		if strings.Contains(opening, " open") {
+			t.Fatalf("group %q is expanded on a page outside it", group)
+		}
+	}
+
+	// The stored preference is the set of expanded groups, so an empty store
+	// means collapsed rather than the other way round.
+	shell := fetchPage(t, testServer.URL+"/static/js/shell.js")
+	if !strings.Contains(shell, `"opp.sidebar.expanded"`) {
+		t.Fatal("shell.js does not persist which groups are expanded")
+	}
+	if strings.Contains(shell, `"opp.sidebar.collapsed"`) {
+		t.Fatal("shell.js still stores collapsed groups, which defaults them open")
+	}
+}
+
+// The group holding the open page is marked, so the sidebar shows which section
+// you are in even when the page name alone is ambiguous - both groups end in
+// "Export Data".
+func TestSidebarMarksTheActiveGroup(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	for path, section := range map[string]string{
+		"/produksi/overview": "Produksi",
+		"/unit-a2b":          "Unit",
+	} {
+		nav := navSection(t, fetchAuthedPage(t, client, testServer.URL+path))
+		activeAt := strings.Index(nav, `class="sidebar-group active"`)
+		if activeAt < 0 {
+			t.Fatalf("%s: no group is marked active", path)
+		}
+		labelAt := strings.Index(nav[activeAt:], ">"+section+"<")
+		if labelAt < 0 {
+			t.Fatalf("%s: the active group is not %q", path, section)
+		}
+		if strings.Count(nav, `class="sidebar-group active"`) != 1 {
+			t.Fatalf("%s: more than one group marked active", path)
+		}
+	}
+}
+
+// The breadcrumb names the section, since two pages share the label
+// "Export Data".
+func TestBreadcrumbNamesTheSection(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	for path, section := range map[string]string{
+		"/produksi/export": "Produksi",
+		"/unit/export":     "Unit",
+	} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		crumb := sectionBetween(t, page, `<nav class="breadcrumb"`, "</nav>")
+		if !strings.Contains(crumb, "<li>"+section+"</li>") {
+			t.Fatalf("%s: breadcrumb does not name the section %q", path, section)
+		}
+		sectionAt := strings.Index(crumb, "<li>"+section+"</li>")
+		pageAt := strings.Index(crumb, `aria-current="page"`)
+		if sectionAt > pageAt {
+			t.Fatalf("%s: the section comes after the page name", path)
+		}
+	}
+
+	// An ungrouped page has no section segment.
+	crumb := sectionBetween(t, fetchAuthedPage(t, client, testServer.URL+"/dashboard"), `<nav class="breadcrumb"`, "</nav>")
+	if strings.Count(crumb, "<li") != 2 {
+		t.Fatalf("dashboard breadcrumb has %d segments, want 2", strings.Count(crumb, "<li"))
+	}
+}
+
+// The export pages are placeholders, but they must still be real pages behind
+// the session guard rather than 404s.
+func TestExportPagesExistAndAreGuarded(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	for _, path := range []string{"/produksi/export", "/unit/export"} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, "SEGERA HADIR") {
+			t.Fatalf("%s: does not explain that it is not ready", path)
+		}
+		if !strings.Contains(page, "XLSX") || !strings.Contains(page, "PDF") {
+			t.Fatalf("%s: does not say which formats are coming", path)
+		}
+	}
+
+	anonymous := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	for _, path := range []string{"/produksi/export", "/unit/export"} {
+		response, err := anonymous.Get(testServer.URL + path)
+		if err != nil {
+			t.Fatalf("get %s: %v", path, err)
+		}
+		response.Body.Close()
+		if location := response.Header.Get("Location"); location != "/login" {
+			t.Fatalf("%s: anonymous request went to %q, want /login", path, location)
+		}
 	}
 }
 

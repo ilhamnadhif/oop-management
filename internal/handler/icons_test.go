@@ -41,10 +41,15 @@ func TestSidebarAndSectionHeadingsCarryIcons(t *testing.T) {
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi")
 
-	// Every menu item gets one.
+	// Every entry gets one, groups included.
 	nav := navSection(t, page)
-	if got := strings.Count(nav, `class="icon"`); got != len(navItems) {
-		t.Fatalf("sidebar has %d icons for %d menu items", got, len(navItems))
+	wanted := 0
+	for _, item := range navItems {
+		wanted++
+		wanted += len(item.Children)
+	}
+	if got := strings.Count(nav, `class="icon"`); got != wanted {
+		t.Fatalf("sidebar has %d icons for %d menu entries", got, wanted)
 	}
 
 	// So does every section heading.

@@ -129,10 +129,10 @@ func TestOverviewHasItsOwnMenuEntry(t *testing.T) {
 	if !strings.Contains(nav, `href="/produksi/overview"`) {
 		t.Fatal("sidebar has no overview link")
 	}
-	if !strings.Contains(nav, ">Produksi Overview<") {
+	if !strings.Contains(nav, ">Overview<") {
 		t.Fatal("sidebar does not label the overview")
 	}
-	if strings.Index(nav, ">Absensi<") > strings.Index(nav, ">Produksi Overview<") {
+	if strings.Index(nav, ">Absensi<") > strings.Index(nav, ">Overview<") {
 		t.Fatal("Absensi is no longer first")
 	}
 }

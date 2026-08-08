@@ -71,6 +71,8 @@ type ShellPageData struct {
 	ActiveNav  string
 	PageTitle  string
 	Breadcrumb string
+	// Section names the group the page sits in; empty for an ungrouped page.
+	Section string
 	// UserInitial is the single letter shown in the sidebar avatar.
 	UserInitial string
 }
@@ -205,6 +207,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/dashboard", s.handleDashboard)
 	mux.HandleFunc("/produksi", s.handleProduksi)
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
+	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
+	mux.HandleFunc("/unit/export", s.handleUnitExport)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
@@ -376,7 +380,7 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (*model.Use
 
 func (s *Server) shellData(user *model.User, sessionValue session.Session, navKey string) ShellPageData {
 	now := s.now().In(s.location)
-	item, _ := navItemByKey(navKey)
+	item, parent, _ := navItemByKey(navKey)
 	return ShellPageData{
 		Title:       item.Label,
 		User:        user,
@@ -387,6 +391,7 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		ActiveNav:   navKey,
 		PageTitle:   item.Label,
 		Breadcrumb:  item.Label,
+		Section:     parent.Label,
 		UserInitial: firstLetter(user.NamaLengkap),
 	}
 }
@@ -443,6 +448,25 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 	s.renderProduksi(w, r, user, sessionValue, ProduksiFormData{
 		Tanggal: s.produksi.Today(),
 	}, "", "", http.StatusOK)
+}
+
+// The export pages are placeholders until the XLSX and PDF writers land. They
+// exist now so the menu entries lead somewhere that explains itself rather than
+// to a 404 that reads as a broken app.
+func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
+	s.renderComingSoon(w, r, "produksi-export")
+}
+
+func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
+	s.renderComingSoon(w, r, "unit-export")
+}
+
+func (s *Server) renderComingSoon(w http.ResponseWriter, r *http.Request, navKey string) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	s.render(w, "coming_soon", s.shellData(user, sessionValue, navKey), http.StatusOK)
 }
 
 func (s *Server) handleUnitA2B(w http.ResponseWriter, r *http.Request) {
@@ -740,7 +764,7 @@ func (s *Server) renderProduksi(w http.ResponseWriter, r *http.Request, user *mo
 		log.Printf("load produksi options: %v", err)
 	}
 	s.render(w, "produksi", ProduksiPageData{
-		ShellPageData: s.shellData(user, sessionValue, "produksi"),
+		ShellPageData: s.shellData(user, sessionValue, "produksi-input"),
 		Form:          form,
 		Units:         units,
 		Options:       options,

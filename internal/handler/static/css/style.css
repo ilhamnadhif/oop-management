@@ -110,6 +110,22 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .sidebar-brand .brand-logo { height: 42px; margin-bottom: 0; }
 .sidebar-brand .eyebrow { margin-bottom: 0; }
 .sidebar-nav { display: grid; gap: 0.35rem; padding-top: 1.4rem; }
+.sidebar-group { display: grid; gap: 0.2rem; margin-top: 0.5rem; }
+.sidebar-group-label { display: flex; align-items: center; gap: 0.7rem; padding: 0.55rem 0.9rem; border-radius: 11px; color: var(--muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; list-style: none; }
+/* Safari draws its own disclosure triangle unless this is cleared. */
+.sidebar-group-label::-webkit-details-marker { display: none; }
+.sidebar-group-label:hover { background: #eef3f5; }
+.sidebar-group-label:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.group-caret { margin-left: auto; flex-shrink: 0; transition: transform 0.15s; }
+.sidebar-group[open] .group-caret { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .group-caret { transition: none; } }
+.sidebar-group.active .sidebar-group-label { color: var(--navy-dark); }
+.sidebar-group-label .icon { width: 16px; height: 16px; }
+/* The rail lines the children up under their heading, so the nesting reads at a
+   glance without needing a collapse control. */
+.sidebar-sublist { display: grid; gap: 0.2rem; margin-left: 1.35rem; padding-left: 0.6rem; border-left: 1px solid var(--line); }
+.sidebar-sublink { padding: 0.6rem 0.75rem; font-size: 0.88rem; }
+.sidebar-sublink .icon { width: 16px; height: 16px; }
 .sidebar-link { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 0.9rem; border-radius: 11px; color: var(--navy-dark); text-decoration: none; font-size: 0.92rem; font-weight: 500; }
 .sidebar-link .icon { color: var(--muted); }
 .sidebar-link.active .icon { color: currentColor; }

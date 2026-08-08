@@ -1,0 +1,18 @@
+{{define "coming_soon"}}
+{{template "appShellOpen" .}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}SEGERA HADIR</p>
+        <h2>{{.PageTitle}} belum tersedia</h2>
+      </div>
+    </div>
+    <p class="panel-empty">
+      Unduhan data dalam format XLSX dan PDF sedang disiapkan, lengkap dengan
+      penyaring rentang tanggal. Menu ini sudah ada supaya alurnya jelas, tapi
+      isinya menyusul.
+    </p>
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

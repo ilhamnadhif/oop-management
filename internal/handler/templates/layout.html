@@ -31,8 +31,27 @@
     </div>
     <nav class="sidebar-nav" aria-label="Menu utama">
       {{range .NavItems}}
+      {{if .Children}}
+      {{/* details/summary gives expand and collapse, keyboard support and a
+           sensible default state without a line of JavaScript. The group
+           holding the open page starts expanded. */}}
+      <details class="sidebar-group {{if .IsActiveGroup $.ActiveNav}}active{{end}}" data-group="{{.Key}}"
+        {{if .IsActiveGroup $.ActiveNav}}open{{end}}>
+        <summary class="sidebar-group-label">
+          {{template "icon" .Icon}}<span>{{.Label}}</span>
+          <svg class="group-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </summary>
+        <div class="sidebar-sublist">
+          {{range .Children}}
+          <a class="sidebar-link sidebar-sublink {{if eq .Key $.ActiveNav}}active{{end}}" href="{{.Path}}"
+            {{if eq .Key $.ActiveNav}}aria-current="page"{{end}}>{{template "icon" .Icon}}<span>{{.Label}}</span></a>
+          {{end}}
+        </div>
+      </details>
+      {{else}}
       <a class="sidebar-link {{if eq .Key $.ActiveNav}}active{{end}}" href="{{.Path}}"
         {{if eq .Key $.ActiveNav}}aria-current="page"{{end}}>{{template "icon" .Icon}}<span>{{.Label}}</span></a>
+      {{end}}
       {{end}}
     </nav>
     <div class="sidebar-account">
@@ -69,6 +88,7 @@
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <ol>
           <li><a href="/dashboard">Beranda</a></li>
+          {{if .Section}}<li>{{.Section}}</li>{{end}}
           <li aria-current="page">{{.Breadcrumb}}</li>
         </ol>
       </nav>
