@@ -77,7 +77,7 @@
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/produksi/overview">Reset</a>
     </form>
-    <p class="hint filter-note">{{if .Overview}}{{if .Overview.Monthly}}Tanpa rentang tanggal, grafik dikelompokkan per bulan sejak bulan pertama sampai bulan ini.{{else}}Rentang tanggal aktif, grafik dikelompokkan per hari.{{end}}{{end}}</p>
+    <p class="hint filter-note">{{if .Overview}}{{if .Overview.Monthly}}Tanpa filter tanggal, grafik dikelompokkan per bulan.{{else}}Rentang tanggal aktif, grafik dikelompokkan per hari.{{end}}{{end}}</p>
   </section>
 
   {{with .Overview}}
@@ -171,7 +171,7 @@
         {{range .LokasiShares}}
         <li>
           <div class="share-head"><span>{{.Lokasi}}</span><strong>{{printf "%.2f" .Percent}}%</strong></div>
-          <div class="share-track"><div class="share-fill" style="width: {{printf "%.2f" .Percent}}%"></div></div>
+          <div class="share-track"><progress class="share-progress" max="100" value="{{printf "%.2f" .Percent}}">{{printf "%.2f" .Percent}}%</progress></div>
           <p class="share-note">{{printf "%.2f" .Volume}} m³</p>
         </li>
         {{end}}

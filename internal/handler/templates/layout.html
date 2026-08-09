@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#173f5f">
+  <meta name="theme-color" content="#e00618">
   <title>{{.Title}} · Orecon Putra Perkasa</title>
   <link rel="icon" href="/static/img/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/img/opp-logo.png">
@@ -23,11 +23,11 @@
      their own content, then call appShellClose. */}}
 {{define "appShellOpen"}}
 {{template "pageHead" .}}
-<div class="app-layout">
+<div class="app-layout" data-page="{{.ActiveNav}}">
   <aside class="sidebar" id="appSidebar">
     <div class="sidebar-brand">
-      {{template "brandLogo"}}
-      <p class="eyebrow">ORECON PUTRA PERKASA</p>
+      {{template "sidebarBrandLogo"}}
+      <p class="eyebrow"><span>ORECON</span><span>PUTRA PERKASA</span></p>
     </div>
     <nav class="sidebar-nav" aria-label="Menu utama">
       {{range .NavItems}}
@@ -124,6 +124,10 @@
 <img class="brand-logo" src="/static/img/opp-logo.png" width="486" height="440" alt="Logo Orecon Putra Perkasa">
 {{end}}
 
+{{define "sidebarBrandLogo"}}
+<img class="brand-logo sidebar-brand-logo" src="/static/img/opp-logo-white-only.png" width="486" height="440" alt="">
+{{end}}
+
 {{/* passwordToggle takes the id of the password input it controls. */}}
 {{define "passwordToggle"}}
 <button class="input-action" type="button" data-password-toggle="{{.}}" aria-controls="{{.}}" aria-pressed="false" aria-label="Tampilkan password" title="Tampilkan password">
@@ -142,7 +146,7 @@
 
 {{define "authTabs"}}
 <nav class="auth-tabs" aria-label="Autentikasi">
-  <a class="auth-tab {{if eq .ActiveTab "login"}}active{{end}}" href="/login">Masuk</a>
-  <a class="auth-tab {{if eq .ActiveTab "register"}}active{{end}}" href="/register">Daftar</a>
+  <a class="auth-tab {{if eq .ActiveTab "login"}}active{{end}}" href="/login">{{template "icon" "login"}}Masuk</a>
+  <a class="auth-tab {{if eq .ActiveTab "register"}}active{{end}}" href="/register">{{template "icon" "user-plus"}}Daftar</a>
 </nav>
 {{end}}
