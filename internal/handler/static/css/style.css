@@ -368,11 +368,12 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
   .auth-card .stack-form { gap: 0.6rem; }
 }
 
-/* A short screen scrolls the whole card for the same reason a phone does. */
+/* A short window scrolls the page for the same reason a phone does. */
 @media (max-height: 700px) {
-  .auth-card { overflow-y: auto; overscroll-behavior: contain; }
+  body:has(.auth-shell) { height: auto; overflow: visible; }
+  .auth-shell { height: auto; min-height: 100svh; overflow: clip; }
+  .auth-card { max-height: none; overflow: visible; }
   .auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }
-  .auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }
 }
 
 /* Shorter still: a 720px-tall laptop misses the sign-in button by a few pixels
@@ -1117,11 +1118,12 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .auth-card .stack-form { gap: 0.6rem; }
 }
 
-/* A short screen scrolls the whole card for the same reason a phone does. */
+/* A short window scrolls the page for the same reason a phone does. */
 @media (max-height: 700px) {
-  .auth-card { overflow-y: auto; overscroll-behavior: contain; }
+  body:has(.auth-shell) { height: auto; overflow: visible; }
+  .auth-shell { height: auto; min-height: 100svh; overflow: clip; }
+  .auth-card { max-height: none; overflow: visible; }
   .auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }
-  .auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }
 }
 
 /* Shorter still: a 720px-tall laptop misses the sign-in button by a few pixels
@@ -1137,17 +1139,16 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .form-grid,
   .form-grid-3,
   .form-grid-4 { grid-template-columns: 1fr; }
-  /* Same rule on a phone: the viewport is the frame and the page itself never
-     scrolls. What scrolls is the whole card rather than the form inside it — a
-     swipe lands anywhere on a phone, and scrolling only the form left the
-     submit button cut off at the card's edge for anyone who swiped over the
-     logo or the tabs. */
-  .auth-shell { padding: 0.85rem; }
-  .auth-card { overflow-y: auto; overscroll-behavior: contain; }
+  /* A phone scrolls the page itself. Locking the viewport and nesting a scroll
+     container inside it fights the browser's own toolbar: the bar slides away,
+     the locked height keeps its old value, and the submit button ends up under
+     the fold with nothing willing to scroll to it. The card is centred while it
+     fits and the page grows past the screen when it does not, which is the
+     behaviour every other page on the phone already has. */
+  body:has(.auth-shell) { height: auto; overflow: visible; }
+  .auth-shell { height: auto; min-height: 100svh; overflow: clip; padding: 0.85rem; }
+  .auth-card { max-height: none; overflow: visible; }
   .auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }
-  /* Padding at the end of a scrolling flex column is dropped by the engine, so
-     the room under the button is a block rather than padding. */
-  .auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }
   .auth-card,
   .auth-card.wide { padding: 1.3rem 1.1rem 1.5rem; border-radius: 20px; }
   .auth-card > .brand-logo { height: clamp(40px, 7vh, 62px); }

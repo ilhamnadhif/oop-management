@@ -16,9 +16,9 @@ func stylesheet(t *testing.T) string {
 	return readBody(t, response)
 }
 
-// The sign-in pages are framed by the viewport: the page itself never scrolls,
-// on a desktop or a phone. A form too tall for the screen scrolls inside the
-// card, so the brand, the tabs and the background art stay where they are.
+// On a desktop the sign-in pages are framed by the viewport: the page itself
+// never scrolls, and a form too tall for the window scrolls inside the card so
+// the brand, the tabs and the background art stay where they are.
 func TestAuthPagesFitTheViewport(t *testing.T) {
 	css := stylesheet(t)
 
@@ -37,37 +37,36 @@ func TestAuthPagesFitTheViewport(t *testing.T) {
 		}
 	}
 
-	// A phone gets the same treatment; letting the shell scroll would hand the
-	// page back to the address bar.
-	if strings.Contains(css, ".auth-shell { align-items: start; overflow-y: auto;") {
-		t.Fatal("the auth shell still scrolls on a phone")
-	}
+	// A phone is the exception, and has its own test: a locked viewport there
+	// fights the browser's toolbar.
 }
 
-// On a phone the whole card scrolls, not the form inside it. A swipe lands
-// anywhere, and scrolling only the form left the submit button cut off at the
-// card's edge for anyone who swiped over the logo or the tabs.
-func TestAuthCardScrollsWholeOnASmallScreen(t *testing.T) {
+// A phone scrolls the page itself. Locking the viewport and nesting a scroll
+// container inside it fights the browser's own toolbar: the bar slides away,
+// the locked height keeps its old value, and the submit button ends up under
+// the fold with nothing willing to scroll to it.
+func TestAuthPagesScrollThePageOnAPhone(t *testing.T) {
 	css := stylesheet(t)
 
 	// The sheet declares the phone breakpoint twice; the later block wins.
 	mobile := css[strings.LastIndex(css, "@media (max-width: 720px)"):]
 	mobile = mobile[:strings.Index(mobile, "\n}")]
 	for _, rule := range []string{
-		".auth-card { overflow-y: auto; overscroll-behavior: contain; }",
-		".auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }",
-		// Padding at the end of a scrolling flex column is dropped by the
-		// engine, so the room under the button is a block of its own.
-		`.auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }`,
+		"body:has(.auth-shell) { height: auto; overflow: visible; }",
+		"min-height: 100svh",
+		".auth-card { max-height: none; overflow: visible; }",
+		// The decorative circles hang below the shell. Clipped, they stop
+		// adding a screenful of empty page under the button.
+		"overflow: clip",
 	} {
 		if !strings.Contains(mobile, rule) {
-			t.Fatalf("the phone rules are missing %q", rule)
+			t.Fatalf("the phone rules are missing %q: %s", rule, mobile)
 		}
 	}
 
-	// A short screen has the same problem for the same reason.
+	// A short window has the same problem for the same reason.
 	if !strings.Contains(css, "@media (max-height: 700px) {") {
-		t.Fatal("a short screen does not get the scrolling card")
+		t.Fatal("a short window still locks the viewport")
 	}
 }
 
