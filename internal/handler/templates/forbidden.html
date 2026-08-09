@@ -1,0 +1,23 @@
+{{define "forbidden"}}
+{{template "appShellOpen" .}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "lock"}}AKSES DITOLAK</p>
+        <h2>Halaman ini bukan untuk jabatan {{.Jabatan}}</h2>
+      </div>
+    </div>
+    {{/* Named plainly rather than dressed up as an error: nothing broke, the
+         page simply is not part of this role's work. */}}
+    <p class="panel-empty">
+      Menu yang terbuka untuk Anda ada di sisi kiri. Bila Anda memang perlu
+      halaman ini, minta HR menyesuaikan hak akses jabatan Anda.
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="/dashboard">{{template "icon" "activity"}}Kembali ke Dashboard</a>
+      <a class="button subtle" href="/absensi">{{template "icon" "clock"}}Absensi</a>
+    </div>
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

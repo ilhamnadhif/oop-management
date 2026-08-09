@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -10,8 +11,26 @@ import (
 	"opp-management/internal/model"
 )
 
+// loggedInClient signs in as Management, the position that may open every menu,
+// so a feature test exercises the feature rather than the access rules. The
+// rules have their own tests.
 func loggedInClient(t *testing.T, testServer *httptest.Server) *http.Client {
 	t.Helper()
+	return loggedInClientAs(t, testServer, "Management")
+}
+
+// loggedInClientAs registers and signs in one person holding the given
+// position. Management keeps the original identity so the tests that read the
+// name and NRP off the page still find them; anyone else gets their own, since
+// two people cannot share an NRP and the second registration would be refused,
+// silently signing the test in as the first.
+func loggedInClientAs(t *testing.T, testServer *httptest.Server, jabatan string) *http.Client {
+	t.Helper()
+	nrp, email := "123456", "budi@example.com"
+	if jabatan != "Management" {
+		nrp = fmt.Sprintf("%06d", 200000+len(jabatan)*1000+int(jabatan[0]))
+		email = strings.ToLower(jabatan) + "@example.com"
+	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatalf("cookie jar: %v", err)
@@ -21,9 +40,9 @@ func loggedInClient(t *testing.T, testServer *httptest.Server) *http.Client {
 	registerResponse, err := client.PostForm(testServer.URL+"/register", urlValues(map[string]string{
 		"tanggal_gabung":  "2026-08-07",
 		"nama_lengkap":    "Budi Santoso",
-		"nrp":             "123456",
-		"jabatan":         "Produksi",
-		"email":           "budi@example.com",
+		"nrp":             nrp,
+		"jabatan":         jabatan,
+		"email":           email,
 		"password":        "rahasia123",
 		"status_pengguna": model.StatusAktif,
 	}))
@@ -33,7 +52,7 @@ func loggedInClient(t *testing.T, testServer *httptest.Server) *http.Client {
 	registerResponse.Body.Close()
 
 	loginResponse, err := client.PostForm(testServer.URL+"/login", urlValues(map[string]string{
-		"identifier": "123456",
+		"identifier": nrp,
 		"password":   "rahasia123",
 	}))
 	if err != nil {

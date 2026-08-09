@@ -1,5 +1,7 @@
 package handler
 
+import "strings"
+
 // NavItem is one entry in the dashboard sidebar. An item with children is a
 // group heading: it has no page of its own, only the pages beneath it. Icon
 // names the inline SVG the "icon" template renders.
@@ -52,11 +54,88 @@ var navItems = []NavItem{
 	}},
 }
 
-// navItemsFor returns the menu a user may see. Every role currently sees the
-// same list; this is the seam where per-jabatan filtering will go.
+// JabatanManagement sees every menu. It is the one position defined by what it
+// may reach rather than by what it does.
+const JabatanManagement = "Management"
+
+// menuAccess lists the positions that may open each top-level menu. A menu
+// missing from this map is open to everyone, which is how Dashboard and Absensi
+// stay reachable: attendance is the one thing every employee has to do.
+//
+// This is the whole authorisation rule in one place. When HR is given a screen
+// to tick these boxes themselves, it replaces this map and nothing else.
+var menuAccess = map[string][]string{
+	"produksi": {"Surveyor", "Produksi", "SPV"},
+	"unit":     {"Surveyor", "Produksi", "SPV", "Logistik"},
+	"nota":     {"HR"},
+}
+
+// menuKeyFor reports which top-level menu a page belongs to, since permission
+// is granted over a menu rather than over each page under it.
+func menuKeyFor(key string) string {
+	for _, top := range navItems {
+		if top.Key == key {
+			return top.Key
+		}
+		for _, child := range top.Children {
+			if child.Key == key {
+				return top.Key
+			}
+		}
+	}
+	return key
+}
+
+// CanAccess reports whether a position may open a page. An unknown page is
+// refused rather than allowed: a route added without a rule should be
+// unreachable, not open to everyone.
+func CanAccess(jabatan, key string) bool {
+	if strings.EqualFold(strings.TrimSpace(jabatan), JabatanManagement) {
+		return true
+	}
+	menu := menuKeyFor(key)
+	allowed, restricted := menuAccess[menu]
+	if !restricted {
+		// Only pages that exist in the menu are open by default.
+		if _, _, found := navItemByKey(key); !found {
+			return false
+		}
+		return true
+	}
+	for _, position := range allowed {
+		if strings.EqualFold(strings.TrimSpace(jabatan), position) {
+			return true
+		}
+	}
+	return false
+}
+
+// navItemsFor returns the menu a position may see. A group whose pages are all
+// out of reach is dropped entirely rather than shown as a heading that opens
+// onto nothing.
 func navItemsFor(jabatan string) []NavItem {
-	_ = jabatan
-	return navItems
+	visible := make([]NavItem, 0, len(navItems))
+	for _, item := range navItems {
+		if len(item.Children) == 0 {
+			if CanAccess(jabatan, item.Key) {
+				visible = append(visible, item)
+			}
+			continue
+		}
+		children := make([]NavItem, 0, len(item.Children))
+		for _, child := range item.Children {
+			if CanAccess(jabatan, child.Key) {
+				children = append(children, child)
+			}
+		}
+		if len(children) == 0 {
+			continue
+		}
+		group := item
+		group.Children = children
+		visible = append(visible, group)
+	}
+	return visible
 }
 
 // navItemByKey finds a page anywhere in the tree and reports the group holding

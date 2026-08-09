@@ -433,6 +433,47 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (*model.Use
 	return user, sessionValue, true
 }
 
+// requireAccess is requireUser plus the authorisation check. Hiding a menu is a
+// courtesy; this is what actually keeps a page out of reach, since a URL can be
+// typed, bookmarked or shared.
+func (s *Server) requireAccess(w http.ResponseWriter, r *http.Request, navKey string) (*model.User, session.Session, bool) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return nil, session.Session{}, false
+	}
+	if !CanAccess(user.Jabatan, navKey) {
+		s.renderForbidden(w, user, sessionValue)
+		return nil, session.Session{}, false
+	}
+	return user, sessionValue, true
+}
+
+// allowed guards the handlers that load the user themselves because they parse
+// a form first.
+func (s *Server) allowed(w http.ResponseWriter, user *model.User, sessionValue session.Session, navKey string) bool {
+	if CanAccess(user.Jabatan, navKey) {
+		return true
+	}
+	s.renderForbidden(w, user, sessionValue)
+	return false
+}
+
+func (s *Server) renderForbidden(w http.ResponseWriter, user *model.User, sessionValue session.Session) {
+	// The shell is drawn with the menu this person does have, so the page they
+	// cannot open still leaves them somewhere to go.
+	data := s.shellData(user, sessionValue, "beranda")
+	data.PageTitle = "Akses ditolak"
+	data.Breadcrumb = "Akses ditolak"
+	data.Section = ""
+	data.Lede = "Halaman ini tidak terbuka untuk jabatan Anda."
+	s.render(w, "forbidden", ForbiddenPageData{ShellPageData: data, Jabatan: user.Jabatan}, http.StatusForbidden)
+}
+
+type ForbiddenPageData struct {
+	ShellPageData
+	Jabatan string
+}
+
 func (s *Server) shellData(user *model.User, sessionValue session.Session, navKey string) ShellPageData {
 	now := s.now().In(s.location)
 	item, parent, _ := navItemByKey(navKey)
@@ -476,7 +517,7 @@ type BerandaPageData struct {
 // handleDashboard shows the signed-in person their own attendance. It answers
 // "how am I doing", which is why it never reads anyone else's rows.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "beranda")
 	if !ok {
 		return
 	}
@@ -502,7 +543,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAbsensi(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "absensi")
 	if !ok {
 		return
 	}
@@ -538,7 +579,7 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 		s.handleProduksiCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "produksi-input")
 	if !ok {
 		return
 	}
@@ -548,7 +589,7 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "produksi-export")
 	if !ok {
 		return
 	}
@@ -584,7 +625,7 @@ func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
 
 // handleProduksiDownload streams the report itself.
 func (s *Server) handleProduksiDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireUser(w, r); !ok {
+	if _, _, ok := s.requireAccess(w, r, "produksi-export"); !ok {
 		return
 	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
@@ -651,7 +692,7 @@ type NotaOverviewPageData struct {
 }
 
 func (s *Server) handleNotaOverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "nota-overview")
 	if !ok {
 		return
 	}
@@ -724,7 +765,7 @@ func (s *Server) handleRekonsiliasi(w http.ResponseWriter, r *http.Request) {
 		s.handleRekonsiliasiSettle(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "nota-rekonsiliasi")
 	if !ok {
 		return
 	}
@@ -743,6 +784,9 @@ func (s *Server) handleRekonsiliasiSettle(w http.ResponseWriter, r *http.Request
 	if err != nil || user.StatusPengguna != model.StatusAktif {
 		s.sessions.Delete(r, w)
 		redirect(w, r, "/login")
+		return
+	}
+	if !s.allowed(w, user, sessionValue, "nota-rekonsiliasi") {
 		return
 	}
 
@@ -833,7 +877,7 @@ func (s *Server) renderRekonsiliasi(w http.ResponseWriter, r *http.Request, user
 }
 
 func (s *Server) handleNotaExport(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "nota-export")
 	if !ok {
 		return
 	}
@@ -878,7 +922,7 @@ func countNotaItems(rows []model.Nota) int {
 }
 
 func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireUser(w, r); !ok {
+	if _, _, ok := s.requireAccess(w, r, "nota-export"); !ok {
 		return
 	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
@@ -974,7 +1018,7 @@ type UnitOverviewPageData struct {
 }
 
 func (s *Server) handleUnitOverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "unit-overview")
 	if !ok {
 		return
 	}
@@ -1009,7 +1053,7 @@ type UnitExportPageData struct {
 }
 
 func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "unit-export")
 	if !ok {
 		return
 	}
@@ -1037,7 +1081,7 @@ func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
 // are separate files: merging trucks and machines into one sheet would put
 // unrelated columns side by side.
 func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireUser(w, r); !ok {
+	if _, _, ok := s.requireAccess(w, r, "unit-export"); !ok {
 		return
 	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
@@ -1113,7 +1157,7 @@ func (s *Server) handleUnitA2B(w http.ResponseWriter, r *http.Request) {
 		s.handleUnitA2BCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "unit-a2b")
 	if !ok {
 		return
 	}
@@ -1130,6 +1174,9 @@ func (s *Server) handleUnitA2BCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil || user.StatusPengguna != model.StatusAktif {
 		s.sessions.Delete(r, w)
 		redirect(w, r, "/login")
+		return
+	}
+	if !s.allowed(w, user, sessionValue, "unit-a2b") {
 		return
 	}
 
@@ -1232,7 +1279,7 @@ func (s *Server) renderUnitA2B(w http.ResponseWriter, r *http.Request, user *mod
 }
 
 func (s *Server) handleProduksiOverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "produksi-overview")
 	if !ok {
 		return
 	}
@@ -1329,6 +1376,9 @@ func (s *Server) handleProduksiCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
+	if !s.allowed(w, user, sessionValue, "produksi-input") {
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		s.renderProduksi(w, r, user, sessionValue, ProduksiFormData{Tanggal: s.produksi.Today()}, "Form tidak valid", "", http.StatusUnprocessableEntity)
 		return
@@ -1417,7 +1467,7 @@ func (s *Server) handleUnitDT(w http.ResponseWriter, r *http.Request) {
 		s.handleUnitDTCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "unit-dt")
 	if !ok {
 		return
 	}
@@ -1462,6 +1512,9 @@ func (s *Server) handleUnitDTCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil || user.StatusPengguna != model.StatusAktif {
 		s.sessions.Delete(r, w)
 		redirect(w, r, "/login")
+		return
+	}
+	if !s.allowed(w, user, sessionValue, "unit-dt") {
 		return
 	}
 
@@ -1592,7 +1645,7 @@ func (s *Server) handleNota(w http.ResponseWriter, r *http.Request) {
 		s.handleNotaCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireAccess(w, r, "nota-input")
 	if !ok {
 		return
 	}
@@ -1609,6 +1662,9 @@ func (s *Server) handleNotaCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil || user.StatusPengguna != model.StatusAktif {
 		s.sessions.Delete(r, w)
 		redirect(w, r, "/login")
+		return
+	}
+	if !s.allowed(w, user, sessionValue, "nota-input") {
 		return
 	}
 
@@ -1799,6 +1855,10 @@ func (s *Server) handleAttendanceAction(w http.ResponseWriter, r *http.Request, 
 	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "user tidak ditemukan"})
+		return
+	}
+	if !CanAccess(user.Jabatan, "absensi") {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "jabatan Anda tidak berhak mengakses absensi"})
 		return
 	}
 
