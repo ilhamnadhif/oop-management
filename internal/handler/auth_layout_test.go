@@ -44,6 +44,47 @@ func TestAuthPagesFitTheViewport(t *testing.T) {
 	}
 }
 
+// On a phone the whole card scrolls, not the form inside it. A swipe lands
+// anywhere, and scrolling only the form left the submit button cut off at the
+// card's edge for anyone who swiped over the logo or the tabs.
+func TestAuthCardScrollsWholeOnASmallScreen(t *testing.T) {
+	css := stylesheet(t)
+
+	// The sheet declares the phone breakpoint twice; the later block wins.
+	mobile := css[strings.LastIndex(css, "@media (max-width: 720px)"):]
+	mobile = mobile[:strings.Index(mobile, "\n}")]
+	for _, rule := range []string{
+		".auth-card { overflow-y: auto; overscroll-behavior: contain; }",
+		".auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }",
+		// Padding at the end of a scrolling flex column is dropped by the
+		// engine, so the room under the button is a block of its own.
+		`.auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }`,
+	} {
+		if !strings.Contains(mobile, rule) {
+			t.Fatalf("the phone rules are missing %q", rule)
+		}
+	}
+
+	// A short screen has the same problem for the same reason.
+	if !strings.Contains(css, "@media (max-height: 700px) {") {
+		t.Fatal("a short screen does not get the scrolling card")
+	}
+}
+
+// The tick and its words are one line: the global input sizing would give the
+// box the height of a text field and push the label onto its own row.
+func TestRememberMeStaysOnOneLine(t *testing.T) {
+	css := stylesheet(t)
+	for _, rule := range []string{
+		".checkbox-row { flex-wrap: nowrap; }",
+		"width: 20px; height: 20px; min-height: 0;",
+	} {
+		if !strings.Contains(css, rule) {
+			t.Fatalf("the stylesheet is missing %q", rule)
+		}
+	}
+}
+
 // A grid column sized to its content grows to the longest line of text, which
 // pushed the card wider than a phone screen.
 func TestAuthShellColumnIsBoundedByTheScreen(t *testing.T) {

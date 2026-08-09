@@ -368,6 +368,13 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
   .auth-card .stack-form { gap: 0.6rem; }
 }
 
+/* A short screen scrolls the whole card for the same reason a phone does. */
+@media (max-height: 700px) {
+  .auth-card { overflow-y: auto; overscroll-behavior: contain; }
+  .auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }
+  .auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }
+}
+
 /* Shorter still: a 720px-tall laptop misses the sign-in button by a few pixels
    otherwise, and a button below the fold reads as a form that does not submit. */
 @media (max-height: 760px) {
@@ -677,7 +684,10 @@ body:has(.auth-shell) { height: 100svh; overflow: hidden; }
 .auth-card input:-webkit-autofill:hover,
 .auth-card input:-webkit-autofill:focus { -webkit-text-fill-color: var(--ink); box-shadow: 0 0 0 1000px #fff inset, 0 0 0 4px rgba(224, 6, 24, 0.1); transition: background-color 9999s ease-out; }
 .auth-card .checkbox-row { font-weight: 450; }
-.checkbox-row input[type="checkbox"] { accent-color: var(--red-600); }
+/* The tick and its words are one line. The global input sizing would otherwise
+   give the box the height of a text field and push the label onto its own row. */
+.checkbox-row { flex-wrap: nowrap; }
+.checkbox-row input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; flex-shrink: 0; margin: 0; accent-color: var(--red-600); box-shadow: none; }
 .auth-card .button.primary { min-height: 62px; margin-top: 0.55rem; font-size: 1.08rem; }
 
 /* Shared application shell ------------------------------------------------ */
@@ -1107,6 +1117,13 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .auth-card .stack-form { gap: 0.6rem; }
 }
 
+/* A short screen scrolls the whole card for the same reason a phone does. */
+@media (max-height: 700px) {
+  .auth-card { overflow-y: auto; overscroll-behavior: contain; }
+  .auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }
+  .auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }
+}
+
 /* Shorter still: a 720px-tall laptop misses the sign-in button by a few pixels
    otherwise, and a button below the fold reads as a form that does not submit. */
 @media (max-height: 760px) {
@@ -1120,9 +1137,17 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .form-grid,
   .form-grid-3,
   .form-grid-4 { grid-template-columns: 1fr; }
-  /* Same rule on a phone: the viewport is the frame and the form scrolls
-     inside the card, so the address bar never fights the page for height. */
+  /* Same rule on a phone: the viewport is the frame and the page itself never
+     scrolls. What scrolls is the whole card rather than the form inside it — a
+     swipe lands anywhere on a phone, and scrolling only the form left the
+     submit button cut off at the card's edge for anyone who swiped over the
+     logo or the tabs. */
   .auth-shell { padding: 0.85rem; }
+  .auth-card { overflow-y: auto; overscroll-behavior: contain; }
+  .auth-card .stack-form { margin: 0; padding: 0; overflow: visible; }
+  /* Padding at the end of a scrolling flex column is dropped by the engine, so
+     the room under the button is a block rather than padding. */
+  .auth-card .stack-form::after { display: block; height: 0.9rem; content: ""; }
   .auth-card,
   .auth-card.wide { padding: 1.3rem 1.1rem 1.5rem; border-radius: 20px; }
   .auth-card > .brand-logo { height: clamp(40px, 7vh, 62px); }
