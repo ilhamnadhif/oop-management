@@ -1,6 +1,8 @@
 package service
 
 import (
+	"golang.org/x/crypto/bcrypt"
+
 	"context"
 	"errors"
 	"strings"
@@ -14,7 +16,7 @@ import (
 func TestRegisterAndAuthenticate(t *testing.T) {
 	store := repository.NewTestRepository()
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, time.FixedZone("WIB", 7*60*60))
-	auth := NewAuthService(store, now.Location(), func() time.Time { return now })
+	auth := NewAuthService(store, now.Location(), func() time.Time { return now }).WithHashCost(bcrypt.MinCost)
 
 	user, err := auth.Register(context.Background(), RegisterInput{
 		TanggalGabung: "2026-08-07",
@@ -47,7 +49,7 @@ func TestRegisterAndAuthenticate(t *testing.T) {
 
 func TestRegisterRejectsDuplicateAndInvalidInput(t *testing.T) {
 	store := repository.NewTestRepository()
-	auth := NewAuthService(store, time.Local, time.Now)
+	auth := NewAuthService(store, time.Local, time.Now).WithHashCost(bcrypt.MinCost)
 	input := RegisterInput{
 		TanggalGabung: "2026-08-07",
 		NamaLengkap:   "Budi Santoso",
@@ -71,7 +73,7 @@ func TestRegisterRejectsDuplicateAndInvalidInput(t *testing.T) {
 func TestInactiveAndWrongPasswordAreLoggedAsFailed(t *testing.T) {
 	store := repository.NewTestRepository()
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, time.Local)
-	auth := NewAuthService(store, time.Local, func() time.Time { return now })
+	auth := NewAuthService(store, time.Local, func() time.Time { return now }).WithHashCost(bcrypt.MinCost)
 	_, err := auth.Register(context.Background(), RegisterInput{
 		TanggalGabung: "2026-08-07",
 		NamaLengkap:   "Inactive User",

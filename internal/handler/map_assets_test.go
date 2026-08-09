@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"golang.org/x/crypto/bcrypt"
+
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -29,7 +31,7 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *repository.TestRep
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
 	server, err := NewServer(
-		service.NewAuthService(store, location, nowFunc),
+		service.NewAuthService(store, location, nowFunc).WithHashCost(bcrypt.MinCost),
 		service.NewAttendanceService(store, location, nowFunc),
 		service.NewUnitDTService(store, location, nowFunc),
 		service.NewProduksiService(store, location, nowFunc),

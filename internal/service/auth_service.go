@@ -22,8 +22,14 @@ type AuthService struct {
 	store    repository.Store
 	location *time.Location
 	now      NowFunc
+	hashCost int
 	mu       sync.Mutex
 }
+
+// PasswordHashCost is the work factor stored passwords are hashed with. It is
+// deliberately slow: the cost is paid once per sign-in and thousands of times
+// per second by anyone working through a stolen sheet.
+const PasswordHashCost = 12
 
 type RegisterInput struct {
 	TanggalGabung string
@@ -82,7 +88,17 @@ func NewAuthService(store repository.Store, location *time.Location, now NowFunc
 	if now == nil {
 		now = time.Now
 	}
-	return &AuthService{store: store, location: location, now: now}
+	return &AuthService{store: store, location: location, now: now, hashCost: PasswordHashCost}
+}
+
+// WithHashCost lowers the work factor. It exists for tests, which sign in
+// dozens of times per run and otherwise spend minutes hashing passwords nobody
+// is trying to crack. Production keeps PasswordHashCost.
+func (s *AuthService) WithHashCost(cost int) *AuthService {
+	if cost > 0 {
+		s.hashCost = cost
+	}
+	return s
 }
 
 func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*model.User, error) {
@@ -101,7 +117,7 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*model
 		return nil, ErrDuplicateUser
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), 12)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), s.hashCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}

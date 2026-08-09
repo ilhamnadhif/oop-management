@@ -1,6 +1,8 @@
 package service
 
 import (
+	"golang.org/x/crypto/bcrypt"
+
 	"context"
 	"errors"
 	"testing"
@@ -14,7 +16,7 @@ func newRegisterService(t *testing.T) *AuthService {
 	t.Helper()
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
-	return NewAuthService(repository.NewTestRepository(), location, func() time.Time { return now })
+	return NewAuthService(repository.NewTestRepository(), location, func() time.Time { return now }).WithHashCost(bcrypt.MinCost)
 }
 
 func validRegisterInput() RegisterInput {
