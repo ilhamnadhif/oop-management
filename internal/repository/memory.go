@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -182,6 +183,39 @@ func (r *TestRepository) ListNotaItems(_ context.Context) ([]model.NotaItem, err
 		items = append(items, nota.Items...)
 	}
 	return items, nil
+}
+
+func (r *TestRepository) FindNotaRow(_ context.Context, notaID string) (*model.Nota, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	wanted := strings.ToUpper(strings.TrimSpace(notaID))
+	for i, nota := range r.nota {
+		if strings.ToUpper(strings.TrimSpace(nota.NotaID)) != wanted {
+			continue
+		}
+		stored := *nota
+		stored.Items = append([]model.NotaItem(nil), nota.Items...)
+		// Row 1 is the header in the sheet, so the first record sits on row 2.
+		return &stored, i + 2, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+func (r *TestRepository) SettleNota(_ context.Context, rowNumber int, nota *model.Nota) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.nota) {
+		return fmt.Errorf("invalid nota row number %d", rowNumber)
+	}
+	stored := r.nota[index]
+	stored.StatusPembayaran = nota.StatusPembayaran
+	stored.UpdatedAt = nota.UpdatedAt
+	stored.BuktiBayar = nota.BuktiBayar
+	stored.DibayarPada = nota.DibayarPada
+	stored.DirekonsiliasiOleh = nota.DirekonsiliasiOleh
+	stored.DirekonsiliasiOlehID = nota.DirekonsiliasiOlehID
+	return nil
 }
 
 // NotaList exposes stored notes to tests, without their line items.

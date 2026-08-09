@@ -78,7 +78,17 @@ var notaHeaders = []string{
 	"penerima_reimburse", "kategori", "sub_kategori", "jenis_perjalanan_dinas",
 	"total", "foto_kwitansi", "bukti_transfer",
 	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+	// Filled in at reconciliation, after the row already exists.
+	"bukti_bayar", "dibayar_pada", "direkonsiliasi_oleh", "direkonsiliasi_oleh_user_id",
 }
+
+// The columns the settlement writes, so a payment never has to rewrite the
+// attachments sitting in between.
+const (
+	notaStatusColumn    = "E"
+	notaUpdatedColumn   = "P"
+	notaSettlementRange = "Q:T"
+)
 
 var notaItemHeaders = []string{
 	"nota_id", "baris", "nama_produk", "satuan", "volume", "harga", "subtotal",
@@ -148,12 +158,20 @@ func (r *GoogleSheetsRepository) ensureHeader(ctx context.Context, sheetName str
 	}
 
 	actual := values.Values[0]
-	if len(actual) != len(expected) {
+	if len(actual) > len(expected) {
 		return fmt.Errorf("header mismatch in sheet %q: expected %d columns, got %d", sheetName, len(expected), len(actual))
 	}
-	for i, header := range expected {
-		if cellString(actual[i]) != header {
-			return fmt.Errorf("header mismatch in sheet %q at column %d: expected %q, got %q", sheetName, i+1, header, cellString(actual[i]))
+	for i, header := range actual {
+		if cellString(header) != expected[i] {
+			return fmt.Errorf("header mismatch in sheet %q at column %d: expected %q, got %q", sheetName, i+1, expected[i], cellString(header))
+		}
+	}
+	// A sheet written before a column existed is short, not wrong: the new
+	// columns are appended rather than treated as a schema conflict, so an
+	// existing spreadsheet keeps working across a release that adds one.
+	if len(actual) < len(expected) {
+		if err := r.writeRange(ctx, sheetName, "A1", expected); err != nil {
+			return fmt.Errorf("extend header for %s: %w", sheetName, err)
 		}
 	}
 	return nil
@@ -630,7 +648,74 @@ func notaToRow(nota *model.Nota) []interface{} {
 		formatFloat(nota.Total), nota.FotoKwitansi, nota.BuktiTransfer,
 		nota.CreatedBy, nota.CreatedByID,
 		formatDateTime(nota.CreatedAt), formatDateTime(nota.UpdatedAt),
+		nota.BuktiBayar, formatNullableDateTime(nota.DibayarPada),
+		nota.DirekonsiliasiOleh, nota.DirekonsiliasiOlehID,
 	}
+}
+
+// FindNotaRow locates one nota by its identifier and reports the row it sits
+// on. It stops before the attachment columns: finding a nota must not drag two
+// base64 images along with it.
+func (r *GoogleSheetsRepository) FindNotaRow(ctx context.Context, notaID string) (*model.Nota, int, error) {
+	rows, err := r.readRows(ctx, notaSheet, "J")
+	if err != nil {
+		return nil, 0, err
+	}
+	wanted := strings.ToUpper(strings.TrimSpace(notaID))
+	for _, row := range dataRowsWithIndex(rows) {
+		values := padRow(row.values, 10)
+		if strings.ToUpper(strings.TrimSpace(cellString(values[0]))) != wanted {
+			continue
+		}
+		return &model.Nota{
+			NotaID:            cellString(values[0]),
+			Tanggal:           cellString(values[1]),
+			PIC:               cellString(values[2]),
+			MetodePembayaran:  cellString(values[3]),
+			StatusPembayaran:  cellString(values[4]),
+			PenerimaReimburse: cellString(values[5]),
+			Kategori:          cellString(values[6]),
+			SubKategori:       cellString(values[7]),
+			JenisPerjalanan:   cellString(values[8]),
+			Total:             parseFloatCell(values[9]),
+		}, row.rowNumber, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+// SettleNota records a payment against an existing row. Only the status, the
+// audit stamp and the settlement columns are written: rewriting the whole row
+// would mean reading the attachments back and sending them again.
+func (r *GoogleSheetsRepository) SettleNota(ctx context.Context, rowNumber int, nota *model.Nota) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, notaSheet)
+	}
+	sheet := quoteSheet(notaSheet)
+	data := []*sheets.ValueRange{
+		{
+			Range:  fmt.Sprintf("%s!%s%d", sheet, notaStatusColumn, rowNumber),
+			Values: [][]interface{}{{nota.StatusPembayaran}},
+		},
+		{
+			Range:  fmt.Sprintf("%s!%s%d", sheet, notaUpdatedColumn, rowNumber),
+			Values: [][]interface{}{{formatDateTime(nota.UpdatedAt)}},
+		},
+		{
+			Range: fmt.Sprintf("%s!Q%d:T%d", sheet, rowNumber, rowNumber),
+			Values: [][]interface{}{{
+				nota.BuktiBayar, formatNullableDateTime(nota.DibayarPada),
+				nota.DirekonsiliasiOleh, nota.DirekonsiliasiOlehID,
+			}},
+		},
+	}
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             data,
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("settle nota row %d: %w", rowNumber, err)
+	}
+	return nil
 }
 
 func notaItemToRow(notaID string, item model.NotaItem) []interface{} {
@@ -976,6 +1061,15 @@ func parseOptionalInt(value string) (*int, error) {
 
 func formatDateTime(value time.Time) string {
 	return value.Format(datetimeLayout)
+}
+
+// formatNullableDateTime leaves the cell empty rather than writing a zero time,
+// which would read as a payment made in year one.
+func formatNullableDateTime(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return formatDateTime(*value)
 }
 
 func formatFloat(value float64) string {

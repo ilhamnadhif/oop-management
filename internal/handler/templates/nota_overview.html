@@ -1,0 +1,157 @@
+{{define "nota_overview"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel filter-panel">
+    <div>
+      <p class="eyebrow">{{template "icon" "info"}}DATA TERAKHIR DIMUAT</p>
+      <h2>{{if .Overview}}{{.Overview.LastUpdated}}{{else}}-{{end}}</h2>
+    </div>
+    <form class="filter-form" method="get" action="/nota/overview">
+      <div>
+        <label for="from">Dari tanggal</label>
+        <input id="from" name="from" type="date" value="{{.From}}">
+      </div>
+      <div>
+        <label for="to">Sampai tanggal</label>
+        <input id="to" name="to" type="date" value="{{.To}}">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/nota/overview">Reset</a>
+    </form>
+    <p class="hint filter-note">{{if .Overview}}{{if .Overview.Monthly}}Tanpa rentang tanggal, grafik dikelompokkan per bulan sejak bulan pertama sampai bulan ini.{{else}}Rentang tanggal aktif, grafik dikelompokkan per hari.{{end}}{{end}}</p>
+  </section>
+
+  {{with .Overview}}
+  <section class="kpi-grid">
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TOTAL PENGELUARAN</p>
+        <p class="kpi-value"><small>Rp</small> {{$.TotalRupiah}}</p>
+        <p class="kpi-note">{{.JumlahNota}} nota pada periode ini</p>
+      </div>
+      <span class="kpi-icon green">{{template "icon" "wallet"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">BELUM DIBAYAR</p>
+        <p class="kpi-value"><small>Rp</small> {{$.OutstandingRupiah}}</p>
+        <p class="kpi-note">{{.OutstandingCount}} reimburse menunggu pembayaran</p>
+      </div>
+      <span class="kpi-icon amber">{{template "icon" "clock"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">SUDAH DIBAYAR</p>
+        <p class="kpi-value"><small>Rp</small> {{$.DibayarRupiah}}</p>
+        <p class="kpi-note">{{.DibayarCount}} nota terselesaikan</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "check"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">RATA-RATA PER NOTA</p>
+        <p class="kpi-value"><small>Rp</small> {{$.RataRupiah}}</p>
+        <p class="kpi-note">Nilai rata-rata satu nota</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "calculator"}}</span>
+    </article>
+  </section>
+
+  {{if .OutstandingCount}}
+  <section class="panel highlight-strip">
+    <div>
+      <p class="eyebrow">{{template "icon" "wallet"}}PERLU TINDAKAN</p>
+      <h2>Rp {{$.OutstandingRupiah}} menunggu rekonsiliasi</h2>
+      <p class="hint">{{.OutstandingCount}} nota reimburse belum ditandai dibayar.</p>
+    </div>
+    <a class="button primary" href="/nota/rekonsiliasi">{{template "icon" "check"}}Buka rekonsiliasi</a>
+  </section>
+  {{end}}
+
+  <section class="chart-grid">
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "chart"}}PENGELUARAN PER {{if .Monthly}}BULAN{{else}}TANGGAL{{end}}</p>
+          <h2>Nilai nota ({{.Unit}})</h2>
+        </div>
+      </div>
+      {{template "lineFigure" $.SpendChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "percent"}}CA VS REIMBURSE</p>
+          <h2>Metode pembayaran ({{.Unit}})</h2>
+        </div>
+        <p class="chart-legend"><span class="swatch real"></span>CA <span class="swatch opp"></span>Reimburse</p>
+      </div>
+      {{template "chartFigure" $.MethodChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "list"}}JUMLAH NOTA PER {{if .Monthly}}BULAN{{else}}TANGGAL{{end}}</p>
+          <h2>Banyaknya transaksi</h2>
+        </div>
+      </div>
+      {{template "chartFigure" $.CountChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "tag"}}PENGELUARAN PER KATEGORI</p>
+          <h2>Porsi biaya</h2>
+        </div>
+      </div>
+      {{if .KategoriShares}}
+      <ul class="share-list">
+        {{range .KategoriShares}}
+        <li>
+          <div class="share-head"><span>{{.Label}}</span><strong>{{printf "%.2f" .Percent}}%</strong></div>
+          <div class="share-track"><div class="share-fill" style="width: {{printf "%.2f" .Percent}}%"></div></div>
+          <p class="share-note">Rp {{rupiah .Total}} · {{.Jumlah}} nota</p>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="panel-empty">Belum ada nota pada rentang ini.</p>
+      {{end}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "trophy"}}TOP 5 PIC</p>
+          <h2>Berdasarkan nilai nota</h2>
+        </div>
+      </div>
+      {{if .TopPIC}}
+      <table class="rank-table">
+        <thead>
+          <tr><th>PIC</th><th class="numeric">Nota</th><th class="numeric">Total (Rp)</th><th class="numeric">Rata-rata</th></tr>
+        </thead>
+        <tbody>
+          {{range .TopPIC}}
+          <tr>
+            <td>{{.PIC}}</td>
+            <td class="numeric">{{.Jumlah}}</td>
+            <td class="numeric">{{rupiah .Total}}</td>
+            <td class="numeric">{{rupiah .RataTiap}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="panel-empty">Belum ada nota pada rentang ini.</p>
+      {{end}}
+    </article>
+  </section>
+  {{end}}
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

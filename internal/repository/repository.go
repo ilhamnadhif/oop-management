@@ -34,6 +34,8 @@ type Store interface {
 	CreateNota(ctx context.Context, nota *model.Nota) error
 	ListNota(ctx context.Context) ([]model.Nota, error)
 	ListNotaItems(ctx context.Context) ([]model.NotaItem, error)
+	FindNotaRow(ctx context.Context, notaID string) (*model.Nota, int, error)
+	SettleNota(ctx context.Context, rowNumber int, nota *model.Nota) error
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	CreateAttendance(ctx context.Context, attendance *model.Attendance) error
 	UpdateAttendance(ctx context.Context, rowNumber int, attendance *model.Attendance) error

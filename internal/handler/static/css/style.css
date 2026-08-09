@@ -237,6 +237,41 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .pay-status-icon { display: grid; place-items: center; }
 .required-label { color: var(--danger); }
 
+/* The one thing on the nota dashboard that asks for a decision, so it gets a
+   band of its own rather than another card in the grid. */
+.highlight-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; border-left: 4px solid var(--orange); }
+.highlight-strip h2 { margin: 0.3rem 0; font-size: 1.25rem; color: var(--navy); }
+.highlight-strip .hint { margin: 0; }
+
+/* The list is a table and the work happens in a dialog: finance scans the whole
+   backlog at a glance, then deals with one nota at a time. */
+.table-scroll { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.data-table th, .data-table td { padding: 0.6rem 0.7rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.data-table thead th { font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.data-table tbody tr:hover { background: var(--cream); }
+.data-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table .table-action { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+.data-table .wrap { white-space: normal; min-width: 12rem; }
+
+.modal { width: min(560px, calc(100vw - 2rem)); max-height: 90vh; overflow-y: auto; padding: clamp(1.1rem, 3vw, 1.6rem); border: 1px solid var(--line); border-radius: 18px; background: var(--white); color: var(--ink); }
+.modal::backdrop { background: rgba(16, 47, 72, 0.62); }
+/* A dialog rendered open by the server is not modal, so it gets no ::backdrop.
+   The shadow stands in for one until the script upgrades it. */
+.modal[open] { position: fixed; inset: 0; margin: auto; box-shadow: 0 0 0 100vmax rgba(16, 47, 72, 0.62), 0 24px 60px rgba(16, 47, 72, 0.35); }
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.modal-head h2 { margin: 0.2rem 0 0; font-size: 1.1rem; }
+
+.reconcile-total { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.reconcile-total strong { color: var(--navy); font-variant-numeric: tabular-nums; }
+.reconcile-amount { margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--navy); font-variant-numeric: tabular-nums; }
+.reconcile-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem 1.4rem; margin: 0 0 1rem; }
+.reconcile-facts div { display: grid; gap: 0.25rem; }
+.reconcile-facts dt { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.reconcile-facts dd { margin: 0; font-size: 0.9rem; }
+.reconcile-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.8rem 1.2rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.reconcile-form > div { display: grid; gap: 0.5rem; flex: 1 1 260px; }
+
 /* Below this width the sidebar slides off-canvas and the hamburger is the only
    way back to it, so the toggle and the drawer must appear together. */
 @media (max-width: 900px) {

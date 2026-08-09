@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -43,6 +44,13 @@ var NotaKategoriOptions = []NotaKategori{
 }
 
 var NotaJenisPerjalananOptions = []string{"BBM", "Tiket"}
+
+// ErrNotaNotFound and ErrNotaAlreadyPaid separate "no such nota" from "that one
+// is already settled", so finance is told which of the two happened.
+var (
+	ErrNotaNotFound    = fmt.Errorf("nota not found")
+	ErrNotaAlreadyPaid = fmt.Errorf("nota already paid")
+)
 
 // NotaMetode pairs the stored value with the words the form shows.
 type NotaMetode struct {
@@ -191,6 +199,90 @@ func (s *NotaService) RowsBetween(ctx context.Context, from, to string) ([]model
 		return rows[i].NotaID < rows[j].NotaID
 	})
 	return rows, from, to, nil
+}
+
+// Outstanding lists the reimbursements the company still owes, oldest first,
+// optionally narrowed to a transaction number. Cash advances never appear:
+// that money left the company before the nota was filed.
+func (s *NotaService) Outstanding(ctx context.Context, query string) ([]model.Nota, error) {
+	all, err := s.store.ListNota(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read nota: %w", err)
+	}
+	needle := strings.ToUpper(strings.TrimSpace(query))
+	rows := make([]model.Nota, 0, len(all))
+	for _, nota := range all {
+		if nota.MetodePembayaran != model.NotaMetodeReimburse {
+			continue
+		}
+		if nota.StatusPembayaran != model.NotaStatusBelumDibayar {
+			continue
+		}
+		// A partial number is enough: finance reads these off a printed nota
+		// and typing the whole identifier is what people get wrong.
+		if needle != "" && !strings.Contains(strings.ToUpper(nota.NotaID), needle) {
+			continue
+		}
+		rows = append(rows, nota)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Tanggal != rows[j].Tanggal {
+			return rows[i].Tanggal < rows[j].Tanggal
+		}
+		return rows[i].NotaID < rows[j].NotaID
+	})
+	return rows, nil
+}
+
+// Settle records that the company has paid a reimbursement. The proof of
+// payment is required: a status flipped without evidence is what reconciliation
+// exists to prevent.
+func (s *NotaService) Settle(ctx context.Context, user *model.User, notaID, buktiBayar string) (*model.Nota, error) {
+	if user == nil {
+		return nil, fmt.Errorf("%w: pengguna tidak dikenal", ErrValidation)
+	}
+	notaID = strings.ToUpper(strings.TrimSpace(notaID))
+	if notaID == "" {
+		return nil, fmt.Errorf("%w: nota wajib dipilih", ErrValidation)
+	}
+	buktiBayar = strings.TrimSpace(buktiBayar)
+	if buktiBayar == "" {
+		return nil, fmt.Errorf("%w: bukti bayar wajib diunggah", ErrValidation)
+	}
+	if err := photo.ValidateDataURL(buktiBayar); err != nil {
+		return nil, fmt.Errorf("%w: bukti bayar tidak valid", ErrInvalidPhoto)
+	}
+
+	// Serialise the read and the write, so two people settling the same nota
+	// cannot both record a payment against it.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nota, rowNumber, err := s.store.FindNotaRow(ctx, notaID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotaNotFound
+		}
+		return nil, fmt.Errorf("find nota: %w", err)
+	}
+	if nota.MetodePembayaran != model.NotaMetodeReimburse {
+		return nil, fmt.Errorf("%w: hanya nota reimburse yang direkonsiliasi", ErrValidation)
+	}
+	if nota.StatusPembayaran != model.NotaStatusBelumDibayar {
+		return nil, ErrNotaAlreadyPaid
+	}
+
+	now := s.now().In(s.location)
+	paidAt := now
+	nota.StatusPembayaran = model.NotaStatusSudahDibayar
+	nota.BuktiBayar = buktiBayar
+	nota.DibayarPada = &paidAt
+	nota.DirekonsiliasiOleh = user.NamaLengkap
+	nota.DirekonsiliasiOlehID = user.UserID
+	nota.UpdatedAt = now
+	if err := s.store.SettleNota(ctx, rowNumber, nota); err != nil {
+		return nil, fmt.Errorf("settle nota: %w", err)
+	}
+	return nota, nil
 }
 
 type NotaItemInput struct {

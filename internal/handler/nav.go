@@ -22,7 +22,9 @@ var navItems = []NavItem{
 		{Key: "produksi-export", Label: "Export Data", Path: "/produksi/export", Icon: "save"},
 	}},
 	{Key: "nota", Label: "Nota", Icon: "receipt", Children: []NavItem{
+		{Key: "nota-overview", Label: "Overview", Path: "/nota/overview", Icon: "activity"},
 		{Key: "nota-input", Label: "Input Data", Path: "/nota", Icon: "list"},
+		{Key: "nota-rekonsiliasi", Label: "Rekonsiliasi", Path: "/nota/rekonsiliasi", Icon: "wallet"},
 		{Key: "nota-export", Label: "Export Data", Path: "/nota/export", Icon: "save"},
 	}},
 	{Key: "unit", Label: "Unit", Icon: "truck", Children: []NavItem{

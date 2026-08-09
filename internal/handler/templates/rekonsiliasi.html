@@ -1,0 +1,116 @@
+{{define "rekonsiliasi"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "wallet"}}NOTA BELUM DIBAYAR</p>
+        <h2>{{len .Rows}} nota reimburse menunggu pembayaran</h2>
+      </div>
+      <p class="reconcile-total">Total tertunggak <strong>Rp {{.Total}}</strong></p>
+    </div>
+
+    <form class="filter-form" method="get" action="/nota/rekonsiliasi">
+      <div>
+        <label for="q">Cari no transaksi</label>
+        <input id="q" name="q" type="search" value="{{.Query}}" placeholder="NTA-20260809-0001" autocomplete="off">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Cari</button>
+      <a class="button subtle" href="/nota/rekonsiliasi">Reset</a>
+      <p class="hint filter-note">Sebagian nomor sudah cukup. Nota CA tidak muncul di sini karena uangnya sudah keluar saat nota dibuat.</p>
+    </form>
+  </section>
+
+  <section class="panel">
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        {{/* The PIC is in the dialog, not here: two name columns pushed the
+             action button off the page, and finance settles by payee. */}}
+        <thead>
+          <tr>
+            <th scope="col">No</th>
+            <th scope="col">No transaksi</th>
+            <th scope="col">Tanggal</th>
+            <th scope="col">Penerima</th>
+            <th scope="col">Kategori</th>
+            <th scope="col" class="numeric">Total (Rp)</th>
+            <th scope="col">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $index, $row := .Rows}}
+          <tr>
+            <td class="numeric">{{add1 $index}}</td>
+            <td>{{$row.NotaID}}</td>
+            <td>{{$row.Tanggal}}</td>
+            <td>{{$row.PenerimaReimburse}}</td>
+            <td class="wrap">{{$row.Kategori}} — {{$row.SubKategori}}</td>
+            <td class="numeric">{{$row.TotalRupiah}}</td>
+            <td>
+              {{/* A link, not a script-only button: without JavaScript it
+                   reloads the page with this nota's dialog already open. */}}
+              <a class="button subtle table-action" data-open-dialog="dialog-{{$row.NotaID}}"
+                 href="/nota/rekonsiliasi?nota={{$row.NotaID}}{{if $.Query}}&amp;q={{$.Query}}{{end}}">
+                {{template "icon" "wallet"}}Rekonsiliasi
+              </a>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">
+      {{if .Query}}Tidak ada nota belum dibayar dengan nomor itu.
+      {{else}}Tidak ada reimburse yang menunggu pembayaran.{{end}}
+    </p>
+    {{end}}
+  </section>
+
+  {{range .Rows}}
+  <dialog class="modal" id="dialog-{{.NotaID}}" aria-labelledby="title-{{.NotaID}}"{{if .Selected}} open{{end}}>
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">{{template "icon" "receipt"}}{{.NotaID}}</p>
+        <h2 id="title-{{.NotaID}}">{{.PenerimaReimburse}}</h2>
+      </div>
+      <a class="icon-button" data-close-dialog href="/nota/rekonsiliasi{{if $.Query}}?q={{$.Query}}{{end}}" aria-label="Tutup">
+        {{template "icon" "close"}}
+      </a>
+    </div>
+
+    <dl class="reconcile-facts">
+      <div><dt>Tanggal</dt><dd>{{.Tanggal}}</dd></div>
+      <div><dt>PIC</dt><dd>{{.PIC}}</dd></div>
+      <div><dt>Metode</dt><dd>{{.MetodePembayaran}}</dd></div>
+      <div><dt>Kategori</dt><dd>{{.Kategori}} — {{.SubKategori}}{{if .JenisPerjalanan}} ({{.JenisPerjalanan}}){{end}}</dd></div>
+      <div><dt>Status</dt><dd><span class="pay-status">{{template "icon" "clock"}}{{.StatusPembayaran}}</span></dd></div>
+      <div><dt>Total</dt><dd class="reconcile-amount">Rp {{.TotalRupiah}}</dd></div>
+    </dl>
+
+    {{/* One form per nota: a single shared form would let a proof of payment
+         land against whichever row was opened last. */}}
+    <form method="post" action="/nota/rekonsiliasi" class="reconcile-form" enctype="multipart/form-data" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="nota_id" value="{{.NotaID}}">
+      <input type="hidden" name="q" value="{{$.Query}}">
+      <div>
+        <label for="bukti-{{.NotaID}}" class="required-label">Bukti bayar *</label>
+        <input id="bukti-{{.NotaID}}" name="bukti_bayar" type="file" accept="image/*" required>
+        <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
+      </div>
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "check"}}<span data-submit-label>Tandai sudah dibayar</span>
+      </button>
+    </form>
+  </dialog>
+  {{end}}
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/dialog.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

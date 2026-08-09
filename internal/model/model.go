@@ -163,6 +163,14 @@ type Nota struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	Items             []NotaItem
+
+	// Set when finance settles a reimbursement: the proof of payment, when it
+	// was paid and who recorded it. A status that changed with nobody's name
+	// against it is not something an audit can follow up.
+	BuktiBayar           string
+	DibayarPada          *time.Time
+	DirekonsiliasiOleh   string
+	DirekonsiliasiOlehID string
 }
 
 // NotaItem is one line of a nota. It lives in its own sheet: keeping the lines

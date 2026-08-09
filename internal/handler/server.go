@@ -205,6 +205,11 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		"add": func(a, b float64) float64 { return a + b },
 		"sub": func(a, b float64) float64 { return a - b },
 		"div": func(a, b float64) float64 { return a / b },
+		// Table rows are numbered from one; the range index starts at zero.
+		"add1": func(index int) int { return index + 1 },
+		// Money is written grouped everywhere it appears, so the templates do
+		// not each reinvent the formatting.
+		"rupiah": formatRupiah,
 	}).ParseFS(assetFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -244,6 +249,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/nota", s.handleNota)
+	mux.HandleFunc("/nota/overview", s.handleNotaOverview)
+	mux.HandleFunc("/nota/rekonsiliasi", s.handleRekonsiliasi)
 	mux.HandleFunc("/nota/export", s.handleNotaExport)
 	mux.HandleFunc("/nota/export/download", s.handleNotaDownload)
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
@@ -569,6 +576,205 @@ func (s *Server) handleProduksiDownload(w http.ResponseWriter, r *http.Request) 
 	// stale behind the person downloading it.
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(payload)
+}
+
+type NotaOverviewPageData struct {
+	ShellPageData
+	Overview *service.NotaOverview
+	From     string
+	To       string
+	// The money figures are printed grouped, so the template does not have to
+	// know how rupiah is written.
+	TotalRupiah       string
+	OutstandingRupiah string
+	DibayarRupiah     string
+	RataRupiah        string
+	SpendChart        *Chart
+	MethodChart       *Chart
+	CountChart        *Chart
+	Error             string
+}
+
+func (s *Server) handleNotaOverview(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	from := strings.TrimSpace(r.URL.Query().Get("from"))
+	to := strings.TrimSpace(r.URL.Query().Get("to"))
+	data := NotaOverviewPageData{
+		ShellPageData: s.shellData(user, sessionValue, "nota-overview"),
+		From:          from,
+		To:            to,
+	}
+
+	overview, err := s.nota.BuildOverview(r.Context(), from, to)
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
+		} else {
+			log.Printf("build nota overview: %v", err)
+			data.Error = "Gagal memuat data nota"
+		}
+		s.render(w, "nota_overview", data, http.StatusOK)
+		return
+	}
+
+	labels := make([]string, 0, len(overview.Series))
+	spend := make([]float64, 0, len(overview.Series))
+	advances := make([]float64, 0, len(overview.Series))
+	reimbursements := make([]float64, 0, len(overview.Series))
+	counts := make([]float64, 0, len(overview.Series))
+	for _, point := range overview.Series {
+		labels = append(labels, point.Label)
+		spend = append(spend, overview.Scaled(point.Total))
+		advances = append(advances, overview.Scaled(point.CA))
+		reimbursements = append(reimbursements, overview.Scaled(point.Reimburse))
+		counts = append(counts, float64(point.Jumlah))
+	}
+
+	data.Overview = overview
+	data.From = overview.From
+	data.To = overview.To
+	data.TotalRupiah = formatRupiah(overview.TotalPengeluaran)
+	data.OutstandingRupiah = formatRupiah(overview.Outstanding)
+	data.DibayarRupiah = formatRupiah(overview.Dibayar)
+	data.RataRupiah = formatRupiah(overview.RataRata)
+	data.SpendChart = BuildLineChart(labels, spend, 2)
+	data.MethodChart = BuildGroupedChart(labels, advances, reimbursements)
+	data.CountChart = BuildValueChart(labels, counts, 0)
+	s.render(w, "nota_overview", data, http.StatusOK)
+}
+
+// RekonsiliasiRow is one outstanding reimbursement as the table shows it.
+type RekonsiliasiRow struct {
+	model.Nota
+	TotalRupiah string
+	// Selected renders this row's dialog already open, which is how the page
+	// behaves for a browser that never ran the script.
+	Selected bool
+}
+
+type RekonsiliasiPageData struct {
+	ShellPageData
+	Query   string
+	Rows    []RekonsiliasiRow
+	Total   string
+	Error   string
+	Success string
+}
+
+func (s *Server) handleRekonsiliasi(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handleRekonsiliasiSettle(w, r)
+		return
+	}
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	s.renderRekonsiliasi(w, r, user, sessionValue,
+		strings.TrimSpace(r.URL.Query().Get("q")),
+		strings.TrimSpace(r.URL.Query().Get("nota")), "", "", http.StatusOK)
+}
+
+func (s *Server) handleRekonsiliasiSettle(w http.ResponseWriter, r *http.Request) {
+	sessionValue, ok := s.currentSession(r)
+	if !ok {
+		redirect(w, r, "/login")
+		return
+	}
+	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
+	if err != nil || user.StatusPengguna != model.StatusAktif {
+		s.sessions.Delete(r, w)
+		redirect(w, r, "/login")
+		return
+	}
+
+	maxBody := s.maxUploadBytes + 64*1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseMultipartForm(maxBody); err != nil {
+		s.renderRekonsiliasi(w, r, user, sessionValue, "", "", "Form tidak valid atau file terlalu besar", "", http.StatusUnprocessableEntity)
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+	if !s.sessions.ValidCSRFToken(r.FormValue("csrf_token"), sessionValue) {
+		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
+		return
+	}
+
+	query := strings.TrimSpace(r.FormValue("q"))
+	notaID := strings.TrimSpace(r.FormValue("nota_id"))
+	bukti, err := s.readOptionalPhoto(r, "bukti_bayar")
+	if err != nil {
+		// The dialog reopens on the nota that failed, so the message sits next
+		// to the upload it is about.
+		s.renderRekonsiliasi(w, r, user, sessionValue, query, notaID, err.Error(), "", http.StatusUnprocessableEntity)
+		return
+	}
+
+	nota, err := s.nota.Settle(r.Context(), user, notaID, bukti)
+	if err != nil {
+		message := "Rekonsiliasi gagal"
+		status := http.StatusUnprocessableEntity
+		switch {
+		case errors.Is(err, service.ErrNotaNotFound):
+			message = "Nota tidak ditemukan"
+			status = http.StatusNotFound
+		case errors.Is(err, service.ErrNotaAlreadyPaid):
+			message = "Nota ini sudah ditandai dibayar"
+			status = http.StatusConflict
+		case errors.Is(err, service.ErrInvalidPhoto):
+			message = "Bukti bayar tidak valid"
+		case errors.Is(err, service.ErrValidation):
+			message = strings.TrimPrefix(err.Error(), "validation error: ")
+		default:
+			log.Printf("settle nota: %v", err)
+			message = "Terjadi kesalahan saat menyimpan rekonsiliasi"
+			status = http.StatusInternalServerError
+		}
+		s.renderRekonsiliasi(w, r, user, sessionValue, query, notaID, message, "", status)
+		return
+	}
+
+	s.renderRekonsiliasi(w, r, user, sessionValue, query, "", "",
+		fmt.Sprintf("Nota %s ditandai %s sebesar Rp %s.",
+			nota.NotaID, strings.ToLower(nota.StatusPembayaran), formatRupiah(nota.Total)),
+		http.StatusOK)
+}
+
+func (s *Server) renderRekonsiliasi(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, query, openNotaID, errMessage, success string, status int) {
+	data := RekonsiliasiPageData{
+		ShellPageData: s.shellData(user, sessionValue, "nota-rekonsiliasi"),
+		Query:         query,
+		Error:         errMessage,
+		Success:       success,
+	}
+	openNotaID = strings.ToUpper(strings.TrimSpace(openNotaID))
+	rows, err := s.nota.Outstanding(r.Context(), query)
+	if err != nil {
+		log.Printf("read outstanding nota: %v", err)
+		if data.Error == "" {
+			data.Error = "Gagal memuat data nota"
+		}
+		s.render(w, "rekonsiliasi", data, status)
+		return
+	}
+	outstanding := 0.0
+	for _, nota := range rows {
+		data.Rows = append(data.Rows, RekonsiliasiRow{
+			Nota:        nota,
+			TotalRupiah: formatRupiah(nota.Total),
+			Selected:    openNotaID != "" && strings.EqualFold(nota.NotaID, openNotaID),
+		})
+		outstanding += nota.Total
+	}
+	data.Total = formatRupiah(outstanding)
+	s.render(w, "rekonsiliasi", data, status)
 }
 
 func (s *Server) handleNotaExport(w http.ResponseWriter, r *http.Request) {
