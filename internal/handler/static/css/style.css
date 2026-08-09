@@ -132,22 +132,42 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .sidebar-link:hover { background: #eef3f5; }
 .sidebar-link.active { color: var(--white); background: var(--navy); }
 /* margin-top:auto is what pins the account card to the bottom of the column. */
-.sidebar-account { display: flex; align-items: center; gap: 0.7rem; margin-top: auto; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+/* The sidebar ends with who to ask for help and who owns the app. */
+.sidebar-footer { display: grid; gap: 0.7rem; margin-top: auto; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.support-link { display: flex; align-items: center; gap: 0.55rem; padding: 0.6rem 0.75rem; border: 1px solid #cfe8d8; border-radius: 10px; color: #1f7a4d; background: #f0f9f4; font-size: 0.83rem; font-weight: 600; text-decoration: none; }
+.support-link:hover { border-color: #1f7a4d; background: #e6f5ec; }
+.sidebar-copy { margin-bottom: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
+
+/* The account sits in the top right, where the date already was. */
 .account-avatar { display: grid; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border-radius: 50%; color: var(--navy); background: #e8eff2; font-size: 0.95rem; font-weight: 600; }
-.account-identity { min-width: 0; flex: 1; }
+.account-identity { display: grid; min-width: 0; text-align: left; }
 /* Long names must ellipsis rather than push the logout button out of reach. */
 .account-name { margin-bottom: 0; overflow: hidden; color: var(--navy-dark); font-size: 0.88rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .account-role { margin-bottom: 0; overflow: hidden; color: var(--muted); font-size: 0.76rem; text-overflow: ellipsis; white-space: nowrap; }
-.account-logout { display: grid; padding: 0.5rem; flex-shrink: 0; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: var(--danger); background: transparent; cursor: pointer; }
-.account-logout:hover { border-color: var(--danger); background: #fff0f0; }
+
+.account-menu { position: relative; }
+.account-menu > summary { list-style: none; cursor: pointer; }
+.account-menu > summary::-webkit-details-marker { display: none; }
+.account-summary { display: flex; align-items: center; gap: 0.6rem; padding: 0.3rem 0.45rem; border-radius: 12px; }
+.account-menu[open] > summary .account-summary { background: var(--cream); }
+.account-summary:hover { background: var(--cream); }
+.account-menu[open] > summary .group-caret { transform: rotate(180deg); }
+/* Anchored to the avatar's right edge and kept inside the viewport, so the
+   panel lines up with the control that opened it on any width. */
+.account-dropdown { position: absolute; right: 0; top: calc(100% + 0.45rem); z-index: 1000; width: max-content; min-width: 190px; max-width: calc(100vw - 1.5rem); padding: 0.35rem; border: 1px solid var(--line); border-radius: 12px; background: var(--white); box-shadow: 0 14px 32px rgba(16, 47, 72, 0.16); }
+.account-dropdown-name { margin-bottom: 0; padding: 0.45rem 0.6rem 0; overflow: hidden; color: var(--navy-dark); font-size: 0.85rem; font-weight: 600; text-overflow: ellipsis; }
+.account-dropdown-role { margin-bottom: 0.35rem; padding: 0 0.6rem 0.5rem; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 0.74rem; }
+.account-logout { display: flex; width: 100%; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; border: 0; border-radius: 9px; color: var(--danger); background: transparent; font-size: 0.83rem; font-weight: 600; text-align: left; cursor: pointer; }
+.account-logout:hover { background: #fff0f0; }
 .account-logout:focus-visible { outline: 2px solid var(--danger); outline-offset: 1px; }
 .sidebar-scrim { position: fixed; inset: 0; z-index: 1050; background: rgba(16, 47, 72, 0.45); }
 
 .topbar, .panel-heading, .action-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.topbar { padding: 1.1rem clamp(1.25rem, 4vw, 3rem); border-bottom: 1px solid var(--line); background: var(--white); }
+.topbar { position: relative; z-index: 900; padding: 1.1rem clamp(1.25rem, 4vw, 3rem); border-bottom: 1px solid var(--line); background: var(--white); }
 .topbar-brand { display: flex; align-items: center; gap: 0.9rem; }
 .topbar-meta { display: flex; align-items: center; gap: 1rem; }
-.topbar-date { margin-bottom: 0; color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
+.topbar-date { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0; padding-right: 1rem; border-right: 1px solid var(--line); color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
+.topbar-date .icon { color: var(--danger); }
 .topbar-user { padding-left: 1rem; border-left: 1px solid var(--line); text-align: right; }
 .topbar-user-name { margin-bottom: 0; color: var(--navy-dark); font-size: 0.9rem; font-weight: 600; line-height: 1.3; }
 .topbar-user-role { margin-bottom: 0; color: var(--muted); font-size: 0.76rem; }
@@ -280,6 +300,10 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
      breadcrumb below the title already says where you are. */
   .topbar-logo { display: block; }
   .topbar-title { display: none; }
+  /* On a phone the avatar stands in for the whole account block; the name and
+     position are in the menu it opens. */
+  .account-identity, .account-summary .group-caret { display: none; }
+  .topbar-date { padding-right: 0.7rem; }
   .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 1100; width: min(272px, 82vw); transform: translateX(-100%); transition: transform 0.2s ease; }
   body.sidebar-open .sidebar { transform: none; }
 }
@@ -299,6 +323,7 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
   .action-row .button { flex: 1 1 auto; }
   .topbar-brand { gap: 0.6rem; }
   .topbar-date { font-size: 0.78rem; }
+  .topbar-meta { gap: 0.6rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

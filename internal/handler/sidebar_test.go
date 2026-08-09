@@ -97,14 +97,14 @@ func TestSidebarMarksActivePageAndKeepsLogoutLast(t *testing.T) {
 			t.Fatalf("%s: breadcrumb does not show %q", path, label)
 		}
 
-		// Logout is pinned to the bottom, so it must come after every link.
-		logoutAt := strings.Index(page, `action="/logout"`)
+		// The sidebar ends with support and the copyright, below every link.
+		footerAt := strings.Index(page, `class="sidebar-footer"`)
 		lastLinkAt := strings.LastIndex(page, `class="sidebar-link`)
-		if logoutAt < 0 || lastLinkAt < 0 {
-			t.Fatalf("%s: sidebar is missing links or logout", path)
+		if footerAt < 0 || lastLinkAt < 0 {
+			t.Fatalf("%s: sidebar is missing links or its footer", path)
 		}
-		if logoutAt < lastLinkAt {
-			t.Fatalf("%s: logout appears before the menu links", path)
+		if footerAt < lastLinkAt {
+			t.Fatalf("%s: the footer appears before the menu links", path)
 		}
 	}
 }
@@ -122,37 +122,58 @@ func sectionBetween(t *testing.T, page, openTag, closeTag string) string {
 	return page[start : start+end]
 }
 
-// The signed-in user's name and position sit at the bottom of the sidebar,
-// alongside the logout control - not in the topbar.
-func TestUserIdentityLivesAtTheBottomOfTheSidebar(t *testing.T) {
+// The signed-in user's name, position and logout sit in the top right, beside
+// the date - not in the sidebar.
+func TestUserIdentityLivesInTheTopbar(t *testing.T) {
 	testServer := newTestServer(t)
 	client := loggedInClient(t, testServer)
 
 	for _, path := range []string{"/dashboard", "/produksi", "/unit-dt"} {
 		page := fetchAuthedPage(t, client, testServer.URL+path)
 
-		sidebar := sectionBetween(t, page, `<aside class="sidebar"`, "</aside>")
-		if !strings.Contains(sidebar, "Budi Santoso") {
-			t.Fatalf("%s: sidebar is missing the user name", path)
+		topbar := sectionBetween(t, page, `<header class="topbar">`, "</header>")
+		if !strings.Contains(topbar, "Budi Santoso") {
+			t.Fatalf("%s: topbar is missing the user name", path)
 		}
-		if !strings.Contains(sidebar, `class="account-role"`) {
-			t.Fatalf("%s: sidebar is missing the user position", path)
+		if !strings.Contains(topbar, `class="account-role"`) {
+			t.Fatalf("%s: topbar is missing the user position", path)
 		}
 		// The avatar shows the first letter of the name.
-		if !strings.Contains(sidebar, `class="account-avatar" aria-hidden="true">B<`) {
+		if !strings.Contains(topbar, `class="account-avatar" aria-hidden="true">B<`) {
 			t.Fatalf("%s: avatar initial is wrong or missing", path)
 		}
-		// It belongs below every menu link.
-		accountAt := strings.Index(sidebar, `class="sidebar-account"`)
-		lastLinkAt := strings.LastIndex(sidebar, `class="sidebar-link`)
-		if accountAt < 0 || accountAt < lastLinkAt {
-			t.Fatalf("%s: the account card is not below the menu", path)
+		if !strings.Contains(topbar, `action="/logout"`) {
+			t.Fatalf("%s: logout is not in the account menu", path)
 		}
 
-		topbar := sectionBetween(t, page, `<header class="topbar">`, "</header>")
-		if strings.Contains(topbar, "Budi Santoso") {
-			t.Fatalf("%s: the user name is still rendered in the topbar", path)
+		sidebar := sectionBetween(t, page, `<aside class="sidebar"`, "</aside>")
+		if strings.Contains(sidebar, "Budi Santoso") {
+			t.Fatalf("%s: the user name is still rendered in the sidebar", path)
 		}
+		if strings.Contains(sidebar, `action="/logout"`) {
+			t.Fatalf("%s: logout is still rendered in the sidebar", path)
+		}
+	}
+}
+
+// The sidebar ends with who to ask for help and who owns the app.
+func TestSidebarFooterOffersSupportAndCopyright(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+	sidebar := sectionBetween(t, fetchAuthedPage(t, client, testServer.URL+"/dashboard"),
+		`<aside class="sidebar"`, "</aside>")
+
+	// The number is dialled from a phone, so the link opens the chat directly.
+	if !strings.Contains(sidebar, `href="https://wa.me/6285393464812"`) {
+		t.Fatal("the support link does not open WhatsApp")
+	}
+	// A link leaving the app must not hand the new tab a window opener.
+	if !strings.Contains(sidebar, `rel="noopener noreferrer"`) {
+		t.Fatal("the support link opens a tab that can reach back into the app")
+	}
+	// The template writes the entity, which is what the browser renders as ©.
+	if !strings.Contains(sidebar, "&copy; 2026 PT Orecon Putra Perkasa") {
+		t.Fatalf("the copyright line is missing or wrong: %s", sidebar)
 	}
 }
 
@@ -239,21 +260,47 @@ func TestTopbarShowsTheLogoBesideTheHamburger(t *testing.T) {
 	}
 }
 
-// Logout must stay a CSRF-protected POST even though it now looks like an icon.
-func TestSidebarLogoutIsAProtectedPost(t *testing.T) {
+// The account panel hangs below the topbar, so the topbar has to sit above the
+// page content and the panel has to close when attention moves elsewhere.
+func TestAccountMenuLayersAndCloses(t *testing.T) {
 	testServer := newTestServer(t)
 	client := loggedInClient(t, testServer)
-	sidebar := sectionBetween(t, fetchAuthedPage(t, client, testServer.URL+"/dashboard"), `<aside class="sidebar"`, "</aside>")
 
-	if !strings.Contains(sidebar, `method="post" action="/logout"`) {
+	stylesheet := fetchAuthedPage(t, client, testServer.URL+"/static/css/style.css")
+	if !strings.Contains(stylesheet, ".topbar { position: relative; z-index: 900;") {
+		t.Fatal("the topbar does not sit above the page, so the panel is drawn under it")
+	}
+	if !strings.Contains(stylesheet, "max-width: calc(100vw - 1.5rem)") {
+		t.Fatal("the panel can grow past the edge of a narrow screen")
+	}
+
+	script := fetchAuthedPage(t, client, testServer.URL+"/static/js/shell.js")
+	if !strings.Contains(script, "details.account-menu") {
+		t.Fatal("nothing closes the account menu")
+	}
+	// A menu that only closes by clicking its own summary stays over the page
+	// while you work elsewhere.
+	for _, behaviour := range []string{`addEventListener("click"`, `event.key !== "Escape"`} {
+		if !strings.Contains(script, behaviour) {
+			t.Fatalf("the account menu is missing %q", behaviour)
+		}
+	}
+}
+
+// Logout must stay a CSRF-protected POST now that it lives inside a menu.
+func TestLogoutIsAProtectedPost(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+	topbar := sectionBetween(t, fetchAuthedPage(t, client, testServer.URL+"/dashboard"), `<header class="topbar">`, "</header>")
+
+	if !strings.Contains(topbar, `method="post" action="/logout"`) {
 		t.Fatal("logout is no longer a POST form")
 	}
-	if !strings.Contains(sidebar, `name="csrf_token"`) {
+	if !strings.Contains(topbar, `name="csrf_token"`) {
 		t.Fatal("logout form lost its CSRF token")
 	}
-	// An icon-only control still has to announce itself.
-	if !strings.Contains(sidebar, `aria-label="Keluar"`) {
-		t.Fatal("the logout icon has no accessible name")
+	if !strings.Contains(topbar, ">Keluar<") {
+		t.Fatal("the logout control has no label")
 	}
 }
 

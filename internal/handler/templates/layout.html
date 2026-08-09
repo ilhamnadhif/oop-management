@@ -54,16 +54,13 @@
       {{end}}
       {{end}}
     </nav>
-    <div class="sidebar-account">
-      <span class="account-avatar" aria-hidden="true">{{.UserInitial}}</span>
-      <div class="account-identity">
-        <p class="account-name">{{.User.NamaLengkap}}</p>
-        <p class="account-role">{{.User.Jabatan}}</p>
-      </div>
-      <form method="post" action="/logout">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button class="account-logout" type="submit" title="Keluar" aria-label="Keluar">{{template "icon" "logout"}}</button>
-      </form>
+    <div class="sidebar-footer">
+      {{/* Support is a person on WhatsApp, not a ticket queue, so the link goes
+           straight to the chat. */}}
+      <a class="support-link" href="https://wa.me/6285393464812" target="_blank" rel="noopener noreferrer">
+        {{template "icon" "whatsapp"}}<span>Support WhatsApp</span>
+      </a>
+      <p class="sidebar-copy">&copy; {{.Year}} {{.Company}}</p>
     </div>
   </aside>
   <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
@@ -79,7 +76,29 @@
         <span class="topbar-logo">{{template "brandLogo"}}</span>
         <p class="topbar-title">{{.PageTitle}}</p>
       </div>
-      <p class="topbar-date">{{.Today}}</p>
+      <div class="topbar-meta">
+        <p class="topbar-date">{{template "icon" "calendar"}}{{.Today}}</p>
+        {{/* details/summary gives an accessible dropdown with keyboard support
+             and no JavaScript; the menu holds the one destructive action. */}}
+        <details class="account-menu">
+          <summary class="account-summary">
+            <span class="account-avatar" aria-hidden="true">{{.UserInitial}}</span>
+            <span class="account-identity">
+              <span class="account-name">{{.User.NamaLengkap}}</span>
+              <span class="account-role">{{.User.Jabatan}}</span>
+            </span>
+            <svg class="group-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          </summary>
+          <div class="account-dropdown">
+            <p class="account-dropdown-name">{{.User.NamaLengkap}}</p>
+            <p class="account-dropdown-role">{{.User.Jabatan}}</p>
+            <form method="post" action="/logout">
+              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+              <button class="account-logout" type="submit">{{template "icon" "logout"}}<span>Keluar</span></button>
+            </form>
+          </div>
+        </details>
+      </div>
     </header>
     <main class="app-shell">
       {{/* Title and breadcrumb are rendered here so every page gets the same

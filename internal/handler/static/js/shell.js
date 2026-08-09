@@ -79,3 +79,37 @@
     });
   });
 })();
+
+(() => {
+  // A <details> menu stays open until its own summary is clicked again, which
+  // leaves the account panel hanging over the page while you work elsewhere.
+  const menus = Array.from(document.querySelectorAll("details.account-menu"));
+  if (!menus.length) return;
+
+  const closeAll = (except) => {
+    menus.forEach((menu) => {
+      if (menu !== except) menu.open = false;
+    });
+  };
+
+  document.addEventListener("click", (event) => {
+    const openMenu = menus.find((menu) => menu.open);
+    if (!openMenu) return;
+    // A click inside the menu is either the summary toggling it or the logout
+    // button submitting; neither should be intercepted here.
+    if (openMenu.contains(event.target)) {
+      closeAll(openMenu);
+      return;
+    }
+    closeAll(null);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const openMenu = menus.find((menu) => menu.open);
+    if (!openMenu) return;
+    openMenu.open = false;
+    const summary = openMenu.querySelector("summary");
+    if (summary) summary.focus();
+  });
+})();

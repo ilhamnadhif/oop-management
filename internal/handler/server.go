@@ -77,8 +77,12 @@ type ShellPageData struct {
 	Breadcrumb string
 	// Section names the group the page sits in; empty for an ungrouped page.
 	Section string
-	// UserInitial is the single letter shown in the sidebar avatar.
+	// UserInitial is the single letter shown in the account avatar.
 	UserInitial string
+	// The footer names the company and the current year, which the templates
+	// have no way to work out on their own.
+	Company string
+	Year    int
 }
 
 type UnitDTFormData struct {
@@ -435,6 +439,8 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		Breadcrumb:  item.Label,
 		Section:     parent.Label,
 		UserInitial: firstLetter(user.NamaLengkap),
+		Company:     s.company,
+		Year:        now.Year(),
 	}
 }
 
