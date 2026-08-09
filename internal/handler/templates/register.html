@@ -42,19 +42,23 @@
             <option value="TIDAK_AKTIF" {{if eq .Register.Status "TIDAK_AKTIF"}}selected{{end}}>Tidak aktif</option>
           </select>
         </div>
-      </div>
-
-      <label for="register-password">Password <span class="hint">(minimal 8 karakter)</span></label>
-      <div class="input-with-action">
-        <input id="register-password" name="password" type="password" placeholder="Minimal 8 karakter" autocomplete="new-password" minlength="8" required>
-        {{template "passwordToggle" "register-password"}}
-      </div>
-
-      <label for="register-password-confirm">Konfirmasi password</label>
-      <div class="input-with-action">
-        <input id="register-password-confirm" type="password" placeholder="Ulangi password" autocomplete="new-password" minlength="8" required
-          data-confirm-for="register-password" data-confirm-message="Konfirmasi password tidak sama.">
-        {{template "passwordToggle" "register-password-confirm"}}
+        {{/* The password pair sits in the grid so the form fits a laptop screen
+             without scrolling; below 720px the grid is one column again. */}}
+        <div>
+          <label for="register-password">Password <span class="hint">(min. 8 karakter)</span></label>
+          <div class="input-with-action">
+            <input id="register-password" name="password" type="password" placeholder="Minimal 8 karakter" autocomplete="new-password" minlength="8" required>
+            {{template "passwordToggle" "register-password"}}
+          </div>
+        </div>
+        <div>
+          <label for="register-password-confirm">Konfirmasi password</label>
+          <div class="input-with-action">
+            <input id="register-password-confirm" type="password" placeholder="Ulangi password" autocomplete="new-password" minlength="8" required
+              data-confirm-for="register-password" data-confirm-message="Konfirmasi password tidak sama.">
+            {{template "passwordToggle" "register-password-confirm"}}
+          </div>
+        </div>
       </div>
 
       <button class="button primary" type="submit" data-submit-button data-loading-label="Memproses…">

@@ -381,14 +381,38 @@ func TestSidebarGroupsAreCollapsible(t *testing.T) {
 		}
 	}
 
-	// The stored preference is the set of expanded groups, so an empty store
-	// means collapsed rather than the other way round.
+	// Nothing is remembered between page loads, so a fresh sign-in always finds
+	// the menu tidy rather than however it was left days ago.
 	shell := fetchPage(t, testServer.URL+"/static/js/shell.js")
-	if !strings.Contains(shell, `"opp.sidebar.expanded"`) {
-		t.Fatal("shell.js does not persist which groups are expanded")
+	for _, stale := range []string{`"opp.sidebar.expanded"`, `"opp.sidebar.collapsed"`} {
+		if strings.Contains(shell, stale) {
+			t.Fatalf("shell.js still stores %s, which survives a sign-out", stale)
+		}
 	}
-	if strings.Contains(shell, `"opp.sidebar.collapsed"`) {
-		t.Fatal("shell.js still stores collapsed groups, which defaults them open")
+}
+
+// Opening a group closes the others: a stack of open groups pushes the lower
+// ones off a phone screen, and the sidebar is for finding the next page rather
+// than for keeping unfolded.
+func TestSidebarGroupsOpenOneAtATime(t *testing.T) {
+	testServer := newTestServer(t)
+	shell := fetchPage(t, testServer.URL+"/static/js/shell.js")
+
+	for _, behaviour := range []string{
+		// The click is intercepted, or the browser toggles before anything can
+		// animate.
+		"event.preventDefault()",
+		"groups.forEach((other) => other !== group && setOpen(other, false))",
+		// A closed <details> renders nothing, so the collapse has to finish
+		// before the element is closed.
+		"group.open = true;",
+		`animation.addEventListener("finish"`,
+		// Motion is a preference, not a given.
+		`matchMedia("(prefers-reduced-motion: reduce)")`,
+	} {
+		if !strings.Contains(shell, behaviour) {
+			t.Fatalf("shell.js is missing %q", behaviour)
+		}
 	}
 }
 

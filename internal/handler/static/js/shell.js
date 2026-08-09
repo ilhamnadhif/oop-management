@@ -33,49 +33,71 @@
 })();
 
 (() => {
-  // Groups start collapsed; only the one holding the current page is open, and
-  // the server renders it that way. This remembers the ones the user expanded on
-  // top of that, because navigation reloads the page and a group opened to look
-  // around would otherwise snap shut on the next click.
+  // Groups start collapsed. Only the group holding the current page arrives
+  // open, and the server renders it that way, so the menu is right before any
+  // of this runs.
   //
-  // The active group is left alone: closing it would hide where you are.
+  // Opening one closes the rest: the sidebar is a place to find the next page,
+  // not a list to keep unfolded, and a stack of open groups pushes the lower
+  // ones off a phone screen. Nothing is remembered between page loads, so a
+  // fresh sign-in always starts tidy.
   const groups = Array.from(document.querySelectorAll(".sidebar-group[data-group]"));
   if (!groups.length) return;
 
-  const storage = (() => {
-    try {
-      const probe = "__opp__";
-      window.localStorage.setItem(probe, probe);
-      window.localStorage.removeItem(probe);
-      return window.localStorage;
-    } catch (error) {
-      return null;
-    }
-  })();
-  if (!storage) return;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const DURATION = 220;
+  const running = new WeakMap();
 
-  // Expanded groups are stored, not collapsed ones, so the default with nothing
-  // saved is collapsed.
-  const KEY = "opp.sidebar.expanded";
-  const load = () => {
-    try {
-      return new Set(JSON.parse(storage.getItem(KEY)) || []);
-    } catch (error) {
-      return new Set();
-    }
+  const sublist = (group) => group.querySelector(".sidebar-sublist");
+
+  const settle = (list) => {
+    list.style.overflow = "";
+    list.style.height = "";
+    list.style.opacity = "";
   };
 
-  const expanded = load();
-  groups.forEach((group) => {
-    const name = group.dataset.group;
-    if (group.classList.contains("active")) return;
-    group.open = expanded.has(name);
+  const setOpen = (group, open) => {
+    const list = sublist(group);
+    const current = running.get(group);
+    if (current) current.cancel();
 
-    group.addEventListener("toggle", () => {
-      const next = load();
-      if (group.open) next.add(name);
-      else next.delete(name);
-      storage.setItem(KEY, JSON.stringify(Array.from(next)));
+    if (!list || reduceMotion.matches || typeof list.animate !== "function") {
+      group.open = open;
+      return;
+    }
+    if (group.open === open) return;
+
+    // A closed <details> renders nothing, so the element has to be open for the
+    // whole animation and is only closed once the collapse has finished.
+    group.open = true;
+    const height = list.scrollHeight;
+    list.style.overflow = "hidden";
+
+    const animation = list.animate(
+      [
+        { height: (open ? 0 : height) + "px", opacity: open ? 0 : 1 },
+        { height: (open ? height : 0) + "px", opacity: open ? 1 : 0 },
+      ],
+      { duration: DURATION, easing: "cubic-bezier(0.4, 0, 0.2, 1)" }
+    );
+    running.set(group, animation);
+    animation.addEventListener("finish", () => {
+      running.delete(group);
+      group.open = open;
+      settle(list);
+    });
+    animation.addEventListener("cancel", () => settle(list));
+  };
+
+  groups.forEach((group) => {
+    const summary = group.querySelector("summary");
+    if (!summary) return;
+    summary.addEventListener("click", (event) => {
+      // The browser would toggle instantly; the animation needs to own it.
+      event.preventDefault();
+      const opening = !group.open;
+      if (opening) groups.forEach((other) => other !== group && setOpen(other, false));
+      setOpen(group, opening);
     });
   });
 })();

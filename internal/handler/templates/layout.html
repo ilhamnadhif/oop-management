@@ -77,7 +77,11 @@
         <p class="topbar-title">{{.PageTitle}}</p>
       </div>
       <div class="topbar-meta">
-        <p class="topbar-date">{{template "icon" "calendar"}}{{.Today}}</p>
+        <p class="topbar-date">
+          {{template "icon" "calendar"}}
+          <span class="date-long">{{.Today}}</span>
+          <span class="date-short">{{.TodayShort}}</span>
+        </p>
         {{/* details/summary gives an accessible dropdown with keyboard support
              and no JavaScript; the menu holds the one destructive action. */}}
         <details class="account-menu">

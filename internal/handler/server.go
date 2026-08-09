@@ -66,9 +66,11 @@ type RegisterFormData struct {
 // ShellPageData is what every signed-in page needs to draw the sidebar,
 // breadcrumb and logout form.
 type ShellPageData struct {
-	Title      string
-	User       *model.User
-	Today      string
+	Title string
+	User  *model.User
+	Today string
+	// TodayShort is the same date in the form a phone header has room for.
+	TodayShort string
 	ClockNow   string
 	CSRFToken  string
 	NavItems   []NavItem
@@ -431,6 +433,7 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		Title:       item.Label,
 		User:        user,
 		Today:       formatIndonesianDate(now),
+		TodayShort:  formatShortIndonesianDate(now),
 		ClockNow:    now.Format("15:04"),
 		CSRFToken:   sessionValue.CSRFToken,
 		NavItems:    navItemsFor(user.Jabatan),
