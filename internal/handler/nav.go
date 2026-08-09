@@ -28,6 +28,7 @@ var navItems = []NavItem{
 		{Key: "nota-export", Label: "Export Data", Path: "/nota/export", Icon: "save"},
 	}},
 	{Key: "unit", Label: "Unit", Icon: "truck", Children: []NavItem{
+		{Key: "unit-overview", Label: "Overview", Path: "/unit/overview", Icon: "activity"},
 		{Key: "unit-dt", Label: "Unit DT", Path: "/unit-dt", Icon: "truck"},
 		{Key: "unit-a2b", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube"},
 		{Key: "unit-export", Label: "Export Data", Path: "/unit/export", Icon: "save"},

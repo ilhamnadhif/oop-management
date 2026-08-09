@@ -34,6 +34,7 @@ type Server struct {
 	overview       *service.OverviewService
 	unitA2B        *service.UnitA2BService
 	nota           *service.NotaService
+	unitOverview   *service.UnitOverviewService
 	company        string
 	signatory      export.Signatory
 	sessions       *session.Manager
@@ -189,7 +190,7 @@ type Branding struct {
 	Signatory export.Signatory
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, unitOverview *service.UnitOverviewService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
 	if strings.TrimSpace(branding.Company) == "" {
 		branding.Company = "PT Orecon Putra Perkasa"
 	}
@@ -228,6 +229,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		overview:       overview,
 		unitA2B:        unitA2B,
 		nota:           nota,
+		unitOverview:   unitOverview,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -250,6 +252,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
 	mux.HandleFunc("/produksi/export/download", s.handleProduksiDownload)
+	mux.HandleFunc("/unit/overview", s.handleUnitOverview)
 	mux.HandleFunc("/unit/export", s.handleUnitExport)
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
@@ -918,6 +921,40 @@ func exportPeriodSlug(from, to string) string {
 	default:
 		return "semua"
 	}
+}
+
+type UnitOverviewPageData struct {
+	ShellPageData
+	Overview    *service.UnitOverview
+	LokasiChart *Chart
+	Error       string
+}
+
+func (s *Server) handleUnitOverview(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	data := UnitOverviewPageData{ShellPageData: s.shellData(user, sessionValue, "unit-overview")}
+
+	overview, err := s.unitOverview.Build(r.Context())
+	if err != nil {
+		log.Printf("build unit overview: %v", err)
+		data.Error = "Gagal memuat data unit"
+		s.render(w, "unit_overview", data, http.StatusOK)
+		return
+	}
+
+	labels := make([]string, 0, len(overview.LokasiShares))
+	counts := make([]float64, 0, len(overview.LokasiShares))
+	for _, share := range overview.LokasiShares {
+		labels = append(labels, share.Label)
+		counts = append(counts, float64(share.Jumlah))
+	}
+	data.Overview = overview
+	// Whole machines only; half a bulldozer is not a reading.
+	data.LokasiChart = BuildValueChart(labels, counts, 0)
+	s.render(w, "unit_overview", data, http.StatusOK)
 }
 
 type UnitExportPageData struct {
