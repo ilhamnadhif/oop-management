@@ -127,6 +127,18 @@ func TestComboboxDegradesToNativeMarkup(t *testing.T) {
 	if len(body) == 0 {
 		t.Fatal("combobox.js is empty")
 	}
+	// On a touch screen the on-screen keyboard covers half the form, and once a
+	// choice is made there is nothing left to type, so the field gives up focus
+	// there. A desktop keeps it, where focus is how someone tabs onwards.
+	for _, behaviour := range []string{
+		`matchMedia("(hover: none) and (pointer: coarse)")`,
+		"if (touchScreen.matches) input.blur();",
+	} {
+		if !strings.Contains(body, behaviour) {
+			t.Fatalf("combobox.js is missing %q", behaviour)
+		}
+	}
+
 	// Keyboard support and the create row are the reason this exists at all.
 	for _, fragment := range []string{"ArrowDown", "Escape", "aria-expanded", `Buat "`} {
 		if !strings.Contains(body, fragment) {

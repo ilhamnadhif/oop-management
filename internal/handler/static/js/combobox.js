@@ -13,6 +13,12 @@
 
   let openCombobox = null;
 
+  // A touch screen answers this; a mouse and keyboard do not. The on-screen
+  // keyboard covers half the form, and once a choice is made there is nothing
+  // left to type, so the field gives up focus there. On a desktop it keeps it,
+  // where focus is how someone tabs on to the next field.
+  const touchScreen = window.matchMedia("(hover: none) and (pointer: coarse)");
+
   const closeOpen = (except) => {
     if (openCombobox && openCombobox !== except) openCombobox.close();
   };
@@ -96,6 +102,7 @@
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
       settingValue = false;
+      if (touchScreen.matches) input.blur();
     };
 
     const render = () => {
