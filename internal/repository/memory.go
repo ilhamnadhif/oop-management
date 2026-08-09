@@ -218,6 +218,17 @@ func (r *TestRepository) SettleNota(_ context.Context, rowNumber int, nota *mode
 	return nil
 }
 
+// UserList exposes registered users to tests.
+func (r *TestRepository) UserList() []model.User {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	users := make([]model.User, 0, len(r.users))
+	for _, user := range r.users {
+		users = append(users, *user)
+	}
+	return users
+}
+
 // NotaList exposes stored notes to tests, without their line items.
 func (r *TestRepository) NotaList() []model.Nota {
 	r.mu.RLock()
@@ -341,6 +352,18 @@ func (r *TestRepository) FindAttendanceByUserDate(_ context.Context, userID, dat
 		}
 	}
 	return nil, 0, nil
+}
+
+func (r *TestRepository) ListAttendanceByUser(_ context.Context, userID string) ([]model.Attendance, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.Attendance, 0, len(r.attendance))
+	for _, attendance := range r.attendance {
+		if attendance.UserID == userID {
+			rows = append(rows, *attendance)
+		}
+	}
+	return rows, nil
 }
 
 func (r *TestRepository) CreateAttendance(_ context.Context, attendance *model.Attendance) error {

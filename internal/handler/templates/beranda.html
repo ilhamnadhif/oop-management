@@ -1,0 +1,192 @@
+{{define "beranda"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  {{with .Summary}}
+  {{/* The reminder comes first: on the day itself, whether you have clocked in
+       matters more than any statistic about the month. */}}
+  {{if not .SudahMasuk}}
+  <section class="panel highlight-strip">
+    <div>
+      <p class="eyebrow">{{template "icon" "clock"}}HARI INI</p>
+      <h2>Anda belum clock in hari ini</h2>
+      <p class="hint">Kehadiran hari ini belum tercatat.</p>
+    </div>
+    <a class="button primary" href="/absensi">{{template "icon" "login"}}Clock in sekarang</a>
+  </section>
+  {{else if not .SudahPulang}}
+  <section class="panel highlight-strip">
+    <div>
+      <p class="eyebrow">{{template "icon" "clock"}}HARI INI</p>
+      <h2>Sudah clock in {{.MasukPukul}}, belum clock out</h2>
+      <p class="hint">Clock out menutup hari ini dan menghitung durasi kerjanya.</p>
+    </div>
+    <a class="button primary" href="/absensi">{{template "icon" "logout"}}Clock out</a>
+  </section>
+  {{else}}
+  <section class="panel highlight-strip done">
+    <div>
+      <p class="eyebrow">{{template "icon" "check"}}HARI INI</p>
+      <h2>Kehadiran hari ini lengkap</h2>
+      <p class="hint">Clock in {{.MasukPukul}} · clock out {{.PulangPukul}}.</p>
+    </div>
+    <a class="button subtle" href="/absensi">{{template "icon" "clock"}}Lihat absensi</a>
+  </section>
+  {{end}}
+
+  <section class="kpi-grid">
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">HARI HADIR</p>
+        <p class="kpi-value">{{.HariHadir}}</p>
+        <p class="kpi-note">Tercatat sepanjang {{.BulanLabel}}</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "calendar"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TOTAL JAM KERJA</p>
+        <p class="kpi-value">{{printf "%.1f" .TotalJam}} <small>jam</small></p>
+        <p class="kpi-note">Dari clock in sampai clock out</p>
+      </div>
+      <span class="kpi-icon green">{{template "icon" "clock"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">RATA-RATA PER HARI</p>
+        <p class="kpi-value">{{printf "%.1f" .RataJam}} <small>jam</small></p>
+        <p class="kpi-note">Rata-rata hari yang Anda hadiri</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "activity"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">BELUM CLOCK OUT</p>
+        <p class="kpi-value">{{.BelumPulang}}</p>
+        <p class="kpi-note">Hari yang belum ditutup bulan ini</p>
+      </div>
+      <span class="kpi-icon amber">{{template "icon" "info"}}</span>
+    </article>
+  </section>
+
+  <section class="kpi-grid">
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TEPAT WAKTU</p>
+        <p class="kpi-value">{{.TepatWaktu}}</p>
+        <p class="kpi-note">Hari tanpa keterlambatan maupun pulang cepat</p>
+      </div>
+      <span class="kpi-icon green">{{template "icon" "check"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TERLAMBAT</p>
+        <p class="kpi-value">{{.Terlambat}}</p>
+        <p class="kpi-note">Total {{.TerlambatMenit}} menit dari jam {{.Jadwal.StartLabel}}</p>
+      </div>
+      <span class="kpi-icon amber">{{template "icon" "clock"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">PULANG CEPAT</p>
+        <p class="kpi-value">{{.PulangCepat}}</p>
+        <p class="kpi-note">Clock out sebelum {{.Jadwal.EndLabel}}</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "logout"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">LEMBUR</p>
+        <p class="kpi-value">{{printf "%.1f" .LemburJam}} <small>jam</small></p>
+        <p class="kpi-note">Kerja melewati {{.Jadwal.EndLabel}}</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "activity"}}</span>
+    </article>
+  </section>
+
+  <p class="hint schedule-note">
+    {{template "icon" "info"}}
+    Jam kerja {{.Jadwal.StartLabel}}–{{.Jadwal.EndLabel}}, toleransi keterlambatan
+    {{.Jadwal.ToleranceMinutes}} menit. Masuk lebih awal, terlambat, pulang cepat,
+    dan lembur dihitung dari jam tersebut.
+  </p>
+
+  <section class="chart-grid">
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "chart"}}JAM KERJA 14 HARI TERAKHIR</p>
+          <h2>Durasi harian (jam)</h2>
+        </div>
+      </div>
+      {{template "chartFigure" $.JamChart}}
+      <p class="hint">Batang kosong berarti tidak ada kehadiran tercatat pada hari itu.</p>
+    </article>
+
+    {{/* The history spans the row: five columns and a note do not fit half a
+         grid without the notes being cut off mid-word. */}}
+    <article class="panel span-full">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "list"}}RIWAYAT KEHADIRAN</p>
+          <h2>10 catatan terakhir</h2>
+        </div>
+      </div>
+      {{if .Riwayat}}
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Tanggal</th>
+              <th scope="col">Clock in</th>
+              <th scope="col">Clock out</th>
+              <th scope="col">Durasi</th>
+              <th scope="col">Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Riwayat}}
+            <tr>
+              <td>{{.Tanggal}}</td>
+              <td>{{.ClockIn}}</td>
+              <td>{{.ClockOut}}</td>
+              <td>{{.Durasi}}</td>
+              <td class="wrap">
+                {{if .Selesai}}
+                <span class="rule-chip{{if .Rule.Late}} late{{else if .Rule.EarlyLeave}} late{{else if .Rule.Overtime}} overtime{{else}} ontime{{end}}">
+                  {{range $index, $note := .Catatan}}{{if $index}} · {{end}}{{$note}}{{end}}
+                </span>
+                {{else}}
+                <span class="rule-chip open">{{template "icon" "clock"}}Belum clock out</span>
+                {{end}}
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+      <p class="panel-empty">Belum ada kehadiran tercatat. Riwayat muncul setelah clock in pertama Anda.</p>
+      {{end}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "calendar"}}CUTI &amp; IZIN</p>
+          <h2>Belum tersedia</h2>
+        </div>
+      </div>
+      {{/* Stated rather than left blank: a zero here would read as "no leave
+           taken", which is a claim the app has no data to make. */}}
+      <p class="panel-empty">
+        Cuti dan izin belum dicatat di aplikasi ini, jadi belum ada yang bisa
+        ditampilkan. Angka nol di sini akan terbaca sebagai “tidak pernah cuti”,
+        padahal datanya memang belum ada.
+      </p>
+    </article>
+  </section>
+  {{end}}
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

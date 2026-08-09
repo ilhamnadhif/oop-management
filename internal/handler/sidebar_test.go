@@ -40,7 +40,7 @@ func TestSidebarOrderPutsAbsensiFirst(t *testing.T) {
 	testServer := newTestServer(t)
 	client := loggedInClient(t, testServer)
 
-	for _, path := range []string{"/dashboard", "/produksi", "/unit-dt"} {
+	for _, path := range []string{"/absensi", "/produksi", "/unit-dt"} {
 		page := navSection(t, fetchAuthedPage(t, client, testServer.URL+path))
 
 		positions := []struct {
@@ -68,7 +68,7 @@ func TestSidebarMarksActivePageAndKeepsLogoutLast(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	active := map[string]string{
-		"/dashboard":         "Absensi",
+		"/absensi":           "Absensi",
 		"/produksi":          "Input Data",
 		"/produksi/overview": "Overview",
 		"/unit-dt":           "Unit DT",
@@ -128,7 +128,7 @@ func TestUserIdentityLivesInTheTopbar(t *testing.T) {
 	testServer := newTestServer(t)
 	client := loggedInClient(t, testServer)
 
-	for _, path := range []string{"/dashboard", "/produksi", "/unit-dt"} {
+	for _, path := range []string{"/absensi", "/produksi", "/unit-dt"} {
 		page := fetchAuthedPage(t, client, testServer.URL+path)
 
 		topbar := sectionBetween(t, page, `<header class="topbar">`, "</header>")
@@ -184,7 +184,7 @@ func TestBreadcrumbSitsBelowThePageTitle(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	titles := map[string]string{
-		"/dashboard":         "Absensi",
+		"/absensi":           "Absensi",
 		"/produksi":          "Input Data",
 		"/produksi/overview": "Overview",
 		"/produksi/export":   "Export Data",
@@ -373,7 +373,7 @@ func TestSidebarGroupsAreCollapsible(t *testing.T) {
 	}
 
 	// On a page that belongs to no group, nothing is expanded.
-	dashboard := navSection(t, fetchAuthedPage(t, client, testServer.URL+"/dashboard"))
+	dashboard := navSection(t, fetchAuthedPage(t, client, testServer.URL+"/absensi"))
 	for _, group := range []string{"produksi", "unit"} {
 		opening := sectionBetween(t, dashboard, `data-group="`+group+`"`, "</summary>")
 		if strings.Contains(opening, " open") {
@@ -465,7 +465,7 @@ func TestBreadcrumbNamesTheSection(t *testing.T) {
 	}
 
 	// An ungrouped page has no section segment.
-	crumb := sectionBetween(t, fetchAuthedPage(t, client, testServer.URL+"/dashboard"), `<nav class="breadcrumb"`, "</nav>")
+	crumb := sectionBetween(t, fetchAuthedPage(t, client, testServer.URL+"/absensi"), `<nav class="breadcrumb"`, "</nav>")
 	if strings.Count(crumb, "<li") != 2 {
 		t.Fatalf("dashboard breadcrumb has %d segments, want 2", strings.Count(crumb, "<li"))
 	}

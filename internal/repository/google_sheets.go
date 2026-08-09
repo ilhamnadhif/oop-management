@@ -746,6 +746,70 @@ func (r *GoogleSheetsRepository) FindAttendanceByUserDate(ctx context.Context, u
 	return nil, 0, nil
 }
 
+// ListAttendanceByUser reads one person's attendance history. It fetches only
+// the columns a summary needs: the sheet also holds two base64 photos per row,
+// and pulling a year of those back would cost megabytes to count days.
+func (r *GoogleSheetsRepository) ListAttendanceByUser(ctx context.Context, userID string) ([]model.Attendance, error) {
+	sheet := quoteSheet(attendanceSheet)
+	response, err := r.service.Spreadsheets.Values.BatchGet(r.spreadsheetID).
+		Ranges(sheet+"!B:B", sheet+"!F:G", sheet+"!M:M", sheet+"!S:T").
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("read attendance for user: %w", err)
+	}
+	if len(response.ValueRanges) != 4 {
+		return nil, fmt.Errorf("read attendance for user: expected 4 ranges, got %d", len(response.ValueRanges))
+	}
+	owner, dates, clockOut, status := response.ValueRanges[0], response.ValueRanges[1], response.ValueRanges[2], response.ValueRanges[3]
+
+	rows := make([]model.Attendance, 0, len(owner.Values))
+	// Row 1 is the header; every range starts at the same row, so one index
+	// walks all four of them.
+	for i := 1; i < len(owner.Values); i++ {
+		if strings.TrimSpace(cellAt(owner, i, 0)) != userID {
+			continue
+		}
+		tanggal := strings.TrimSpace(cellAt(dates, i, 0))
+		if tanggal == "" {
+			continue
+		}
+		clockInAt, err := parseDateTime(cellAt(dates, i, 1), r.location)
+		if err != nil {
+			return nil, fmt.Errorf("parse attendance clock_in_at: %w", err)
+		}
+		clockOutAt, err := parseOptionalTime(cellAt(clockOut, i, 0), r.location)
+		if err != nil {
+			return nil, fmt.Errorf("parse attendance clock_out_at: %w", err)
+		}
+		var durasi *int
+		if minutes, err := strconv.Atoi(strings.TrimSpace(cellAt(status, i, 1))); err == nil {
+			durasi = &minutes
+		}
+		rows = append(rows, model.Attendance{
+			UserID:         userID,
+			TanggalAbsensi: tanggal,
+			ClockInAt:      clockInAt,
+			ClockOutAt:     clockOutAt,
+			StatusAbsensi:  strings.TrimSpace(cellAt(status, i, 0)),
+			DurasiMenit:    durasi,
+		})
+	}
+	return rows, nil
+}
+
+// cellAt reads one cell of a fetched range. Sheets drops trailing empty cells,
+// so a row that ends early is short rather than padded.
+func cellAt(values *sheets.ValueRange, row, column int) string {
+	if values == nil || row >= len(values.Values) {
+		return ""
+	}
+	line := values.Values[row]
+	if column >= len(line) {
+		return ""
+	}
+	return cellString(line[column])
+}
+
 func (r *GoogleSheetsRepository) CreateAttendance(ctx context.Context, attendance *model.Attendance) error {
 	return r.appendRow(ctx, attendanceSheet, attendanceToRow(attendance))
 }

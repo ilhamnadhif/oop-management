@@ -25,6 +25,10 @@ type Config struct {
 	SignatoryTitle string
 	SignatoryPlace string
 	CompanyName    string
+	// The working day every attendance record is judged against.
+	WorkStart            string
+	WorkEnd              string
+	LateToleranceMinutes int
 }
 
 func Load() (Config, error) {
@@ -54,6 +58,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("MAX_PHOTO_CHARS must be a positive integer")
 	}
 
+	lateTolerance, err := parseInt("ATTENDANCE_LATE_TOLERANCE_MINUTES", getenv("ATTENDANCE_LATE_TOLERANCE_MINUTES", "15"))
+	if err != nil || lateTolerance < 0 {
+		return Config{}, fmt.Errorf("ATTENDANCE_LATE_TOLERANCE_MINUTES must be a non-negative integer")
+	}
+
 	cfg := Config{
 		Port:                  getenv("PORT", "8080"),
 		GoogleSpreadsheetID:   os.Getenv("GOOGLE_SPREADSHEET_ID"),
@@ -68,6 +77,9 @@ func Load() (Config, error) {
 		SignatoryTitle:        getenv("SIGNATORY_TITLE", "Direktur"),
 		SignatoryPlace:        strings.TrimSpace(os.Getenv("SIGNATORY_PLACE")),
 		CompanyName:           getenv("COMPANY_NAME", "PT Orecon Putra Perkasa"),
+		WorkStart:             getenv("ATTENDANCE_START", "09:00"),
+		WorkEnd:               getenv("ATTENDANCE_END", "17:00"),
+		LateToleranceMinutes:  lateTolerance,
 	}
 
 	if cfg.GoogleSpreadsheetID == "" {

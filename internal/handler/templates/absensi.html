@@ -1,5 +1,12 @@
-{{define "dashboard"}}
+{{define "absensi"}}
 {{template "appShellOpen" .}}
+  {{/* Stated on the page that records the time, not only on the one that judges
+       it afterwards. */}}
+  <p class="hint schedule-note">
+    {{template "icon" "info"}}
+    Jam kerja {{.Schedule.StartLabel}}–{{.Schedule.EndLabel}}, toleransi keterlambatan
+    {{.Schedule.ToleranceMinutes}} menit.
+  </p>
 <div data-attendance-dashboard data-csrf-token="{{.CSRFToken}}">
   <section class="clock-hero">
     <p class="clock-now" id="clockNow" data-clock-start="{{.ClockNow}}">{{.ClockNow}}</p>

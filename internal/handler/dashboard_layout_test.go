@@ -45,7 +45,7 @@ func loggedInClient(t *testing.T, testServer *httptest.Server) *http.Client {
 
 func fetchDashboard(t *testing.T, client *http.Client, testServer *httptest.Server) string {
 	t.Helper()
-	response, err := client.Get(testServer.URL + "/dashboard")
+	response, err := client.Get(testServer.URL + "/absensi")
 	if err != nil {
 		t.Fatalf("dashboard request: %v", err)
 	}

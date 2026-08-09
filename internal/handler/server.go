@@ -178,6 +178,7 @@ type ProduksiPageData struct {
 
 type DashboardPageData struct {
 	ShellPageData
+	Schedule      service.Schedule
 	Attendance    *model.Attendance
 	ClockInTime   string
 	ClockOutTime  string
@@ -250,6 +251,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/dashboard", s.handleDashboard)
+	mux.HandleFunc("/absensi", s.handleAbsensi)
 	mux.HandleFunc("/produksi", s.handleProduksi)
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
@@ -462,14 +464,51 @@ func firstLetter(name string) string {
 	return "?"
 }
 
+type BerandaPageData struct {
+	ShellPageData
+	Summary *service.AttendanceSummary
+	// JamChart plots the hours worked per day; a gap in it is a day nobody
+	// clocked in, which is as much a reading as a tall bar.
+	JamChart *Chart
+	Error    string
+}
+
+// handleDashboard shows the signed-in person their own attendance. It answers
+// "how am I doing", which is why it never reads anyone else's rows.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	data := BerandaPageData{ShellPageData: s.shellData(user, sessionValue, "beranda")}
+
+	summary, err := s.attendance.Summary(r.Context(), user.UserID)
+	if err != nil {
+		log.Printf("build attendance summary: %v", err)
+		data.Error = "Gagal memuat riwayat kehadiran"
+		s.render(w, "beranda", data, http.StatusOK)
+		return
+	}
+
+	labels := make([]string, 0, len(summary.Series))
+	hours := make([]float64, 0, len(summary.Series))
+	for _, day := range summary.Series {
+		labels = append(labels, day.Label)
+		hours = append(hours, day.Jam)
+	}
+	data.Summary = summary
+	data.JamChart = BuildValueChart(labels, hours, 1)
+	s.render(w, "beranda", data, http.StatusOK)
+}
+
+func (s *Server) handleAbsensi(w http.ResponseWriter, r *http.Request) {
 	user, sessionValue, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
 	attendance, err := s.attendance.Today(r.Context(), user.UserID)
 	if err != nil {
-		log.Printf("load dashboard attendance: %v", err)
+		log.Printf("load attendance: %v", err)
 		http.Error(w, "Gagal memuat data absensi", http.StatusInternalServerError)
 		return
 	}
@@ -482,8 +521,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if attendance != nil && attendance.ClockOutAt != nil && !attendance.ClockOutAt.IsZero() {
 		clockOutTime = attendance.ClockOutAt.In(s.location).Format("15:04")
 	}
-	s.render(w, "dashboard", DashboardPageData{
+	s.render(w, "absensi", DashboardPageData{
 		ShellPageData: s.shellData(user, sessionValue, "absensi"),
+		Schedule:      s.attendance.Schedule(),
 		Attendance:    attendance,
 		ClockInTime:   clockInTime,
 		ClockOutTime:  clockOutTime,

@@ -150,10 +150,12 @@ func TestDashboardRendersLocationMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("login request: %v", err)
 	}
-	dashboard := readBody(t, loginResponse)
+	loginResponse.Body.Close()
 	if loginResponse.StatusCode != http.StatusOK {
 		t.Fatalf("login status: %d", loginResponse.StatusCode)
 	}
+	// Signing in lands on the dashboard; the map belongs to the attendance page.
+	dashboard := fetchAuthedPage(t, client, testServer.URL+"/absensi")
 
 	for _, fragment := range []string{
 		`id="attendanceMap"`,

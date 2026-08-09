@@ -73,7 +73,12 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 	if loginResponse.StatusCode != http.StatusOK || !strings.Contains(loginBody, "Budi Santoso") {
 		t.Fatalf("unexpected login/dashboard response: status=%d body=%s", loginResponse.StatusCode, loginBody)
 	}
-	csrf := csrfFromBody(t, loginBody)
+	// Clocking in is done on the attendance page, which carries the token.
+	attendancePage, err := client.Get(testServer.URL + "/absensi")
+	if err != nil {
+		t.Fatalf("attendance request: %v", err)
+	}
+	csrf := csrfFromBody(t, readBody(t, attendancePage))
 
 	photoBytes := testJPEG(t)
 	clockInResponse := doAttendanceRequest(t, client, testServer.URL+"/absensi/clock-in", csrf, photoBytes, "-6.2", "106.8")
@@ -110,7 +115,7 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 		t.Fatalf("clock out status: %d body=%s", clockOutResponse.StatusCode, readBody(t, clockOutResponse))
 	}
 
-	dashboardResponse, err := client.Get(testServer.URL + "/dashboard")
+	dashboardResponse, err := client.Get(testServer.URL + "/absensi")
 	if err != nil {
 		t.Fatalf("dashboard request: %v", err)
 	}

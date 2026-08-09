@@ -12,7 +12,8 @@ func TestEveryPageHeaderCarriesItsLede(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	pages := map[string]string{
-		"/dashboard":         "Catat kehadiran hari ini",
+		"/dashboard":         "Ringkasan kehadiran Anda sendiri",
+		"/absensi":           "Catat kehadiran hari ini",
 		"/produksi":          "Kelola dan catat data produksi harian",
 		"/produksi/overview": "Ringkasan volume, ritase",
 		"/produksi/export":   "Unduh laporan produksi",
@@ -56,7 +57,7 @@ func TestAbsensiOpensWithoutTheRedBand(t *testing.T) {
 
 	// The page still carries the header itself; only the band is dropped.
 	testServer := newTestServer(t)
-	page := fetchAuthedPage(t, loggedInClient(t, testServer), testServer.URL+"/dashboard")
+	page := fetchAuthedPage(t, loggedInClient(t, testServer), testServer.URL+"/absensi")
 	for _, fragment := range []string{`class="page-title"`, `class="breadcrumb"`, `class="page-lede"`} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the absensi page lost %q", fragment)

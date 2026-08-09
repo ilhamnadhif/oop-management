@@ -42,7 +42,11 @@ func main() {
 
 	now := func() time.Time { return time.Now().In(cfg.Timezone) }
 	authService := service.NewAuthService(store, cfg.Timezone, now)
-	attendanceService := service.NewAttendanceService(store, cfg.Timezone, now)
+	schedule, err := service.NewSchedule(cfg.WorkStart, cfg.WorkEnd, cfg.LateToleranceMinutes)
+	if err != nil {
+		log.Fatalf("jadwal absensi tidak valid: %v", err)
+	}
+	attendanceService := service.NewAttendanceService(store, cfg.Timezone, now).WithSchedule(schedule)
 	unitDTService := service.NewUnitDTService(store, cfg.Timezone, now)
 	produksiService := service.NewProduksiService(store, cfg.Timezone, now)
 	overviewService := service.NewOverviewService(store, cfg.Timezone, now)

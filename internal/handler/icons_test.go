@@ -12,11 +12,11 @@ func TestIconsAreDecorativeAndSelfContained(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	pages := map[string]string{
-		"login":     fetchPage(t, testServer.URL+"/login"),
-		"register":  fetchPage(t, testServer.URL+"/register"),
-		"dashboard": fetchAuthedPage(t, client, testServer.URL+"/dashboard"),
-		"produksi":  fetchAuthedPage(t, client, testServer.URL+"/produksi"),
-		"unit-dt":   fetchAuthedPage(t, client, testServer.URL+"/unit-dt"),
+		"login":    fetchPage(t, testServer.URL+"/login"),
+		"register": fetchPage(t, testServer.URL+"/register"),
+		"absensi":  fetchAuthedPage(t, client, testServer.URL+"/absensi"),
+		"produksi": fetchAuthedPage(t, client, testServer.URL+"/produksi"),
+		"unit-dt":  fetchAuthedPage(t, client, testServer.URL+"/unit-dt"),
 	}
 
 	for name, page := range pages {

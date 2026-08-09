@@ -18,7 +18,9 @@ type NavItem struct {
 // ungrouped because every role needs it. When menus become per-jabatan, filter
 // this one slice rather than editing each template.
 var navItems = []NavItem{
-	{Key: "absensi", Label: "Absensi", Path: "/dashboard", Icon: "clock",
+	{Key: "beranda", Label: "Dashboard", Path: "/dashboard", Icon: "activity",
+		Lede: "Ringkasan kehadiran Anda sendiri bulan ini."},
+	{Key: "absensi", Label: "Absensi", Path: "/absensi", Icon: "clock",
 		Lede: "Catat kehadiran hari ini lengkap dengan lokasi dan foto."},
 	{Key: "produksi", Label: "Produksi", Icon: "chart", Children: []NavItem{
 		{Key: "produksi-overview", Label: "Overview", Path: "/produksi/overview", Icon: "activity",

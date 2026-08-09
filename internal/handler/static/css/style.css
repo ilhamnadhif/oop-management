@@ -287,6 +287,8 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
    band of its own rather than another card in the grid. */
 .highlight-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; border-left: 4px solid var(--orange); }
 .highlight-strip h2 { margin: 0.3rem 0; font-size: 1.25rem; color: var(--navy); }
+/* A finished day is a statement, not a task, so it loses the urgent edge. */
+.highlight-strip.done { border-left-color: var(--success); }
 .highlight-strip .hint { margin: 0; }
 
 /* The list is a table and the work happens in a dialog: finance scans the whole
@@ -298,7 +300,22 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .data-table tbody tr:hover { background: var(--cream); }
 .data-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .data-table .table-action { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+/* A status badge inside a table is a cell, not a headline. */
+.data-table .pay-status { padding: 0.28rem 0.6rem; font-size: 0.75rem; }
+/* One chip per day, coloured by what it says: a day to explain reads amber, a
+   day worked past closing reads blue, an ordinary day stays quiet. */
+/* The chip wraps rather than running past the edge of its panel: a note that
+   reads "Terlambat 20…" is worse than one on two lines. */
+.rule-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.28rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--success); background: #eaf6ef; }
+.data-table .wrap .rule-chip { white-space: normal; }
+.rule-chip.late { color: #9a6400; background: #fdf3e2; }
+.rule-chip.overtime { color: #1f4f8f; background: #e9f0fb; }
+.rule-chip.open { color: var(--muted); background: #f1f2f4; }
+.rule-chip .icon { width: 13px; height: 13px; }
+.schedule-note { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 1.5rem; }
+.data-table .pay-status .icon { width: 13px; height: 13px; }
 .data-table .wrap { white-space: normal; min-width: 12rem; }
+.chart-grid > .span-full { grid-column: 1 / -1; }
 
 .modal { width: min(560px, calc(100vw - 2rem)); max-height: 90vh; overflow-y: auto; padding: clamp(1.1rem, 3vw, 1.6rem); border: 1px solid var(--line); border-radius: 18px; background: var(--white); color: var(--ink); }
 .modal::backdrop { background: rgba(16, 47, 72, 0.62); }

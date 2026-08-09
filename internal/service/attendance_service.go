@@ -18,6 +18,7 @@ type AttendanceService struct {
 	store    repository.Store
 	location *time.Location
 	now      NowFunc
+	schedule Schedule
 	mu       sync.Mutex
 }
 
@@ -36,8 +37,18 @@ func NewAttendanceService(store repository.Store, location *time.Location, now N
 	if now == nil {
 		now = time.Now
 	}
-	return &AttendanceService{store: store, location: location, now: now}
+	return &AttendanceService{store: store, location: location, now: now, schedule: DefaultSchedule()}
 }
+
+// WithSchedule sets the working day the records are judged against.
+func (s *AttendanceService) WithSchedule(schedule Schedule) *AttendanceService {
+	s.schedule = schedule
+	return s
+}
+
+// Schedule is the working day in force, which the pages state rather than leave
+// people to infer from a label saying "terlambat".
+func (s *AttendanceService) Schedule() Schedule { return s.schedule }
 
 func (s *AttendanceService) Today(ctx context.Context, userID string) (*model.Attendance, error) {
 	now := s.now().In(s.location)
