@@ -4,10 +4,13 @@ package handler
 // group heading: it has no page of its own, only the pages beneath it. Icon
 // names the inline SVG the "icon" template renders.
 type NavItem struct {
-	Key      string
-	Label    string
-	Path     string
-	Icon     string
+	Key   string
+	Label string
+	Path  string
+	Icon  string
+	// Lede is the sentence printed under the page title. It says what the page
+	// is for in the words someone would use to ask for it.
+	Lede     string
 	Children []NavItem
 }
 
@@ -15,23 +18,35 @@ type NavItem struct {
 // ungrouped because every role needs it. When menus become per-jabatan, filter
 // this one slice rather than editing each template.
 var navItems = []NavItem{
-	{Key: "absensi", Label: "Absensi", Path: "/dashboard", Icon: "clock"},
+	{Key: "absensi", Label: "Absensi", Path: "/dashboard", Icon: "clock",
+		Lede: "Catat kehadiran hari ini lengkap dengan lokasi dan foto."},
 	{Key: "produksi", Label: "Produksi", Icon: "chart", Children: []NavItem{
-		{Key: "produksi-overview", Label: "Overview", Path: "/produksi/overview", Icon: "activity"},
-		{Key: "produksi-input", Label: "Input Data", Path: "/produksi", Icon: "list"},
-		{Key: "produksi-export", Label: "Export Data", Path: "/produksi/export", Icon: "save"},
+		{Key: "produksi-overview", Label: "Overview", Path: "/produksi/overview", Icon: "activity",
+			Lede: "Ringkasan volume, ritase, dan unit yang beroperasi."},
+		{Key: "produksi-input", Label: "Input Data", Path: "/produksi", Icon: "list",
+			Lede: "Kelola dan catat data produksi harian dengan mudah dan akurat."},
+		{Key: "produksi-export", Label: "Export Data", Path: "/produksi/export", Icon: "save",
+			Lede: "Unduh laporan produksi bertanda tangan dalam XLSX atau PDF."},
 	}},
 	{Key: "nota", Label: "Nota", Icon: "receipt", Children: []NavItem{
-		{Key: "nota-overview", Label: "Overview", Path: "/nota/overview", Icon: "activity"},
-		{Key: "nota-input", Label: "Input Data", Path: "/nota", Icon: "list"},
-		{Key: "nota-rekonsiliasi", Label: "Rekonsiliasi", Path: "/nota/rekonsiliasi", Icon: "wallet"},
-		{Key: "nota-export", Label: "Export Data", Path: "/nota/export", Icon: "save"},
+		{Key: "nota-overview", Label: "Overview", Path: "/nota/overview", Icon: "activity",
+			Lede: "Ringkasan pengeluaran dan nota yang masih menunggu pembayaran."},
+		{Key: "nota-input", Label: "Input Data", Path: "/nota", Icon: "list",
+			Lede: "Catat nota belanja beserta rincian item dan bukti pengeluarannya."},
+		{Key: "nota-rekonsiliasi", Label: "Rekonsiliasi", Path: "/nota/rekonsiliasi", Icon: "wallet",
+			Lede: "Tandai reimburse yang sudah dibayar perusahaan beserta buktinya."},
+		{Key: "nota-export", Label: "Export Data", Path: "/nota/export", Icon: "save",
+			Lede: "Unduh laporan nota bertanda tangan dalam XLSX atau PDF."},
 	}},
 	{Key: "unit", Label: "Unit", Icon: "truck", Children: []NavItem{
-		{Key: "unit-overview", Label: "Overview", Path: "/unit/overview", Icon: "activity"},
-		{Key: "unit-dt", Label: "Unit DT", Path: "/unit-dt", Icon: "truck"},
-		{Key: "unit-a2b", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube"},
-		{Key: "unit-export", Label: "Export Data", Path: "/unit/export", Icon: "save"},
+		{Key: "unit-overview", Label: "Overview", Path: "/unit/overview", Icon: "activity",
+			Lede: "Ringkasan isi daftar unit DT dan alat berat A2B."},
+		{Key: "unit-dt", Label: "Unit DT", Path: "/unit-dt", Icon: "truck",
+			Lede: "Daftarkan dump truck beserta ukuran bak dan drivernya."},
+		{Key: "unit-a2b", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube",
+			Lede: "Daftarkan alat berat beserta kapasitas dan konsumsi bahan bakarnya."},
+		{Key: "unit-export", Label: "Export Data", Path: "/unit/export", Icon: "save",
+			Lede: "Unduh daftar unit DT dan A2B dalam XLSX atau PDF."},
 	}},
 }
 

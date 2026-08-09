@@ -80,6 +80,8 @@ type ShellPageData struct {
 	Breadcrumb string
 	// Section names the group the page sits in; empty for an ungrouped page.
 	Section string
+	// Lede is the sentence under the title in the page header.
+	Lede string
 	// UserInitial is the single letter shown in the account avatar.
 	UserInitial string
 	// The footer names the company and the current year, which the templates
@@ -443,6 +445,7 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		ActiveNav:   navKey,
 		PageTitle:   item.Label,
 		Breadcrumb:  item.Label,
+		Lede:        item.Lede,
 		Section:     parent.Label,
 		UserInitial: firstLetter(user.NamaLengkap),
 		Company:     s.company,

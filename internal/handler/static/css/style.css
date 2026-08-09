@@ -829,10 +829,10 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .calc-grid .accent-amber { color: var(--red-600); }
 .stack-form > .panel .hint:last-child { margin-bottom: 0; padding: 0.75rem 0.9rem; border-radius: 10px; color: #b10a19; background: var(--red-50); }
 
-/* Production form gets the red editorial header seen in the reference while
-   keeping the shared title and breadcrumb in their tested DOM positions. */
-.app-layout[data-page="produksi-input"] .app-shell { position: relative; isolation: isolate; }
-.app-layout[data-page="produksi-input"] .app-shell::before {
+/* Every page opens with the same red editorial header: the title, where you
+   are, and one line saying what the page is for. */
+.app-shell { position: relative; isolation: isolate; }
+.app-shell::before {
   position: absolute;
   z-index: -1;
   top: 0;
@@ -846,7 +846,7 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
     var(--red-gradient);
   content: "";
 }
-.app-layout[data-page="produksi-input"] .app-shell::after {
+.app-shell::after {
   position: absolute;
   top: 44px;
   right: clamp(2rem, 5vw, 4rem);
@@ -865,13 +865,34 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   line-height: 1;
   pointer-events: none;
 }
-.app-layout[data-page="produksi-input"] .page-title { color: transparent; }
-.app-layout[data-page="produksi-input"] .page-title::before { position: absolute; inset: 0 auto auto 0; color: #fff; content: "Produksi"; }
-.app-layout[data-page="produksi-input"] .page-title::after { background: rgba(255, 255, 255, 0.9); }
-.app-layout[data-page="produksi-input"] .breadcrumb { display: none; }
-.page-lede { margin: 0 0 3.7rem; color: rgba(255, 255, 255, 0.9); }
-.app-layout[data-page="produksi-input"] .stack-form > .panel:first-of-type { box-shadow: var(--shadow-panel); }
-.app-layout[data-page="produksi-overview"] .page-title::before { content: "Produksi "; }
+/* The heading is the real one printed white, not a copy painted over a
+   transparent title: a page whose name lives in a stylesheet cannot be renamed
+   without editing CSS, and screen readers would read the empty original. */
+.app-shell > .page-title { color: #fff; }
+.app-shell > .page-title::after { background: rgba(255, 255, 255, 0.9); }
+/* The breadcrumb stays, in the header rather than hidden by it: it is what says
+   which section a page belongs to. */
+.app-shell > .breadcrumb ol,
+.app-shell > .breadcrumb a { color: rgba(255, 255, 255, 0.78); }
+.app-shell > .breadcrumb a:hover,
+.app-shell > .breadcrumb [aria-current="page"] { color: #fff; }
+.app-shell > .breadcrumb li + li::before { color: rgba(255, 255, 255, 0.5); }
+.page-lede { max-width: 60ch; margin: 0 0 3.2rem; color: rgba(255, 255, 255, 0.9); }
+
+/* Absensi is the exception: it opens with its own red clock card, and a red
+   band above it stacks two reds with a seam between them. The page keeps the
+   header, printed on the page background. */
+.app-layout[data-page="absensi"] .app-shell::before,
+.app-layout[data-page="absensi"] .app-shell::after { display: none; }
+.app-layout[data-page="absensi"] .app-shell > .page-title { color: var(--ink); }
+.app-layout[data-page="absensi"] .app-shell > .page-title::after { background: var(--red-600); }
+.app-layout[data-page="absensi"] .app-shell > .breadcrumb ol,
+.app-layout[data-page="absensi"] .app-shell > .breadcrumb a { color: var(--muted); }
+.app-layout[data-page="absensi"] .app-shell > .breadcrumb a:hover,
+.app-layout[data-page="absensi"] .app-shell > .breadcrumb [aria-current="page"] { color: var(--red-600); }
+.app-layout[data-page="absensi"] .app-shell > .breadcrumb li + li::before { color: #c8b9bc; }
+.app-layout[data-page="absensi"] .page-lede { margin-bottom: 1.6rem; color: var(--muted); }
+.stack-form > .panel:first-of-type { box-shadow: var(--shadow-panel); }
 
 .stack-form > .panel .panel-heading { position: relative; min-height: 52px; padding-left: 64px; }
 .stack-form > .panel .panel-heading .eyebrow .icon {
@@ -1051,7 +1072,7 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .form-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .calc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .modal { max-height: calc(100dvh - 32px); }
-  .app-layout[data-page="produksi-input"] .app-shell::before { height: 220px; }
+  .app-shell::before { height: 232px; }
   .page-lede { margin-bottom: 3rem; }
 }
 
@@ -1117,8 +1138,9 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .kpi-card { min-height: 158px; }
   .kpi-note { max-width: none; }
   .chart-legend { flex-wrap: wrap; white-space: normal; }
-  .app-layout[data-page="produksi-input"] .app-shell::before { height: 205px; border-radius: 0 0 16px 16px; }
-  .app-layout[data-page="produksi-input"] .app-shell::after { display: none; }
+  .app-shell::before { height: 218px; border-radius: 0 0 16px 16px; }
+  /* The decorative arrow has nowhere to sit beside a title on a phone. */
+  .app-shell::after { display: none; }
   .page-lede { max-width: 24rem; margin-bottom: 2.8rem; font-size: 0.9rem; }
 }
 

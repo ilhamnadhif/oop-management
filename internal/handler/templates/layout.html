@@ -115,6 +115,7 @@
           <li aria-current="page">{{.Breadcrumb}}</li>
         </ol>
       </nav>
+      {{if .Lede}}<p class="page-lede">{{.Lede}}</p>{{end}}
 {{end}}
 
 {{define "appShellClose"}}
