@@ -17,46 +17,46 @@
 
       <div class="form-grid form-grid-3">
         <div>
-          <label for="tanggal">Tanggal</label>
+          <label for="tanggal">{{template "icon" "calendar"}}Tanggal</label>
           <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
         </div>
         <div>
-          <label for="project">Project</label>
+          <label for="project">{{template "icon" "tag"}}Project</label>
           <input id="project" name="project" type="text" list="projectList" value="{{.Form.Project}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
           <datalist id="projectList">
             {{range .Options.Project}}<option value="{{.}}"></option>{{end}}
           </datalist>
         </div>
         <div>
-          <label for="supplier">Supplier</label>
+          <label for="supplier">{{template "icon" "tag"}}Supplier</label>
           <input id="supplier" name="supplier" type="text" list="supplierList" value="{{.Form.Supplier}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
           <datalist id="supplierList">
             {{range .Options.Supplier}}<option value="{{.}}"></option>{{end}}
           </datalist>
         </div>
         <div>
-          <label for="quary">Quary</label>
+          <label for="quary">{{template "icon" "pin"}}Quary</label>
           <input id="quary" name="quary" type="text" list="quaryList" value="{{.Form.Quary}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
           <datalist id="quaryList">
             {{range .Options.Quary}}<option value="{{.}}"></option>{{end}}
           </datalist>
         </div>
         <div>
-          <label for="kategori">Kategori</label>
+          <label for="kategori">{{template "icon" "tag"}}Kategori</label>
           <input id="kategori" name="kategori" type="text" list="kategoriList" value="{{.Form.Kategori}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
           <datalist id="kategoriList">
             {{range .Options.Kategori}}<option value="{{.}}"></option>{{end}}
           </datalist>
         </div>
         <div>
-          <label for="lokasi">Lokasi</label>
+          <label for="lokasi">{{template "icon" "pin"}}Lokasi</label>
           <input id="lokasi" name="lokasi" type="text" list="lokasiList" value="{{.Form.Lokasi}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
           <datalist id="lokasiList">
             {{range .Options.Lokasi}}<option value="{{.}}"></option>{{end}}
           </datalist>
         </div>
         <div>
-          <label for="layer">Layer</label>
+          <label for="layer">{{template "icon" "layers"}}Layer</label>
           <input id="layer" name="layer" type="text" list="layerList" value="{{.Form.Layer}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
           <datalist id="layerList">
             {{range .Options.Layer}}<option value="{{.}}"></option>{{end}}
@@ -73,7 +73,7 @@
         </div>
       </div>
 
-      <label for="nopol">NOPOL Unit <span class="hint">(hanya unit terdaftar)</span></label>
+      <label for="nopol">{{template "icon" "truck"}}NOPOL Unit</label>
       <input id="nopol" name="nopol" type="text" list="unitList" value="{{.Form.Nopol}}" placeholder="Pilih NOPOL terdaftar…" autocomplete="off" data-nopol data-no-create data-empty-text="Nopol belum terdaftar di Unit DT" required>
       <datalist id="unitList">
         {{range .Units}}
@@ -86,29 +86,29 @@
         {{end}}
       </datalist>
 
-      <label for="driver">Driver</label>
+      <label for="driver">{{template "icon" "user"}}Driver</label>
       <input id="driver" type="text" placeholder="Otomatis dari sheet Unit DT…" disabled data-unit-field="driver">
 
       <div class="form-grid form-grid-4">
         <div>
-          <label for="panjang">P (Panjang — m)</label>
+          <label for="panjang">{{template "icon" "ruler"}}P (Panjang — m)</label>
           <input id="panjang" type="text" placeholder="Auto" disabled data-unit-field="panjang">
         </div>
         <div>
-          <label for="lebar">L (Lebar — m)</label>
+          <label for="lebar">{{template "icon" "ruler"}}L (Lebar — m)</label>
           <input id="lebar" type="text" placeholder="Auto" disabled data-unit-field="lebar">
         </div>
         <div>
-          <label for="tinggi">T (Tinggi bak — m)</label>
+          <label for="tinggi">{{template "icon" "ruler"}}T (Tinggi bak — m)</label>
           <input id="tinggi" type="text" placeholder="Auto" disabled data-unit-field="tinggi">
         </div>
         <div>
-          <label for="tt">TT (tinggi tambah — m) <span class="hint">(opsional)</span></label>
+          <label for="tt">{{template "icon" "ruler"}}TT (tinggi tambah — m) <span class="hint">(opsional)</span></label>
           <input id="tt" name="tt" type="number" value="{{.Form.TT}}" placeholder="Input TT…" step="0.01" min="0">
         </div>
       </div>
 
-      <label for="jenis">Keterangan / jenis DT</label>
+      <label for="jenis">{{template "icon" "tag"}}Keterangan / jenis DT</label>
       <input id="jenis" type="text" placeholder="Otomatis dari sheet Unit DT…" disabled data-unit-field="jenis">
     </section>
 

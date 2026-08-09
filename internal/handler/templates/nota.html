@@ -15,22 +15,22 @@
       </div>
       <div class="form-grid">
         <div>
-          <label for="nota_id">No transaksi <span class="hint">(otomatis)</span></label>
+          <label for="nota_id">{{template "icon" "hash"}}No transaksi</label>
           <input id="nota_id" type="text" value="{{.NextID}}" disabled>
         </div>
         <div>
-          <label for="tanggal">Tanggal transaksi</label>
+          <label for="tanggal">{{template "icon" "calendar"}}Tanggal transaksi</label>
           <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
         </div>
         <div>
-          <label for="pic">PIC <span class="hint">(penanggung jawab)</span></label>
+          <label for="pic">{{template "icon" "user"}}PIC</label>
           <input id="pic" name="pic" type="text" list="picList" value="{{.Form.PIC}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
           <datalist id="picList">
             {{range .Options.PIC}}<option value="{{.}}"></option>{{end}}
           </datalist>
         </div>
         <div>
-          <label for="metode">Metode pembayaran</label>
+          <label for="metode">{{template "icon" "wallet"}}Metode pembayaran</label>
           <select id="metode" name="metode" required>
             <option value="">— Pilih metode —</option>
             {{range .MetodeOptions}}
@@ -39,7 +39,7 @@
           </select>
         </div>
         <div>
-          <label>Status pembayaran</label>
+          <label>{{template "icon" "info"}}Status pembayaran</label>
           {{/* Derived from the method, never submitted: how the money moved
                decides the status, so the browser has no say in it. */}}
           <p class="pay-status{{if .Form.IsCA}} paid{{end}}" data-pay-status>
@@ -48,7 +48,7 @@
           </p>
         </div>
         <div data-reimburse-field{{if .Form.IsCA}} hidden{{end}}>
-          <label for="penerima_reimburse" class="required-label">Nama penerima reimburse *</label>
+          <label for="penerima_reimburse" class="required-label">{{template "icon" "user"}}Nama penerima reimburse *</label>
           <input id="penerima_reimburse" name="penerima_reimburse" type="text" value="{{.Form.PenerimaReimburse}}" placeholder="Masukkan nama penerima…" autocomplete="off">
         </div>
       </div>
@@ -63,7 +63,7 @@
       </div>
       <div class="form-grid form-grid-3">
         <div>
-          <label for="kategori">Kategori</label>
+          <label for="kategori">{{template "icon" "tag"}}Kategori</label>
           <select id="kategori" name="kategori" required>
             <option value="">— Pilih kategori —</option>
             {{range .KategoriOptions}}
@@ -72,7 +72,7 @@
           </select>
         </div>
         <div>
-          <label for="sub_kategori">Sub kategori</label>
+          <label for="sub_kategori">{{template "icon" "tag"}}Sub kategori</label>
           {{/* Grouped by category so the pairing survives without JavaScript;
                the script narrows the list to the category in use. */}}
           <select id="sub_kategori" name="sub_kategori" required>
@@ -88,7 +88,7 @@
           </select>
         </div>
         <div data-perjalanan-field{{if ne .Form.SubKategori .PerjalananDinas}} hidden{{end}}>
-          <label for="jenis_perjalanan" class="required-label">Jenis perjalanan dinas *</label>
+          <label for="jenis_perjalanan" class="required-label">{{template "icon" "pin"}}Jenis perjalanan dinas *</label>
           <select id="jenis_perjalanan" name="jenis_perjalanan">
             <option value="">— Pilih jenis —</option>
             {{range .JenisOptions}}
@@ -105,24 +105,52 @@
           <p class="eyebrow">{{template "icon" "cube"}}3. DETAIL PRODUK / ITEM NOTA</p>
           <h2>Rincian belanja</h2>
         </div>
-        <button class="button subtle" type="button" data-add-item>{{template "icon" "plus"}}Tambah item</button>
+      </div>
+
+      {{/* The column captions are written once above the rows on a wide screen;
+           on a phone each row becomes a card and carries its own labels. */}}
+      <div class="nota-items-head" aria-hidden="true">
+        <span>Nama produk</span>
+        <span>Satuan</span>
+        <span>Vol</span>
+        <span>Harga (Rp)</span>
+        <span class="numeric">Subtotal</span>
+        <span></span>
       </div>
 
       <div class="nota-items" data-item-list>
-        {{range .Form.Items}}
+        {{range $index, $item := .Form.Items}}
         <div class="nota-item" data-item-row>
-          <input name="item_nama" type="text" value="{{.NamaProduk}}" placeholder="Nama produk / detail nota" autocomplete="off">
-          <input name="item_satuan" type="text" value="{{.Satuan}}" placeholder="Satuan (Sat)" autocomplete="off">
-          <input name="item_volume" type="number" value="{{.Volume}}" placeholder="Vol" step="0.01" min="0">
-          {{/* Text rather than number: a number input will not display the
-               thousand separators, and the value is stripped back to digits
-               before it is submitted. */}}
-          <input name="item_harga" type="text" inputmode="numeric" value="{{.Harga}}" placeholder="Harga (Rp)" autocomplete="off" data-money>
-          <span class="nota-item-total" data-item-total>Rp 0</span>
-          <button class="icon-button danger" type="button" data-remove-item aria-label="Hapus item">{{template "icon" "trash"}}</button>
+          <p class="nota-item-index">Item <span data-item-number>{{add1 $index}}</span></p>
+          <label class="nota-field nota-field-nama">
+            <span class="field-label">{{template "icon" "cube"}}Nama produk</span>
+            <input name="item_nama" type="text" value="{{$item.NamaProduk}}" placeholder="Nama produk / detail nota" autocomplete="off" aria-label="Nama produk">
+          </label>
+          <label class="nota-field nota-field-satuan">
+            <span class="field-label">{{template "icon" "list"}}Satuan</span>
+            <input name="item_satuan" type="text" value="{{$item.Satuan}}" placeholder="pcs" autocomplete="off" aria-label="Satuan">
+          </label>
+          <label class="nota-field nota-field-vol">
+            <span class="field-label">{{template "icon" "calculator"}}Vol</span>
+            <input name="item_volume" type="number" value="{{$item.Volume}}" placeholder="0" step="0.01" min="0" aria-label="Volume">
+          </label>
+          <label class="nota-field nota-field-harga">
+            <span class="field-label">{{template "icon" "wallet"}}Harga (Rp)</span>
+            {{/* Text rather than number: a number input will not display the
+                 thousand separators, and the value is stripped back to digits
+                 before it is submitted. */}}
+            <input name="item_harga" type="text" inputmode="numeric" value="{{$item.Harga}}" placeholder="0" autocomplete="off" aria-label="Harga" data-money>
+          </label>
+          <p class="nota-item-total"><span class="field-label">{{template "icon" "calculator"}}Subtotal</span><strong data-item-total>Rp 0</strong></p>
+          <button class="icon-button danger nota-item-remove" type="button" data-remove-item aria-label="Hapus item">{{template "icon" "trash"}}</button>
         </div>
         {{end}}
       </div>
+
+      {{/* Below the list, not in the heading: after filling the last card the
+           next thing wanted is another card, and a button above the list means
+           scrolling back up for it. */}}
+      <button class="button subtle nota-add" type="button" data-add-item>{{template "icon" "plus"}}Tambah item</button>
 
       <p class="nota-total">
         <span>Total nota</span>
@@ -140,12 +168,12 @@
       </div>
       <div class="form-grid">
         <div>
-          <label for="foto_kwitansi" class="required-label">Foto kwitansi *</label>
+          <label for="foto_kwitansi" class="required-label">{{template "icon" "camera"}}Foto kwitansi *</label>
           <input id="foto_kwitansi" name="foto_kwitansi" type="file" accept="image/*" required>
           <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
         </div>
         <div data-transfer-field{{if not .Form.IsCA}} hidden{{end}}>
-          <label for="bukti_transfer" class="required-label">Bukti transfer *</label>
+          <label for="bukti_transfer" class="required-label">{{template "icon" "camera"}}Bukti transfer *</label>
           <input id="bukti_transfer" name="bukti_transfer" type="file" accept="image/*">
           <p class="hint">Wajib untuk pembayaran CA.</p>
         </div>

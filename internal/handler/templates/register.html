@@ -11,19 +11,19 @@
     <form method="post" action="/register" class="stack-form" data-loading-form>
       <div class="form-grid">
         <div>
-          <label for="tanggal_gabung">Tanggal gabung</label>
+          <label for="tanggal_gabung">{{template "icon" "calendar"}}Tanggal gabung</label>
           <input id="tanggal_gabung" name="tanggal_gabung" type="date" value="{{.Register.TanggalGabung}}" required>
         </div>
         <div>
-          <label for="nama_lengkap">Nama lengkap</label>
+          <label for="nama_lengkap">{{template "icon" "user"}}Nama lengkap</label>
           <input id="nama_lengkap" name="nama_lengkap" type="text" value="{{.Register.NamaLengkap}}" placeholder="Budi Santoso" autocomplete="name" required>
         </div>
         <div>
-          <label for="nrp">NRP</label>
+          <label for="nrp">{{template "icon" "hash"}}NRP</label>
           <input id="nrp" name="nrp" type="text" value="{{.Register.NRP}}" placeholder="123456" inputmode="numeric" pattern="[0-9]+" title="NRP hanya boleh angka" autocomplete="off" data-digits-only required>
         </div>
         <div>
-          <label for="jabatan">Jabatan / posisi</label>
+          <label for="jabatan">{{template "icon" "tag"}}Jabatan / posisi</label>
           <select id="jabatan" name="jabatan" required>
             <option value="" {{if not .Register.Jabatan}}selected{{end}} disabled>Pilih jabatan</option>
             {{range .JabatanOptions}}
@@ -32,11 +32,11 @@
           </select>
         </div>
         <div>
-          <label for="email">Email</label>
+          <label for="email">{{template "icon" "mail"}}Email</label>
           <input id="email" name="email" type="email" value="{{.Register.Email}}" placeholder="nama@perusahaan.com" autocomplete="email" required>
         </div>
         <div>
-          <label for="status_pengguna">Status pengguna</label>
+          <label for="status_pengguna">{{template "icon" "info"}}Status pengguna</label>
           <select id="status_pengguna" name="status_pengguna">
             <option value="AKTIF" {{if eq .Register.Status "AKTIF"}}selected{{end}}>Aktif</option>
             <option value="TIDAK_AKTIF" {{if eq .Register.Status "TIDAK_AKTIF"}}selected{{end}}>Tidak aktif</option>
@@ -45,14 +45,14 @@
         {{/* The password pair sits in the grid so the form fits a laptop screen
              without scrolling; below 720px the grid is one column again. */}}
         <div>
-          <label for="register-password">Password <span class="hint">(min. 8 karakter)</span></label>
+          <label for="register-password">{{template "icon" "lock"}}Password <span class="hint">(min. 8 karakter)</span></label>
           <div class="input-with-action">
             <input id="register-password" name="password" type="password" placeholder="Minimal 8 karakter" autocomplete="new-password" minlength="8" required>
             {{template "passwordToggle" "register-password"}}
           </div>
         </div>
         <div>
-          <label for="register-password-confirm">Konfirmasi password</label>
+          <label for="register-password-confirm">{{template "icon" "lock"}}Konfirmasi password</label>
           <div class="input-with-action">
             <input id="register-password-confirm" type="password" placeholder="Ulangi password" autocomplete="new-password" minlength="8" required
               data-confirm-for="register-password" data-confirm-message="Konfirmasi password tidak sama.">

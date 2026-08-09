@@ -109,6 +109,71 @@ func TestNotaFormRendersEverySection(t *testing.T) {
 	}
 }
 
+// Five inputs abreast on a phone truncate their own placeholders, so each line
+// becomes a labelled, numbered card there and stays a single row on a wide
+// screen, where the captions are written once above the list.
+func TestNotaItemRowsReadOnAPhone(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+	page := fetchAuthedPage(t, client, testServer.URL+"/nota")
+
+	for _, fragment := range []string{
+		// Captions once, and hidden from screen readers because every input
+		// carries its own name.
+		`<div class="nota-items-head" aria-hidden="true">`,
+		`<p class="nota-item-index">Item <span data-item-number>1</span></p>`,
+		// Each caption carries an icon of what the field asks for.
+		`<span class="field-label">`,
+		`>Nama produk</span>`,
+		`>Satuan</span>`,
+		`>Harga (Rp)</span>`,
+		`aria-label="Volume"`,
+		`aria-label="Harga"`,
+	} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("the item row is missing %q", fragment)
+		}
+	}
+	// A placeholder that says "Satuan (Sat)" is what got cut off; the label
+	// carries the name now and the placeholder shows an example.
+	if strings.Contains(page, `placeholder="Satuan (Sat)"`) || strings.Contains(page, `placeholder="Harga (Rp)"`) {
+		t.Fatal("the item inputs still carry the placeholders that truncated")
+	}
+
+	css := stylesheet(t)
+	for _, rule := range []string{
+		// Desktop: captions above, no repeated labels.
+		".nota-item .field-label,",
+		".nota-item-index { display: none; }",
+		// Phone: the table header goes, the labels come back.
+		".nota-items-head { display: none; }",
+		".nota-item .field-label { display: block;",
+		".nota-item-index { display: block;",
+	} {
+		if !strings.Contains(css, rule) {
+			t.Fatalf("the stylesheet is missing %q", rule)
+		}
+	}
+
+	script := fetchPage(t, testServer.URL+"/static/js/nota.js")
+	// The cards are numbered, so the numbers have to follow an add or a remove.
+	if !strings.Contains(script, "const renumber = () => {") {
+		t.Fatal("nota.js does not renumber the item cards")
+	}
+
+	// After filling the last card the next thing wanted is another card, so the
+	// button sits below the list rather than above it.
+	listAt := strings.Index(page, `data-item-list`)
+	addAt := strings.Index(page, `data-add-item`)
+	totalAt := strings.Index(page, `data-nota-total`)
+	if listAt < 0 || addAt < 0 || totalAt < 0 {
+		t.Fatal("the item list, the add button or the total is missing")
+	}
+	if addAt < listAt || addAt > totalAt {
+		t.Fatal("the add button is not between the item list and the total")
+	}
+}
+
 // The conditional fields render hidden rather than absent, so a browser with no
 // JavaScript still has them once the method or sub category calls for them.
 func TestNotaFormHidesConditionalFieldsByDefault(t *testing.T) {

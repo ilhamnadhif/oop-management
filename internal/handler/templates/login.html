@@ -10,10 +10,10 @@
     {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
     {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
     <form method="post" action="/login" class="stack-form" id="loginForm" data-loading-form>
-      <label for="identifier">NRP atau email</label>
+      <label for="identifier">{{template "icon" "user"}}NRP atau email</label>
       <input id="identifier" name="identifier" type="text" value="{{.Identifier}}" placeholder="123456 atau nama@perusahaan.com" autocomplete="username" required autofocus>
 
-      <label for="password">Password</label>
+      <label for="password">{{template "icon" "lock"}}Password</label>
       <div class="input-with-action">
         <input id="password" name="password" type="password" placeholder="Masukkan password" autocomplete="current-password" required>
         {{template "passwordToggle" "password"}}

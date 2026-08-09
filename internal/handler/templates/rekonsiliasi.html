@@ -14,7 +14,7 @@
 
     <form class="filter-form" method="get" action="/nota/rekonsiliasi">
       <div>
-        <label for="q">Cari no transaksi</label>
+        <label for="q">{{template "icon" "search"}}Cari no transaksi</label>
         <input id="q" name="q" type="search" value="{{.Query}}" placeholder="NTA-20260809-0001" autocomplete="off">
       </div>
       <button class="button primary" type="submit">{{template "icon" "list"}}Cari</button>
@@ -98,7 +98,7 @@
       <input type="hidden" name="nota_id" value="{{.NotaID}}">
       <input type="hidden" name="q" value="{{$.Query}}">
       <div>
-        <label for="bukti-{{.NotaID}}" class="required-label">Bukti bayar *</label>
+        <label for="bukti-{{.NotaID}}" class="required-label">{{template "icon" "camera"}}Bukti bayar *</label>
         <input id="bukti-{{.NotaID}}" name="bukti_bayar" type="file" accept="image/*" required>
         <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
       </div>

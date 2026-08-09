@@ -110,6 +110,15 @@
     if (totalCell) totalCell.textContent = rupiah(total);
   };
 
+  // The cards are numbered on a phone, so the numbers have to follow a row
+  // being added or removed.
+  const renumber = () => {
+    form.querySelectorAll("[data-item-row]").forEach((row, index) => {
+      const number = row.querySelector("[data-item-number]");
+      if (number) number.textContent = String(index + 1);
+    });
+  };
+
   const addRow = () => {
     if (!list) return;
     const first = list.querySelector("[data-item-row]");
@@ -121,6 +130,7 @@
     const cell = row.querySelector("[data-item-total]");
     if (cell) cell.textContent = rupiah(0);
     list.appendChild(row);
+    renumber();
     const nama = row.querySelector("[name='item_nama']");
     if (nama) nama.focus();
   };
@@ -136,6 +146,7 @@
         input.value = "";
       });
     }
+    renumber();
     recalculate();
   };
 

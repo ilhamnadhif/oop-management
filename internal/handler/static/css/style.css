@@ -60,7 +60,18 @@ h2 { margin-bottom: 0.4rem; font-size: 1.15rem; font-weight: 600; letter-spacing
 .auth-tab { flex: 1; padding: 0.75rem; border-radius: 10px; color: var(--muted); text-align: center; text-decoration: none; font-weight: 500; }
 .auth-tab.active { color: var(--navy); background: var(--white); box-shadow: 0 2px 8px rgba(23, 63, 95, 0.08); }
 .stack-form { display: grid; gap: 0.9rem; }
+/* Every field label carries an icon of what it asks for, so a long form can be
+   scanned by shape rather than read line by line. */
+.stack-form label,
+.filter-form label,
+.nota-item .field-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 .stack-form label { margin-top: 0.6rem; color: var(--ink); font-size: 0.88rem; font-weight: 500; }
+label .icon { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+/* A hint inside a label states a rule about the field; it is not the standalone
+   note that gets a tinted block of its own. Written to outweigh that block rule
+   rather than to sit before it. */
+.stack-form > .panel label .hint:last-child,
+.stack-form label .hint { padding: 0; color: var(--muted); background: none; }
 input, select { width: 100%; padding: 0.85rem 1rem; font-weight: 400; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--white); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
 input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(43, 156, 150, 0.13); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 1.4rem; }
@@ -240,12 +251,24 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .camera-modal { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 1rem; background: rgba(16, 47, 72, 0.62); }
 .camera-dialog { width: min(520px, 100%); max-height: 92vh; overflow-y: auto; padding: clamp(1.1rem, 3vw, 1.6rem); border-radius: 20px; background: var(--white); box-shadow: 0 24px 60px rgba(16, 47, 72, 0.35); }
 
-/* A nota is one line per purchase, so the rows are a grid rather than a table:
-   on a phone each line stacks instead of scrolling sideways. */
+/* A nota is one line per purchase. On a wide screen the lines read as a table
+   with the captions written once above them; on a phone each line becomes a
+   card carrying its own labels, because five inputs abreast on a 360px screen
+   truncate their own placeholders. */
 .nota-items { display: grid; gap: 0.6rem; }
-.nota-item { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(84px, auto) auto; align-items: center; gap: 0.6rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
-.nota-item input { background: var(--white); }
-.nota-item-total { font-size: 0.85rem; font-weight: 600; color: var(--navy); text-align: right; font-variant-numeric: tabular-nums; }
+.nota-items-head,
+.nota-item { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(92px, auto) auto; gap: 0.6rem; }
+.nota-items-head { padding: 0 0.6rem 0.3rem; color: var(--muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.nota-items-head .numeric { text-align: right; }
+.nota-item { align-items: center; padding: 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.nota-item input { width: 100%; background: var(--white); }
+.nota-field { display: grid; gap: 0.3rem; min-width: 0; }
+/* The captions above the table already name the columns, so repeating them on
+   every row would be noise. They come back when the row becomes a card. */
+.nota-item .field-label,
+.nota-item-index { display: none; }
+.nota-item-total { display: flex; align-items: center; justify-content: flex-end; margin-bottom: 0; font-size: 0.85rem; font-weight: 600; color: var(--navy); font-variant-numeric: tabular-nums; }
+.nota-add { margin-top: 0.7rem; }
 .nota-total { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 0.9rem 1.1rem; border-left: 4px solid var(--navy); border-radius: 12px; background: #eef3f7; font-size: 0.9rem; }
 .nota-total strong { font-size: 1.15rem; color: var(--navy); font-variant-numeric: tabular-nums; }
 
@@ -339,11 +362,19 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 
 @media (max-width: 720px) {
   .form-grid, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; }
-  /* Six fields side by side become unreadable on a phone; the line stacks and
-     keeps its own total and delete button on one row. */
-  .nota-item { grid-template-columns: 1fr auto; }
-  .nota-item input[name="item_nama"] { grid-column: 1 / -1; }
-  .nota-item-total { text-align: left; }
+  /* Each line becomes a card: numbered, labelled, and with the subtotal spelled
+     out rather than floating beside a truncated field. */
+  .nota-items-head { display: none; }
+  .nota-item { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem; padding: 0.9rem; }
+  .nota-item .field-label { display: block; color: var(--muted); font-size: 0.74rem; font-weight: 600; }
+  .nota-item-index { display: block; margin-bottom: 0; color: var(--navy); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .nota-item-remove { justify-self: end; grid-row: 1; grid-column: 2; }
+  .nota-field-nama,
+  .nota-field-harga { grid-column: 1 / -1; }
+  .nota-item-total { grid-column: 1 / -1; justify-content: space-between; padding-top: 0.6rem; border-top: 1px solid var(--line); }
+  .nota-item-total .field-label { color: var(--muted); }
+  /* Thumb-width on a phone, where it is the button pressed most on this page. */
+  .nota-add { width: 100%; justify-content: center; }
   .calc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { flex-direction: row; align-items: center; }
   .video-frame, .video-frame video { min-height: 220px; }

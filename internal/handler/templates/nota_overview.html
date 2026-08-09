@@ -9,11 +9,11 @@
     </div>
     <form class="filter-form" method="get" action="/nota/overview">
       <div>
-        <label for="from">Dari tanggal</label>
+        <label for="from">{{template "icon" "calendar"}}Dari tanggal</label>
         <input id="from" name="from" type="date" value="{{.From}}">
       </div>
       <div>
-        <label for="to">Sampai tanggal</label>
+        <label for="to">{{template "icon" "calendar"}}Sampai tanggal</label>
         <input id="to" name="to" type="date" value="{{.To}}">
       </div>
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
