@@ -74,6 +74,42 @@ type HRJabatanShare struct {
 	Percent float64
 }
 
+// HRPersonOnDay names one person behind a headline figure. A count says how
+// many were missing; only a name says who to call.
+type HRPersonOnDay struct {
+	NamaLengkap string
+	NRP         string
+	Jabatan     string
+	// Keterangan is the leave type for someone away, empty for someone who
+	// simply has no attendance recorded.
+	Keterangan string
+}
+
+// hrPersonOnDay falls back to the user id when a row has no name against it,
+// so a record the user sheet no longer covers still appears rather than showing
+// as a blank line.
+func hrPersonOnDay(user model.User, userID, keterangan string) HRPersonOnDay {
+	person := HRPersonOnDay{
+		NamaLengkap: strings.TrimSpace(user.NamaLengkap),
+		NRP:         strings.TrimSpace(user.NRP),
+		Jabatan:     strings.TrimSpace(user.Jabatan),
+		Keterangan:  strings.TrimSpace(keterangan),
+	}
+	if person.NamaLengkap == "" {
+		person.NamaLengkap = userID
+	}
+	return person
+}
+
+func sortHRPeople(people []HRPersonOnDay) {
+	sort.Slice(people, func(i, j int) bool {
+		if !strings.EqualFold(people[i].NamaLengkap, people[j].NamaLengkap) {
+			return strings.ToLower(people[i].NamaLengkap) < strings.ToLower(people[j].NamaLengkap)
+		}
+		return people[i].NRP < people[j].NRP
+	})
+}
+
 // HROverview contains only already-aggregated values. In particular it never
 // carries attendance photos or leave attachments into the dashboard response.
 type HROverview struct {
@@ -84,11 +120,13 @@ type HROverview struct {
 	HadirHariAkhir      int
 	TidakHadirHariAkhir int
 	CutiHariAkhir       int
-	LemburJam           float64
-	Series              []HRDatePoint
-	JabatanShares       []HRJabatanShare
-	KaryawanBaru        []model.User
-	PengajuanTerbaru    []model.Leave
+	// The people behind the two figures above, on the last day of the range.
+	BelumAbsenNama    []HRPersonOnDay
+	CutiHariAkhirNama []HRPersonOnDay
+	Series            []HRDatePoint
+	JabatanShares     []HRJabatanShare
+	KaryawanBaru      []model.User
+	PengajuanTerbaru  []model.Leave
 }
 
 // LeaveService owns every lifecycle transition. The mutex makes the read-check-
@@ -466,7 +504,7 @@ func (s *LeaveService) PersonalSummary(ctx context.Context, userID string) (*Lea
 	return summary, nil
 }
 
-func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string, schedule Schedule) (*HROverview, error) {
+func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*HROverview, error) {
 	from, to, err := s.normalizeOverviewRange(from, to)
 	if err != nil {
 		return nil, err
@@ -491,7 +529,6 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string, sch
 	}
 
 	present := make(map[string]map[string]bool)
-	overtimeMinutes := 0
 	for _, row := range attendance {
 		if row.TanggalAbsensi < from || row.TanggalAbsensi > to || !userActiveOn(usersByID, row.UserID, row.TanggalAbsensi) {
 			continue
@@ -500,19 +537,11 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string, sch
 			present[row.TanggalAbsensi] = make(map[string]bool)
 		}
 		present[row.TanggalAbsensi][row.UserID] = true
-		if row.ClockInAt.IsZero() {
-			continue
-		}
-		var clockOut *time.Time
-		if row.ClockOutAt != nil && !row.ClockOutAt.IsZero() {
-			local := row.ClockOutAt.In(s.location)
-			clockOut = &local
-		}
-		rule := schedule.Judge(row.ClockInAt.In(s.location), clockOut)
-		overtimeMinutes += rule.OvertimeMinutes
 	}
 
-	approvedLeave := make(map[string]map[string]bool)
+	// The leave type is kept, not just the fact of it: a count answers how many
+	// are away, a name with "Cuti Sakit" against it answers who to cover for.
+	approvedLeave := make(map[string]map[string]string)
 	for _, row := range leaves {
 		if row.Status != model.LeaveStatusDisetujui || row.TanggalSelesai < from || row.TanggalMulai > to {
 			continue
@@ -524,9 +553,9 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string, sch
 				continue
 			}
 			if approvedLeave[day] == nil {
-				approvedLeave[day] = make(map[string]bool)
+				approvedLeave[day] = make(map[string]string)
 			}
-			approvedLeave[day][row.UserID] = true
+			approvedLeave[day][row.UserID] = row.JenisLeave
 		}
 	}
 
@@ -534,19 +563,32 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string, sch
 		From:        from,
 		To:          to,
 		LastUpdated: s.now().In(s.location).Format("02 Jan 2006 15:04"),
-		LemburJam:   round2(float64(overtimeMinutes) / 60),
 	}
 	for _, day := range dateStringsInRange(from, to) {
 		active := activeUserIDsOn(users, day)
 		point := HRDatePoint{Tanggal: day, Label: hrDateLabel(day)}
 		for userID := range active {
+			jenis, onLeave := approvedLeave[day][userID]
 			switch {
 			case present[day][userID]:
 				point.Hadir++
-			case approvedLeave[day][userID]:
+			case onLeave:
 				point.Cuti++
 			default:
 				point.TidakHadir++
+			}
+			// The KPI cards report the last day of the range, so the names
+			// behind those two figures are gathered from the same day.
+			if day != to {
+				continue
+			}
+			person := hrPersonOnDay(usersByID[userID], userID, jenis)
+			switch {
+			case present[day][userID]:
+			case onLeave:
+				overview.CutiHariAkhirNama = append(overview.CutiHariAkhirNama, person)
+			default:
+				overview.BelumAbsenNama = append(overview.BelumAbsenNama, person)
 			}
 		}
 		overview.Series = append(overview.Series, point)
@@ -557,6 +599,10 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string, sch
 			overview.CutiHariAkhir = point.Cuti
 		}
 	}
+	// Active user IDs come out of a map, so without this the two lists would
+	// reshuffle on every reload and read as if the people had changed.
+	sortHRPeople(overview.BelumAbsenNama)
+	sortHRPeople(overview.CutiHariAkhirNama)
 
 	activeAtEnd := make([]model.User, 0)
 	byJabatan := make(map[string]int)

@@ -28,7 +28,7 @@ var navItems = []NavItem{
 		Lede: "Ajukan cuti atau izin dan pantau proses persetujuannya."},
 	{Key: "hr", Label: "HR", Icon: "users", Children: []NavItem{
 		{Key: "hr-overview", Label: "Overview", Path: "/hr/overview", Icon: "activity",
-			Lede: "Ringkasan karyawan, kehadiran, lembur, dan pengajuan leave."},
+			Lede: "Ringkasan karyawan, kehadiran, dan pengajuan leave."},
 		{Key: "hr-approval-leave", Label: "Approval Leave", Path: "/hr/approval-leave", Icon: "check",
 			Lede: "Tinjau dan putuskan pengajuan cuti atau izin karyawan."},
 	}},

@@ -394,7 +394,7 @@ func (s *Server) handleHROverview(w http.ResponseWriter, r *http.Request) {
 		From:          from,
 		To:            to,
 	}
-	overview, err := s.leave.BuildHROverview(r.Context(), from, to, s.attendance.Schedule())
+	overview, err := s.leave.BuildHROverview(r.Context(), from, to)
 	if err != nil {
 		if errors.Is(err, service.ErrValidation) {
 			data.Error = strings.TrimPrefix(err.Error(), "validation error: ")

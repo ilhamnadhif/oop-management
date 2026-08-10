@@ -95,11 +95,11 @@ func TestDashboardCountsAgainstTheWorkingDay(t *testing.T) {
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/dashboard")
 	for _, fragment := range []string{
-		"TEPAT WAKTU", "TERLAMBAT", "PULANG CEPAT", "LEMBUR",
+		"TEPAT WAKTU", "TERLAMBAT", "PULANG CEPAT",
 		// The rule is stated, not left to be inferred from a label.
 		"Jam kerja 09:00–17:00, toleransi keterlambatan",
-		// 09:40 is forty minutes past nine, and the day ran to 19:00.
-		"Terlambat 40m", "Lembur 2j",
+		// 09:40 is forty minutes past nine.
+		"Terlambat 40m",
 		// 08:30 to 16:00 is early on both ends.
 		"Masuk lebih awal", "Pulang cepat 1j",
 		"Tepat waktu",
@@ -107,6 +107,11 @@ func TestDashboardCountsAgainstTheWorkingDay(t *testing.T) {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the dashboard is missing %q", fragment)
 		}
+	}
+	// The 2026-08-04 day ran to 19:00, two hours past the working day. Nothing
+	// on the dashboard accounts for overtime, so nothing may report it either.
+	if strings.Contains(strings.ToLower(page), "lembur") {
+		t.Fatal("the dashboard still reports overtime")
 	}
 }
 

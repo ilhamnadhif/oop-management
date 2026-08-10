@@ -94,21 +94,13 @@
       </div>
       <span class="kpi-icon purple">{{template "icon" "logout"}}</span>
     </article>
-    <article class="panel kpi-card">
-      <div>
-        <p class="eyebrow">LEMBUR</p>
-        <p class="kpi-value">{{printf "%.1f" .LemburJam}} <small>jam</small></p>
-        <p class="kpi-note">Kerja melewati {{.Jadwal.EndLabel}}</p>
-      </div>
-      <span class="kpi-icon blue">{{template "icon" "activity"}}</span>
-    </article>
   </section>
 
   <p class="hint schedule-note">
     {{template "icon" "info"}}
     Jam kerja {{.Jadwal.StartLabel}}–{{.Jadwal.EndLabel}}, toleransi keterlambatan
-    {{.Jadwal.ToleranceMinutes}} menit. Masuk lebih awal, terlambat, pulang cepat,
-    dan lembur dihitung dari jam tersebut.
+    {{.Jadwal.ToleranceMinutes}} menit. Masuk lebih awal, terlambat, dan pulang
+    cepat dihitung dari jam tersebut.
   </p>
 
   <section class="chart-grid">

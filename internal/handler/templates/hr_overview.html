@@ -56,14 +56,6 @@
       </div>
       <span class="kpi-icon purple">{{template "icon" "calendar"}}</span>
     </article>
-    <article class="panel kpi-card">
-      <div>
-        <p class="eyebrow">LEMBUR</p>
-        <p class="kpi-value">{{printf "%.1f" .LemburJam}} <small>jam</small></p>
-        <p class="kpi-note">Akumulasi lembur dalam rentang aktif</p>
-      </div>
-      <span class="kpi-icon blue">{{template "icon" "clock"}}</span>
-    </article>
   </section>
 
   <section class="hr-dashboard-grid">
@@ -124,7 +116,7 @@
         <ul class="role-list">
           {{range $.Roles}}
           <li>
-            <span class="role-name"><i class="role-swatch {{.ClassName}}"></i>{{.Jabatan}}</span>
+            <span class="role-name"><i class="role-swatch {{.ClassName}}"></i><span class="role-label">{{.Jabatan}}</span></span>
             <span><strong>{{.Total}}</strong> · {{printf "%.1f" .Percent}}%</span>
           </li>
           {{end}}
@@ -132,6 +124,58 @@
       </div>
       {{else}}
       <p class="panel-empty">Belum ada karyawan aktif pada akhir periode.</p>
+      {{end}}
+    </article>
+  </section>
+
+  {{/* The KPI cards give the two figures; these give the names behind them, for
+       the same day the cards report on. */}}
+  <section class="hr-bottom-grid">
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "info"}}BELUM ABSEN</p>
+          <h2>{{.TidakHadirHariAkhir}} orang per {{$.To}}</h2>
+        </div>
+      </div>
+      {{if .BelumAbsenNama}}
+      <ul class="compact-list">
+        {{range .BelumAbsenNama}}
+        <li>
+          <span class="compact-list-main">
+            <strong>{{.NamaLengkap}}</strong>
+            <span>{{if .NRP}}{{.NRP}} · {{end}}{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</span>
+          </span>
+          <span class="compact-list-meta"><span class="status-chip pending">Belum absen</span></span>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="panel-empty">Seluruh karyawan aktif sudah tercatat pada tanggal ini.</p>
+      {{end}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "calendar"}}CUTI &amp; IZIN</p>
+          <h2>{{.CutiHariAkhir}} orang per {{$.To}}</h2>
+        </div>
+      </div>
+      {{if .CutiHariAkhirNama}}
+      <ul class="compact-list">
+        {{range .CutiHariAkhirNama}}
+        <li>
+          <span class="compact-list-main">
+            <strong>{{.NamaLengkap}}</strong>
+            <span>{{if .NRP}}{{.NRP}} · {{end}}{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</span>
+          </span>
+          <span class="compact-list-meta"><span class="status-chip approved">{{.Keterangan}}</span></span>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="panel-empty">Tidak ada leave disetujui pada tanggal ini.</p>
       {{end}}
     </article>
   </section>

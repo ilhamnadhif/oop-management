@@ -328,7 +328,65 @@ func TestPersonalSummaryCountsUniqueApprovedWeekdaysAndPending(t *testing.T) {
 	}
 }
 
-func TestHROverviewAggregatesPresenceLeaveAbsenceOvertimeAndPeople(t *testing.T) {
+// The KPI cards say how many; these lists say who. Nobody can be chased up
+// from a count, which is the whole reason the names are carried.
+func TestHROverviewNamesWhoIsAbsentAndWhoIsOnLeave(t *testing.T) {
+	fixture := newLeaveFixture(t)
+	ctx := context.Background()
+	sakit := leaveUser("usr_sakit", "9101", "Ani Lestari", "Logistik", "2025-01-01")
+	absent := leaveUser("usr_absent", "9102", "Cahyo Nugroho", "Security", "2025-01-01")
+	createFixtureUser(t, fixture.store, sakit)
+	createFixtureUser(t, fixture.store, absent)
+
+	// Budi is present; the other three active employees are not.
+	if err := fixture.store.CreateAttendance(ctx, &model.Attendance{
+		AbsensiID: "ABS-1", UserID: fixture.user.UserID, TanggalAbsensi: "2026-08-10",
+		ClockInAt: time.Date(2026, 8, 10, 7, 0, 0, 0, fixture.location),
+	}); err != nil {
+		t.Fatalf("seed attendance: %v", err)
+	}
+	if err := fixture.store.CreateLeave(ctx, &model.Leave{
+		LeaveID: "LVE-SAKIT", UserID: sakit.UserID, NamaLengkap: sakit.NamaLengkap,
+		JenisLeave: model.LeaveJenisCutiSakit, TanggalMulai: "2026-08-10", TanggalSelesai: "2026-08-10",
+		Status: model.LeaveStatusDisetujui,
+	}); err != nil {
+		t.Fatalf("seed leave: %v", err)
+	}
+
+	overview, err := fixture.service.BuildHROverview(ctx, "2026-08-10", "2026-08-10")
+	if err != nil {
+		t.Fatalf("build overview: %v", err)
+	}
+
+	// Someone on approved leave is away, not missing: the two lists never hold
+	// the same person.
+	if len(overview.CutiHariAkhirNama) != 1 ||
+		overview.CutiHariAkhirNama[0].NamaLengkap != "Ani Lestari" ||
+		overview.CutiHariAkhirNama[0].Keterangan != model.LeaveJenisCutiSakit ||
+		overview.CutiHariAkhirNama[0].Jabatan != "Logistik" {
+		t.Fatalf("leave list is wrong: %+v", overview.CutiHariAkhirNama)
+	}
+	// Sorted by name, so a reload does not reshuffle the list: "Cahyo Nugroho"
+	// then the HR fixture, "Rina HR".
+	names := make([]string, 0, len(overview.BelumAbsenNama))
+	for _, person := range overview.BelumAbsenNama {
+		names = append(names, person.NamaLengkap)
+		if person.Keterangan != "" {
+			t.Fatalf("an absent person carries a leave type: %+v", person)
+		}
+	}
+	if len(names) != 2 || names[0] != "Cahyo Nugroho" {
+		t.Fatalf("absent list is wrong: %v", names)
+	}
+	if len(overview.BelumAbsenNama) != overview.TidakHadirHariAkhir ||
+		len(overview.CutiHariAkhirNama) != overview.CutiHariAkhir {
+		t.Fatalf("the lists disagree with the cards: %d/%d absent, %d/%d on leave",
+			len(overview.BelumAbsenNama), overview.TidakHadirHariAkhir,
+			len(overview.CutiHariAkhirNama), overview.CutiHariAkhir)
+	}
+}
+
+func TestHROverviewAggregatesPresenceLeaveAbsenceAndPeople(t *testing.T) {
 	fixture := newLeaveFixture(t)
 	ctx := context.Background()
 	// The fixture has Budi (joined Jan 2) and HR (joined 2025). Add someone who
@@ -364,15 +422,23 @@ func TestHROverviewAggregatesPresenceLeaveAbsenceOvertimeAndPeople(t *testing.T)
 		}
 	}
 
-	overview, err := fixture.service.BuildHROverview(ctx, "2026-08-09", "2026-08-10", DefaultSchedule())
+	overview, err := fixture.service.BuildHROverview(ctx, "2026-08-09", "2026-08-10")
 	if err != nil {
 		t.Fatalf("build overview: %v", err)
 	}
 	if overview.TotalKaryawan != 3 || overview.HadirHariAkhir != 2 || overview.CutiHariAkhir != 1 || overview.TidakHadirHariAkhir != 0 {
 		t.Fatalf("end-date KPIs are wrong: %+v", overview)
 	}
-	if overview.LemburJam != 2 {
-		t.Fatalf("overtime = %.2f, want 2", overview.LemburJam)
+	// The KPI figures are counts; the lists are the people they stand for, and
+	// the two have to agree or one of them is lying about the same day.
+	if len(overview.BelumAbsenNama) != overview.TidakHadirHariAkhir {
+		t.Fatalf("absent list holds %d names against a count of %d",
+			len(overview.BelumAbsenNama), overview.TidakHadirHariAkhir)
+	}
+	if len(overview.CutiHariAkhirNama) != 1 ||
+		overview.CutiHariAkhirNama[0].NamaLengkap != management.NamaLengkap ||
+		overview.CutiHariAkhirNama[0].Keterangan != model.LeaveJenisCutiTahunan {
+		t.Fatalf("leave list is wrong: %+v", overview.CutiHariAkhirNama)
 	}
 	if len(overview.Series) != 2 || overview.Series[0].Tanggal != "2026-08-09" || overview.Series[0].Cuti != 0 || overview.Series[0].TidakHadir != 2 {
 		t.Fatalf("weekend/series calculation is wrong: %+v", overview.Series)
@@ -387,7 +453,7 @@ func TestHROverviewAggregatesPresenceLeaveAbsenceOvertimeAndPeople(t *testing.T)
 		t.Fatalf("latest leave order is wrong: %+v", overview.PengajuanTerbaru)
 	}
 
-	defaultOverview, err := fixture.service.BuildHROverview(ctx, "", "", DefaultSchedule())
+	defaultOverview, err := fixture.service.BuildHROverview(ctx, "", "")
 	if err != nil {
 		t.Fatalf("default overview: %v", err)
 	}

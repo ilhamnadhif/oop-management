@@ -46,11 +46,13 @@ type AttendanceSummary struct {
 
 	// Counted over the same month, against the working day in force.
 	Jadwal         Schedule
-	TepatWaktu     int
-	Terlambat      int
-	MasukAwal      int
-	PulangCepat    int
-	LemburJam      float64
+	TepatWaktu  int
+	Terlambat   int
+	MasukAwal   int
+	PulangCepat int
+	// Overtime is judged by the schedule but not reported: the dashboards do
+	// not account for it, and a figure nobody acts on invites being read as
+	// hours owed.
 	TerlambatMenit int
 
 	Series  []AttendanceDay
@@ -115,9 +117,6 @@ func (s *AttendanceService) Summary(ctx context.Context, userID string) (*Attend
 			if day.Rule.EarlyLeave {
 				summary.PulangCepat++
 			}
-			if day.Rule.Overtime {
-				summary.LemburJam += float64(day.Rule.OvertimeMinutes) / 60
-			}
 			if day.Rule.OnTime(day.Selesai) {
 				summary.TepatWaktu++
 			}
@@ -127,7 +126,6 @@ func (s *AttendanceService) Summary(ctx context.Context, userID string) (*Attend
 		}
 	}
 	summary.Jadwal = s.schedule
-	summary.LemburJam = round2(summary.LemburJam)
 	summary.TotalJam = round2(summary.TotalJam)
 	if summary.HariHadir > 0 {
 		summary.RataJam = round2(summary.TotalJam / float64(summary.HariHadir))
@@ -196,9 +194,6 @@ func ruleNotes(rule AttendanceRule, closed bool) []string {
 	}
 	if rule.EarlyLeave {
 		notes = append(notes, "Pulang cepat "+formatDuration(rule.EarlyOutMinutes))
-	}
-	if rule.Overtime {
-		notes = append(notes, "Lembur "+formatDuration(rule.OvertimeMinutes))
 	}
 	if len(notes) == 0 && closed {
 		notes = append(notes, "Tepat waktu")

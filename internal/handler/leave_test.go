@@ -404,13 +404,18 @@ func TestHROverviewRendersCoreDashboardAndLatestRequest(t *testing.T) {
 	hr := loggedInClientAs(t, testServer, "HR")
 	page := fetchAuthedPage(t, hr, testServer.URL+"/hr/overview")
 	for _, fragment := range []string{
-		"TOTAL KARYAWAN", "HADIR", "TIDAK HADIR", "CUTI &amp; IZIN", "LEMBUR",
+		"TOTAL KARYAWAN", "HADIR", "TIDAK HADIR", "CUTI &amp; IZIN",
 		"RINGKASAN ABSENSI", "DISTRIBUSI KARYAWAN", "KARYAWAN BARU", "PENGAJUAN TERBARU",
+		// A count says how many were missing; the lists say who.
+		"BELUM ABSEN", "Belum absen",
 		leaveID, "2026-08-01", "2026-08-07",
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("HR overview missing %q", fragment)
 		}
+	}
+	if strings.Contains(strings.ToLower(page), "lembur") {
+		t.Fatal("the HR overview still reports overtime")
 	}
 
 	invalid, err := hr.Get(testServer.URL + "/hr/overview?from=invalid&to=2026-08-07")

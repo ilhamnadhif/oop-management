@@ -1011,7 +1011,7 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .leave-history-card p { margin: 0.16rem 0; color: var(--muted); font-size: 0.82rem; }
 .leave-history-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
 .leave-history-actions form { margin: 0; }
-.hr-kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+.hr-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
 .hr-kpi-grid .kpi-card { min-height: 148px; }
 .hr-kpi-grid .kpi-value { font-size: clamp(1.4rem, 2vw, 1.85rem); }
 .hr-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(310px, 0.65fr); gap: 1rem; margin-top: 1rem; }
@@ -1036,7 +1036,11 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .hr-legend i { width: 9px; height: 9px; border-radius: 50%; background: var(--red-600); }
 .hr-legend .absent i { background: var(--navy); }
 .hr-legend .leave i { background: var(--teal); }
-.role-distribution { display: grid; grid-template-columns: minmax(150px, 0.85fr) minmax(180px, 1fr); gap: 1rem; align-items: center; }
+/* The columns must be allowed to shrink. Floors of 150px and 180px plus the gap
+   came to more than the panel is wide on a desktop three-column dashboard, and a
+   grid track never shrinks below its floor: the list pushed out past the card
+   rather than fitting inside it. */
+.role-distribution { display: grid; grid-template-columns: minmax(0, 0.6fr) minmax(0, 1fr); gap: 1rem; align-items: center; }
 .role-donut { display: block; width: min(210px, 100%); margin: auto; transform: rotate(-90deg); }
 .role-donut .track { fill: none; stroke: #e8eef1; stroke-width: 18; }
 .role-donut .slice { fill: none; stroke-width: 18; }
@@ -1057,7 +1061,12 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .compact-list li { display: flex; justify-content: space-between; gap: 0.8rem; padding: 0.72rem 0; border-bottom: 1px solid var(--line); }
 .role-list li:last-child,
 .compact-list li:last-child { border-bottom: 0; }
-.role-name { display: inline-flex; min-width: 0; gap: 0.45rem; align-items: center; }
+.role-list li { min-width: 0; }
+.role-name { display: inline-flex; flex: 1 1 auto; min-width: 0; gap: 0.45rem; align-items: center; }
+/* The label carries the truncation rather than .role-name: text-overflow needs
+   a block container, and a flex container is not one. A long job title is cut
+   with an ellipsis instead of running over the card edge. */
+.role-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .role-list li > span:last-child { flex: 0 0 auto; color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
 .role-swatch { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; }
 .role-swatch.role-slice-0 { background: #d7192d; }
@@ -1452,7 +1461,9 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 /* KPI cards --------------------------------------------------------------- */
 
 .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
-.hr-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+/* Four cards, so four columns: three would leave the last one alone on a
+   second row, reading as a card of a different kind. */
+.hr-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
 .kpi-card,
 .hr-kpi-grid .kpi-card {
   display: grid;
