@@ -54,13 +54,22 @@ func (s *ProduksiService) Options(ctx context.Context) (ProduksiOptions, error) 
 	if err != nil {
 		return ProduksiOptions{}, fmt.Errorf("read produksi options: %w", err)
 	}
+	// Planned locations join the picker even before anything is produced there.
+	// A location typed a second way would get its own plan and its own row, and
+	// neither would ever measure against the other.
+	plans, err := s.store.ListProduksiPlan(ctx)
+	if err != nil {
+		return ProduksiOptions{}, fmt.Errorf("read produksi plan options: %w", err)
+	}
+	plannedLokasi := distinctValues(nil, plans, func(p model.ProduksiPlan) string { return p.Lokasi })
+
 	options := ProduksiOptions{
 		Project:  distinctValues(ProjectOptions, rows, func(r model.Produksi) string { return r.Project }),
 		Supplier: distinctValues(SupplierOptions, rows, func(r model.Produksi) string { return r.Supplier }),
 		Quary:    distinctValues(QuaryOptions, rows, func(r model.Produksi) string { return r.Quary }),
 		Kategori: distinctValues(KategoriOptions, rows, func(r model.Produksi) string { return r.Kategori }),
 		Layer:    distinctValues(LayerOptions, rows, func(r model.Produksi) string { return r.Layer }),
-		Lokasi:   distinctValues(nil, rows, func(r model.Produksi) string { return r.Lokasi }),
+		Lokasi:   distinctValues(plannedLokasi, rows, func(r model.Produksi) string { return r.Lokasi }),
 	}
 	s.options = options
 	s.optionsAt = s.now()

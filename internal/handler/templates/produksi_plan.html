@@ -1,0 +1,102 @@
+{{define "produksi_plan"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <form method="post" action="/produksi/plan" class="stack-form" data-loading-form>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "clipboard-list"}}RENCANA PRODUKSI</p>
+          <h2>Tetapkan volume per lokasi</h2>
+        </div>
+      </div>
+
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="tanggal">{{template "icon" "calendar"}}Tanggal</label>
+          <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
+        </div>
+        <div>
+          <label for="project">{{template "icon" "tag"}}Project</label>
+          <input id="project" name="project" type="text" list="planProjectList" value="{{.Form.Project}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="planProjectList">
+            {{range .Options.Project}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+        <div>
+          <label for="supplier">{{template "icon" "tag"}}Supplier</label>
+          <input id="supplier" name="supplier" type="text" list="planSupplierList" value="{{.Form.Supplier}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="planSupplierList">
+            {{range .Options.Supplier}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+        {{/* The location list is the same one the production form uses, so a
+             plan and the work done against it carry the same spelling. Two
+             spellings would each get their own plan and neither would match. */}}
+        <div class="span-full">
+          <label for="lokasi">{{template "icon" "pin"}}Lokasi</label>
+          <input id="lokasi" name="lokasi" type="text" list="planLokasiList" value="{{.Form.Lokasi}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
+          <datalist id="planLokasiList">
+            {{range .Options.Lokasi}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+        <div>
+          <label for="volume">{{template "icon" "cube"}}Volume rencana (m³)</label>
+          <input id="volume" name="volume" type="text" inputmode="decimal" value="{{.Form.Volume}}" placeholder="15000" required>
+          <p class="hint">Target keseluruhan lokasi ini, bukan target harian.</p>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="button primary" type="submit">{{template "icon" "save"}}Simpan rencana</button>
+      </div>
+    </section>
+  </form>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}RENCANA TERSIMPAN</p>
+        <h2>{{len .Rows}} rencana · total {{.Total}} m³</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>ID</th>
+            <th>Tanggal</th>
+            <th>Project</th>
+            <th>Supplier</th>
+            <th>Lokasi</th>
+            <th class="numeric">Volume (m³)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $index, $row := .Rows}}
+          <tr>
+            <td>{{add1 $index}}</td>
+            <td>{{$row.PlanID}}</td>
+            <td>{{$row.Tanggal}}</td>
+            <td>{{$row.Project}}</td>
+            <td>{{$row.Supplier}}</td>
+            <td>{{$row.Lokasi}}</td>
+            <td class="numeric">{{$row.VolumeLabel}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada rencana. Lokasi yang direncanakan di sini muncul sebagai pembanding capaian di overview produksi.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/combobox.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

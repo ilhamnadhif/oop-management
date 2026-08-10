@@ -30,6 +30,9 @@ type Store interface {
 	CreateProduksi(ctx context.Context, produksi *model.Produksi) error
 	CreateProduksiBatch(ctx context.Context, rows []*model.Produksi) error
 	ListProduksi(ctx context.Context) ([]model.Produksi, error)
+	MaxProduksiPlanSequence(ctx context.Context, prefix string) (int, error)
+	CreateProduksiPlan(ctx context.Context, plan *model.ProduksiPlan) error
+	ListProduksiPlan(ctx context.Context) ([]model.ProduksiPlan, error)
 	UnitA2BExists(ctx context.Context, idUnit string) (bool, error)
 	MaxUnitA2BNumber(ctx context.Context) (int, error)
 	CreateUnitA2B(ctx context.Context, unit *model.UnitA2B) error

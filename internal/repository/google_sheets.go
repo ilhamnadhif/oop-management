@@ -18,6 +18,7 @@ const (
 	attendanceSheet = "absensi data"
 	unitDTSheet     = "Unit DT"
 	produksiSheet   = "Produksi"
+	planSheet       = "Produksi Plan"
 	unitA2BSheet    = "Unit A2B"
 	notaSheet       = "Nota"
 	notaItemSheet   = "Nota Item"
@@ -64,6 +65,13 @@ var produksiHeaders = []string{
 	"unit_id", "nopol", "driver", "jenis_dt",
 	"panjang_m", "lebar_m", "tinggi_m", "tt_m", "tf_m",
 	"volume_m3", "volume_opp_m3", "deviasi_m3",
+	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+}
+
+// The plan sheet mirrors the columns the planners already keep, plus the audit
+// trail every other sheet carries.
+var produksiPlanHeaders = []string{
+	"plan_id", "tanggal", "project", "supplier", "lokasi", "volume_m3",
 	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
 }
 
@@ -129,7 +137,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -154,6 +162,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: attendanceSheet, headers: attendanceHeaders},
 		{name: unitDTSheet, headers: unitDTHeaders},
 		{name: produksiSheet, headers: produksiHeaders},
+		{name: planSheet, headers: produksiPlanHeaders},
 		{name: unitA2BSheet, headers: unitA2BHeaders},
 		{name: notaSheet, headers: notaHeaders},
 		{name: notaItemSheet, headers: notaItemHeaders},
@@ -572,6 +581,67 @@ func produksiToRow(produksi *model.Produksi) []interface{} {
 		formatFloat(produksi.Volume), formatFloat(produksi.VolumeOPP), formatFloat(produksi.Deviasi),
 		produksi.CreatedBy, produksi.CreatedByID,
 		formatDateTime(produksi.CreatedAt), formatDateTime(produksi.UpdatedAt),
+	}
+}
+
+func (r *GoogleSheetsRepository) MaxProduksiPlanSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, planSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateProduksiPlan(ctx context.Context, plan *model.ProduksiPlan) error {
+	return r.appendRow(ctx, planSheet, produksiPlanToRow(plan))
+}
+
+func (r *GoogleSheetsRepository) ListProduksiPlan(ctx context.Context) ([]model.ProduksiPlan, error) {
+	rows, err := r.readRows(ctx, planSheet, "J")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.ProduksiPlan, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, len(produksiPlanHeaders))
+		planID := strings.TrimSpace(cellString(row[0]))
+		if planID == "" {
+			continue
+		}
+		// The audit stamps are read leniently: a row typed straight into the
+		// sheet has no timestamps, and refusing it would hide a real plan.
+		createdAt, _ := parseDateTime(cellString(row[8]), r.location)
+		updatedAt, _ := parseDateTime(cellString(row[9]), r.location)
+		result = append(result, model.ProduksiPlan{
+			PlanID:      planID,
+			Tanggal:     strings.TrimSpace(cellString(row[1])),
+			Project:     cellString(row[2]),
+			Supplier:    cellString(row[3]),
+			Lokasi:      cellString(row[4]),
+			Volume:      parseFloatCell(row[5]),
+			CreatedBy:   cellString(row[6]),
+			CreatedByID: cellString(row[7]),
+			CreatedAt:   createdAt,
+			UpdatedAt:   updatedAt,
+		})
+	}
+	return result, nil
+}
+
+func produksiPlanToRow(plan *model.ProduksiPlan) []interface{} {
+	return []interface{}{
+		plan.PlanID, plan.Tanggal, plan.Project, plan.Supplier, plan.Lokasi,
+		formatFloat(plan.Volume), plan.CreatedBy, plan.CreatedByID,
+		formatDateTime(plan.CreatedAt), formatDateTime(plan.UpdatedAt),
 	}
 }
 

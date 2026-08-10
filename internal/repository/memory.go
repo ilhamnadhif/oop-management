@@ -20,6 +20,7 @@ type TestRepository struct {
 	attendance []*model.Attendance
 	unitDT     []*model.UnitDT
 	produksi   []*model.Produksi
+	plans      []*model.ProduksiPlan
 	unitA2B    []*model.UnitA2B
 	nota       []*model.Nota
 	leaves     []*model.Leave
@@ -109,6 +110,46 @@ func (r *TestRepository) CreateProduksiBatch(_ context.Context, rows []*model.Pr
 
 func (r *TestRepository) ListProduksi(_ context.Context) ([]model.Produksi, error) {
 	return r.ProduksiList(), nil
+}
+
+func (r *TestRepository) MaxProduksiPlanSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, plan := range r.plans {
+		trimmed := strings.TrimSpace(plan.PlanID)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateProduksiPlan(_ context.Context, plan *model.ProduksiPlan) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := *plan
+	r.plans = append(r.plans, &stored)
+	return nil
+}
+
+func (r *TestRepository) ListProduksiPlan(_ context.Context) ([]model.ProduksiPlan, error) {
+	return r.ProduksiPlanList(), nil
+}
+
+// ProduksiPlanList exposes stored plans to tests.
+func (r *TestRepository) ProduksiPlanList() []model.ProduksiPlan {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	plans := make([]model.ProduksiPlan, 0, len(r.plans))
+	for _, plan := range r.plans {
+		plans = append(plans, *plan)
+	}
+	return plans
 }
 
 func (r *TestRepository) UnitA2BExists(_ context.Context, idUnit string) (bool, error) {

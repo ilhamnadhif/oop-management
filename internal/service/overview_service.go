@@ -33,11 +33,21 @@ type UnitRank struct {
 	VolumePerRitase float64
 }
 
-// LokasiShare is one slice of the per-location breakdown.
+// LokasiShare is one location's line in the per-location breakdown: what was
+// produced there, what was planned for it, and how far the one got against the
+// other.
 type LokasiShare struct {
-	Lokasi  string
-	Volume  float64
+	Lokasi string
+	Volume float64
+	// Percent is the share of the period's total volume.
 	Percent float64
+	// Rencana is the volume planned for this location, and Capaian the
+	// realisation against it. The plan is a standing target rather than a daily
+	// one, so it is not narrowed by the date filter the way Volume is:
+	// comparing a whole plan against part of a period is the intended reading.
+	Rencana    float64
+	Capaian    float64
+	AdaRencana bool
 }
 
 // Overview is everything the dashboard draws.
@@ -53,8 +63,11 @@ type Overview struct {
 	TopUnits     []UnitRank
 	LokasiShares []LokasiShare
 	HasLokasi    bool
-	LastUpdated  string
-	RowsTotal    int
+	// HasRencana says whether any location in view has a plan to measure
+	// against, which is what decides between the two readings of the panel.
+	HasRencana  bool
+	LastUpdated string
+	RowsTotal   int
 }
 
 // overviewCacheTTL keeps a dashboard reload from re-reading thousands of rows.
@@ -67,9 +80,11 @@ type OverviewService struct {
 	location *time.Location
 	now      NowFunc
 
-	mu       sync.Mutex
-	cached   []model.Produksi
-	cachedAt time.Time
+	mu           sync.Mutex
+	cached       []model.Produksi
+	cachedAt     time.Time
+	cachedPlans  []model.ProduksiPlan
+	cachedPlanAt time.Time
 }
 
 func NewOverviewService(store repository.Store, location *time.Location, now NowFunc) *OverviewService {
@@ -97,6 +112,23 @@ func (s *OverviewService) rows(ctx context.Context) ([]model.Produksi, error) {
 	return rows, nil
 }
 
+// plans are cached the same way and for the same reason. They are read on every
+// dashboard render because the per-location panel measures against them.
+func (s *OverviewService) plans(ctx context.Context) ([]model.ProduksiPlan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cachedPlans != nil && s.now().Sub(s.cachedPlanAt) < overviewCacheTTL {
+		return s.cachedPlans, nil
+	}
+	plans, err := s.store.ListProduksiPlan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read produksi plan: %w", err)
+	}
+	s.cachedPlans = plans
+	s.cachedPlanAt = s.now()
+	return plans, nil
+}
+
 // Build aggregates the sheet between the two dates. Either bound may be empty,
 // which means "no bound on that side".
 func (s *OverviewService) Build(ctx context.Context, from, to string) (*Overview, error) {
@@ -121,6 +153,21 @@ func (s *OverviewService) Build(ctx context.Context, from, to string) (*Overview
 	rows, err := s.rows(ctx)
 	if err != nil {
 		return nil, err
+	}
+	plans, err := s.plans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Plans are summed whole. The date filter narrows what was produced, not
+	// what was planned: the plan is fixed per location with its volume already
+	// set, so filtering it would move the target every time the range changed.
+	perRencana := map[string]float64{}
+	for _, plan := range plans {
+		lokasi := strings.TrimSpace(plan.Lokasi)
+		if lokasi == "" || plan.Volume <= 0 {
+			continue
+		}
+		perRencana[lokasi] += plan.Volume
 	}
 
 	// With no range chosen the charts would otherwise plot every single day
@@ -231,15 +278,42 @@ func (s *OverviewService) Build(ctx context.Context, from, to string) (*Overview
 	}
 	overview.TopUnits = ranks
 
+	// A location that was planned but never worked belongs in the list at zero:
+	// that is the gap the panel exists to show, and leaving it out would report
+	// the plan as if it had not been made.
+	for lokasi := range perRencana {
+		if _, ok := perLokasi[lokasi]; !ok {
+			perLokasi[lokasi] = 0
+			overview.HasLokasi = true
+		}
+	}
 	for lokasi, volume := range perLokasi {
 		share := LokasiShare{Lokasi: lokasi, Volume: round2(volume)}
 		if overview.TotalVolume > 0 {
 			share.Percent = round2(volume / overview.TotalVolume * 100)
 		}
+		if rencana, ok := perRencana[lokasi]; ok && rencana > 0 {
+			share.Rencana = round2(rencana)
+			share.Capaian = round2(volume / rencana * 100)
+			share.AdaRencana = true
+			overview.HasRencana = true
+		}
 		overview.LokasiShares = append(overview.LokasiShares, share)
 	}
+	// Planned locations lead, ordered by how far behind they are, because that
+	// is what the panel is read for. Unplanned ones follow by volume.
 	sort.Slice(overview.LokasiShares, func(i, j int) bool {
-		return overview.LokasiShares[i].Volume > overview.LokasiShares[j].Volume
+		left, right := overview.LokasiShares[i], overview.LokasiShares[j]
+		if left.AdaRencana != right.AdaRencana {
+			return left.AdaRencana
+		}
+		if left.AdaRencana && left.Capaian != right.Capaian {
+			return left.Capaian < right.Capaian
+		}
+		if left.Volume != right.Volume {
+			return left.Volume > right.Volume
+		}
+		return left.Lokasi < right.Lokasi
 	})
 
 	overview.TotalVolume = round2(overview.TotalVolume)

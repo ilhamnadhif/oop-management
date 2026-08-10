@@ -78,6 +78,9 @@ input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgb
 .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .form-grid > div { display: grid; gap: 0.5rem; }
+/* A field whose value is a long sentence, such as a location name, gets the
+   whole row rather than a third of it. */
+.form-grid > .span-full { grid-column: 1 / -1; }
 textarea { width: 100%; padding: 0.85rem 1rem; font-weight: 400; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--white); font: inherit; outline: none; resize: vertical; transition: border-color 0.15s, box-shadow 0.15s; }
 textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(43, 156, 150, 0.13); }
 input[type="file"] { padding: 0.6rem 0.85rem; background: #f7fafb; }
@@ -1548,6 +1551,35 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .share-fill,
 .share-progress::-webkit-progress-value,
 .share-progress::-moz-progress-bar { background: linear-gradient(90deg, var(--blue), var(--blue-bright)); }
+/* A plan that is met reads green, so a full bar is not mistaken for one that
+   merely happens to be long. The bar itself is clamped at 100: past that the
+   figure keeps counting but the track has nowhere left to go. */
+/* One selector per vendor pseudo-element, never a list: a browser that does not
+   know one of them drops the whole rule, and the colour silently never lands. */
+.share-progress-full::-webkit-progress-value { background: linear-gradient(90deg, #17633b, #2f9c63); }
+.share-progress-full::-moz-progress-bar { background: linear-gradient(90deg, #17633b, #2f9c63); }
+.share-note-aside { color: #96a3ad; }
+
+/* Per-location plan chart ------------------------------------------------- */
+
+.lokasi-legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-bottom: 0.9rem; color: var(--muted); font-size: 0.76rem; }
+.lokasi-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.lokasi-legend i { width: 16px; height: 7px; border-radius: 999px; }
+.lokasi-legend-plan i { background: var(--red-600); }
+.lokasi-legend-actual i { background: var(--blue-dark); }
+/* The chart scales to the panel, so a narrow column shrinks the drawing rather
+   than clipping the longest location name off the end of it. */
+.lokasi-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.lokasi-chart-name { fill: var(--ink); font-size: 11px; font-weight: 600; }
+.lokasi-chart-detail { fill: var(--muted); font-size: 10px; }
+.lokasi-chart-plan { fill: var(--red-600); }
+.lokasi-chart-actual { fill: var(--blue-dark); }
+.lokasi-chart-full { fill: #2f9c63; }
+.lokasi-chart-value { fill: var(--navy-dark); font-size: 11px; font-weight: 700; }
+.lokasi-unplanned-head { margin: 1.1rem 0 0.4rem; color: var(--muted); font-size: 0.73rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.lokasi-unplanned { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+.lokasi-unplanned li { display: flex; gap: 0.8rem; justify-content: space-between; color: var(--muted); font-size: 0.78rem; }
+.lokasi-unplanned strong { flex: 0 0 auto; color: var(--navy-dark); }
 .data-table thead { background: #f0f5fd; }
 .data-table thead th { color: #405a87; }
 .data-table tbody tr:hover { background: #f7faff; }

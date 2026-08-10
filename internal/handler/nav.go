@@ -37,6 +37,8 @@ var navItems = []NavItem{
 			Lede: "Ringkasan volume, ritase, dan unit yang beroperasi."},
 		{Key: "produksi-input", Label: "Input Data", Path: "/produksi", Icon: "list",
 			Lede: "Kelola dan catat data produksi harian dengan mudah dan akurat."},
+		{Key: "produksi-plan", Label: "Input Plan", Path: "/produksi/plan", Icon: "clipboard-list",
+			Lede: "Tetapkan volume rencana per lokasi, yang jadi pembanding capaian di overview."},
 		{Key: "produksi-export", Label: "Export Data", Path: "/produksi/export", Icon: "save",
 			Lede: "Unduh laporan produksi bertanda tangan dalam XLSX atau PDF."},
 	}},

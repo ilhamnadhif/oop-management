@@ -188,6 +188,7 @@ type OverviewPageData struct {
 	RitaseChart  *Chart
 	UnitChart    *Chart
 	CompareChart *Chart
+	LokasiChart  *LokasiPlanChart
 	Error        string
 }
 
@@ -297,6 +298,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
 	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
 	mux.HandleFunc("/produksi", s.handleProduksi)
+	mux.HandleFunc("/produksi/plan", s.handleProduksiPlan)
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
 	mux.HandleFunc("/produksi/export/download", s.handleProduksiDownload)
@@ -1487,6 +1489,7 @@ func (s *Server) handleProduksiOverview(w http.ResponseWriter, r *http.Request) 
 	// range shows the corrected order rather than what was typed.
 	data.From = overview.From
 	data.To = overview.To
+	data.LokasiChart = buildLokasiPlanChart(overview.LokasiShares)
 	data.VolumeChart = BuildLineChart(seriesLabels(overview.Series), seriesVolumes(overview.Series), 0)
 	// Side by side rather than stacked: stacked, the DT Besar count was a sliver
 	// on top of the DT Kecil bar and the badge carried only the total, so the

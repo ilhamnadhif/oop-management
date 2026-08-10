@@ -155,21 +155,60 @@
       <div class="panel-heading">
         <div>
           <p class="eyebrow">{{template "icon" "percent"}}PRODUKSI PER LOKASI</p>
-          <h2>Porsi volume</h2>
+          <h2>{{if .HasRencana}}Capaian terhadap rencana{{else}}Porsi volume{{end}}</h2>
         </div>
       </div>
-      {{if .HasLokasi}}
+      {{if $.LokasiChart.HasBars}}
+      {{/* Two bars a row: the plan drawn full width, the realisation measured
+           against it. The figure keeps counting past 100 where the bar cannot,
+           which is where an overshoot is actually read. */}}
+      <p class="lokasi-legend">
+        <span class="lokasi-legend-plan"><i></i>Rencana (100%)</span>
+        <span class="lokasi-legend-actual"><i></i>Capaian</span>
+      </p>
+      <svg class="lokasi-chart" viewBox="0 0 {{printf "%.0f" $.LokasiChart.Width}} {{printf "%.0f" $.LokasiChart.Height}}"
+        preserveAspectRatio="xMinYMin meet" role="img"
+        aria-label="Capaian volume terhadap rencana untuk setiap lokasi">
+        {{range $.LokasiChart.Bars}}
+        <text class="lokasi-chart-name" x="0" y="{{printf "%.1f" .NameY}}">{{.Lokasi}}</text>
+        <text class="lokasi-chart-detail" x="{{printf "%.1f" .PlanW}}" y="{{printf "%.1f" .NameY}}" text-anchor="end">{{.Detail}}</text>
+        <rect class="lokasi-chart-actual{{if .Full}} lokasi-chart-full{{end}}" x="0" y="{{printf "%.1f" .ActualY}}"
+          width="{{printf "%.1f" .ActualW}}" height="9" rx="4.5">
+          <title>{{.Lokasi}}: {{.Value}} ({{.Detail}})</title>
+        </rect>
+        <rect class="lokasi-chart-plan" x="0" y="{{printf "%.1f" .PlanY}}"
+          width="{{printf "%.1f" .PlanW}}" height="9" rx="4.5">
+          <title>{{.Lokasi}}: rencana {{.Detail}}</title>
+        </rect>
+        <text class="lokasi-chart-value" x="{{printf "%.1f" .ValueX}}" y="{{printf "%.1f" .ValueY}}">{{.Value}}</text>
+        {{end}}
+      </svg>
+      {{else if .HasLokasi}}
+      {{/* Nothing has been planned yet, so the panel falls back to the share of
+           the period rather than drawing every location against a target that
+           does not exist. */}}
       <ul class="share-list">
         {{range .LokasiShares}}
         <li>
           <div class="share-head"><span>{{.Lokasi}}</span><strong>{{printf "%.2f" .Percent}}%</strong></div>
           <div class="share-track"><progress class="share-progress" max="100" value="{{printf "%.2f" .Percent}}">{{printf "%.2f" .Percent}}%</progress></div>
-          <p class="share-note">{{printf "%.2f" .Volume}} m³</p>
+          <p class="share-note">{{rupiah .Volume}} m³ <span class="share-note-aside">· belum ada rencana</span></p>
         </li>
         {{end}}
       </ul>
       {{else}}
-      <p class="panel-empty">Belum ada data lokasi. Kolom Lokasi terisi begitu operator mengisinya lewat form Produksi.</p>
+      <p class="panel-empty">Belum ada data lokasi. Kolom Lokasi terisi begitu operator mengisinya lewat form Produksi, dan targetnya diatur di menu Input Plan.</p>
+      {{end}}
+      {{if and $.LokasiChart.HasBars $.LokasiChart.Unplanned}}
+      {{/* Locations produced without a target are listed rather than charted:
+           their bar would measure a share of the period, and two meanings on
+           one axis is how a chart misleads. */}}
+      <p class="lokasi-unplanned-head">Tanpa rencana</p>
+      <ul class="lokasi-unplanned">
+        {{range $.LokasiChart.Unplanned}}
+        <li><span>{{.Lokasi}}</span><strong>{{rupiah .Volume}} m³</strong></li>
+        {{end}}
+      </ul>
       {{end}}
     </article>
 

@@ -127,6 +127,22 @@ type Produksi struct {
 	UpdatedAt   time.Time
 }
 
+// ProduksiPlan is the volume planned for one location. It is a standing target
+// rather than a daily one: the date records when the plan was set, and the
+// overview compares production in a chosen range against the whole plan.
+type ProduksiPlan struct {
+	PlanID      string
+	Tanggal     string
+	Project     string
+	Supplier    string
+	Lokasi      string
+	Volume      float64
+	CreatedBy   string
+	CreatedByID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Attendance struct {
 	AbsensiID        string
 	UserID           string
