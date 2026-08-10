@@ -126,14 +126,14 @@ func TestProduksiOverviewShowsAchievementAgainstThePlan(t *testing.T) {
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi/overview")
 
 	for _, fragment := range []string{
-		"Capaian terhadap rencana",
+		"Produksi terhadap plan",
 		escapedSegmen,
 		"82.00%",
 		"12.300 / 15.000 m³",
 		// Two bars a row: the plan at full width, the realisation against it.
 		`<rect class="lokasi-chart-actual"`,
 		`<rect class="lokasi-chart-plan"`,
-		"Rencana (100%)",
+		"Plan (100%)",
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the overview is missing %q", fragment)
@@ -192,10 +192,10 @@ func TestProduksiOverviewFallsBackToShareWithoutAPlan(t *testing.T) {
 	client := loggedInClient(t, testServer)
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi/overview")
 
-	if !strings.Contains(page, "Porsi volume") || strings.Contains(page, "Capaian terhadap rencana") {
+	if !strings.Contains(page, "Porsi volume") || strings.Contains(page, "Produksi terhadap plan") {
 		t.Fatal("the panel changed its reading without a plan to measure against")
 	}
-	if !strings.Contains(page, "belum ada rencana") {
+	if !strings.Contains(page, "belum ada plan") {
 		t.Fatal("an unplanned location does not say so")
 	}
 }
