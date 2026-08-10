@@ -21,6 +21,9 @@
 {{- else if eq . "user-plus" -}}{{$d = "M14 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M8.5 10.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM18 8v6M21 11h-6"}}
 {{- else if eq . "close" -}}{{$d = "M7 7l10 10M17 7L7 17"}}
 {{- else if eq . "activity" -}}{{$d = "M3 13h4l3 7 4-16 3 9h4"}}
+{{- else if eq . "home" -}}{{$d = "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8 M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"}}
+{{- else if eq . "users" -}}{{$d = "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M16 3.128a4 4 0 0 1 0 7.744 M22 21v-2a4 4 0 0 0-3-3.87"}}
+{{- else if eq . "clipboard-list" -}}{{$d = "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2 M12 11h4 M12 16h4 M8 11h.01 M8 16h.01"}}
 {{- else if eq . "trophy" -}}{{$d = "M8 4h8v4a4 4 0 0 1-8 0V4Z M8 5H5v2a3 3 0 0 0 3 3M16 5h3v2a3 3 0 0 1-3 3M10 15h4l1 5H9l1-5Z"}}
 {{- else if eq . "percent" -}}{{$d = "M6 18 18 6M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"}}
 {{- else if eq . "fuel" -}}{{$d = "M4 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M3 20h11M6 9h5M16 8l3 3v6a1.5 1.5 0 0 1-3 0v-4h-3"}}
@@ -46,5 +49,7 @@
 <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {{- if eq . "clock"}}<circle cx="12" cy="12" r="9"></circle>{{end}}
 {{- if eq . "info"}}<circle cx="12" cy="12" r="9"></circle>{{end}}
+{{- if eq . "users"}}<circle cx="9" cy="7" r="4"></circle>{{end}}
+{{- if eq . "clipboard-list"}}<rect x="8" y="2" width="8" height="4" rx="1"></rect>{{end}}
 <path d="{{$d}}"></path></svg>
 {{- end}}

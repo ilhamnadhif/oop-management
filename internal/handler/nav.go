@@ -20,13 +20,13 @@ type NavItem struct {
 // ungrouped because every role needs it. When menus become per-jabatan, filter
 // this one slice rather than editing each template.
 var navItems = []NavItem{
-	{Key: "beranda", Label: "Dashboard", Path: "/dashboard", Icon: "activity",
+	{Key: "beranda", Label: "Dashboard", Path: "/dashboard", Icon: "home",
 		Lede: "Ringkasan kehadiran Anda sendiri bulan ini."},
-	{Key: "absensi", Label: "Absensi", Path: "/absensi", Icon: "clock",
+	{Key: "absensi", Label: "Absensi", Path: "/absensi", Icon: "calendar",
 		Lede: "Catat kehadiran hari ini lengkap dengan lokasi dan foto."},
-	{Key: "leave-request", Label: "Request Leave", Path: "/leave/request", Icon: "calendar",
+	{Key: "leave-request", Label: "Request Leave", Path: "/leave/request", Icon: "clock",
 		Lede: "Ajukan cuti atau izin dan pantau proses persetujuannya."},
-	{Key: "hr", Label: "HR", Icon: "user", Children: []NavItem{
+	{Key: "hr", Label: "HR", Icon: "users", Children: []NavItem{
 		{Key: "hr-overview", Label: "Overview", Path: "/hr/overview", Icon: "activity",
 			Lede: "Ringkasan karyawan, kehadiran, lembur, dan pengajuan leave."},
 		{Key: "hr-approval-leave", Label: "Approval Leave", Path: "/hr/approval-leave", Icon: "check",
@@ -60,7 +60,7 @@ var navItems = []NavItem{
 	}},
 	// Alat berat has its own menu: hour meters and fuel are recorded per
 	// machine, which a dump truck register has nothing to say about.
-	{Key: "a2b", Label: "A2B", Icon: "cube", Children: []NavItem{
+	{Key: "a2b", Label: "A2B", Icon: "clipboard-list", Children: []NavItem{
 		{Key: "a2b-overview", Label: "Overview", Path: "/a2b/overview", Icon: "activity",
 			Lede: "Ringkasan alat berat: jumlah, sebaran lokasi, dan mereknya."},
 		{Key: "a2b-unit", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube",

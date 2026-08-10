@@ -16,6 +16,7 @@ func TestBrandAssetsAreServed(t *testing.T) {
 		contentType string
 	}{
 		{"/static/img/opp-logo.png", "image/png"},
+		{"/static/img/toll-road-hero-v1.jpg", "image/jpeg"},
 		{"/static/img/favicon.ico", "image/"},
 		{"/static/fonts/inter-latin-variable.woff2", "font/woff2"},
 	} {
