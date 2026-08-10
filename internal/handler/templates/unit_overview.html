@@ -9,8 +9,9 @@
       <h2>{{.LastUpdated}}</h2>
     </div>
     <p class="hint filter-note">
-      Halaman ini menghitung isi kedua daftar unit. Untuk hasil kerja armada,
-      lihat <a href="/produksi/overview">Overview Produksi</a>.
+      Halaman ini menghitung isi daftar Unit DT. Alat berat ada di
+      <a href="/a2b/overview">Overview A2B</a>, hasil kerja armada di
+      <a href="/produksi/overview">Overview Produksi</a>.
     </p>
   </section>
 
@@ -22,14 +23,6 @@
         <p class="kpi-note">Dump truck terdaftar</p>
       </div>
       <span class="kpi-icon blue">{{template "icon" "truck"}}</span>
-    </article>
-    <article class="panel kpi-card">
-      <div>
-        <p class="eyebrow">TOTAL UNIT A2B</p>
-        <p class="kpi-value">{{.TotalA2B}}</p>
-        <p class="kpi-note">Alat berat terdaftar</p>
-      </div>
-      <span class="kpi-icon green">{{template "icon" "cube"}}</span>
     </article>
     <article class="panel kpi-card">
       <div>
@@ -72,43 +65,6 @@
       </ul>
       {{else}}
       <p class="panel-empty">Belum ada unit DT terdaftar.</p>
-      {{end}}
-    </article>
-
-    <article class="panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">{{template "icon" "pin"}}UNIT A2B PER LOKASI</p>
-          <h2>Sebaran alat berat</h2>
-        </div>
-      </div>
-      {{template "chartFigure" $.LokasiChart}}
-    </article>
-
-    <article class="panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">{{template "icon" "trophy"}}TOP 5 MEREK A2B</p>
-          <h2>Berdasarkan jumlah unit</h2>
-        </div>
-      </div>
-      {{if .TopMerek}}
-      <table class="rank-table">
-        <thead>
-          <tr><th>Merek / type</th><th class="numeric">Unit</th><th class="numeric">Tangki (L)</th></tr>
-        </thead>
-        <tbody>
-          {{range .TopMerek}}
-          <tr>
-            <td>{{.Merek}}</td>
-            <td class="numeric">{{.Jumlah}}</td>
-            <td class="numeric">{{printf "%.0f" .FuelStorage}}</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
-      {{else}}
-      <p class="panel-empty">Belum ada unit A2B terdaftar.</p>
       {{end}}
     </article>
 

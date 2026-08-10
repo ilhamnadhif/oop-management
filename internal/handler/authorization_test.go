@@ -12,7 +12,8 @@ var menuPaths = map[string][]string{
 	"beranda":  {"/dashboard"},
 	"absensi":  {"/absensi"},
 	"produksi": {"/produksi", "/produksi/overview", "/produksi/export"},
-	"unit":     {"/unit/overview", "/unit-dt", "/unit-a2b", "/unit/export"},
+	"unit":     {"/unit/overview", "/unit-dt", "/unit/export"},
+	"a2b":      {"/a2b/overview", "/unit-a2b", "/a2b/hm", "/a2b/fuel", "/a2b/export"},
 	"nota":     {"/nota", "/nota/overview", "/nota/rekonsiliasi", "/nota/export"},
 }
 
@@ -45,15 +46,16 @@ func TestEveryPositionReachesDashboardAndAbsensi(t *testing.T) {
 func TestMenusAreOpenToTheirOwnPositions(t *testing.T) {
 	cases := map[string]map[string]bool{
 		// jabatan -> menu -> may open
-		"Surveyor":   {"produksi": true, "unit": true, "nota": false},
-		"Produksi":   {"produksi": true, "unit": true, "nota": false},
-		"SPV":        {"produksi": true, "unit": true, "nota": false},
-		"Logistik":   {"produksi": false, "unit": true, "nota": false},
-		"HR":         {"produksi": false, "unit": false, "nota": true},
-		"Management": {"produksi": true, "unit": true, "nota": true},
-		"Security":   {"produksi": false, "unit": false, "nota": false},
-		"Flagman":    {"produksi": false, "unit": false, "nota": false},
-		"SHE":        {"produksi": false, "unit": false, "nota": false},
+		// A2B is the same fleet from another angle, so it follows the unit rule.
+		"Surveyor":   {"produksi": true, "unit": true, "a2b": true, "nota": false},
+		"Produksi":   {"produksi": true, "unit": true, "a2b": true, "nota": false},
+		"SPV":        {"produksi": true, "unit": true, "a2b": true, "nota": false},
+		"Logistik":   {"produksi": false, "unit": true, "a2b": true, "nota": false},
+		"HR":         {"produksi": false, "unit": false, "a2b": false, "nota": true},
+		"Management": {"produksi": true, "unit": true, "a2b": true, "nota": true},
+		"Security":   {"produksi": false, "unit": false, "a2b": false, "nota": false},
+		"Flagman":    {"produksi": false, "unit": false, "a2b": false, "nota": false},
+		"SHE":        {"produksi": false, "unit": false, "a2b": false, "nota": false},
 	}
 	for jabatan, menus := range cases {
 		testServer := newTestServer(t)
@@ -98,7 +100,7 @@ func TestMenuShowsOnlyWhatThePositionMayOpen(t *testing.T) {
 	// A group with nothing left in it disappears rather than opening onto an
 	// empty list.
 	security := navSection(t, fetchAuthedPage(t, loggedInClientAs(t, testServer, "Security"), testServer.URL+"/dashboard"))
-	for _, heading := range []string{">Produksi<", ">Nota<", ">Unit<"} {
+	for _, heading := range []string{">Produksi<", ">Nota<", ">Unit<", ">A2B<"} {
 		if strings.Contains(security, heading) {
 			t.Fatalf("Security is shown the %q heading with no pages under it", heading)
 		}

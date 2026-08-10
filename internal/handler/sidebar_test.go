@@ -326,7 +326,7 @@ func TestSidebarGroupsPagesUnderHeadings(t *testing.T) {
 	}
 
 	// Every page sits inside a sublist.
-	for _, page := range []string{"Overview", "Input Data", "Export Data", "Unit DT", "Unit A2B"} {
+	for _, page := range []string{"Overview", "Input Data", "Export Data", "Unit DT", "Unit A2B", "Input HM", "Input Fuel"} {
 		at := strings.Index(nav, ">"+page+"<")
 		if at < 0 {
 			t.Fatalf("page %q is missing from the menu", page)
@@ -425,7 +425,7 @@ func TestSidebarMarksTheActiveGroup(t *testing.T) {
 
 	for path, section := range map[string]string{
 		"/produksi/overview": "Produksi",
-		"/unit-a2b":          "Unit",
+		"/unit-a2b":          "A2B",
 	} {
 		nav := navSection(t, fetchAuthedPage(t, client, testServer.URL+path))
 		activeAt := strings.Index(nav, `class="sidebar-group active"`)
@@ -481,11 +481,15 @@ func TestExportPagesExistAndAreGuarded(t *testing.T) {
 	if !strings.Contains(produksi, "format=xlsx") || !strings.Contains(produksi, "format=pdf") {
 		t.Fatal("the produksi export page offers no downloads")
 	}
-	// The registers are empty here, so the page names them without offering
-	// buttons; the downloads themselves are covered in unit_export_test.go.
+	// Each register has its own page under its own menu; the downloads
+	// themselves are covered in unit_export_test.go.
 	unit := fetchAuthedPage(t, client, testServer.URL+"/unit/export")
-	if !strings.Contains(unit, "UNIT DT") || !strings.Contains(unit, "UNIT A2B") {
-		t.Fatal("the unit export page does not list both registers")
+	if !strings.Contains(unit, "Unit DT") {
+		t.Fatal("the unit export page does not name its register")
+	}
+	a2b := fetchAuthedPage(t, client, testServer.URL+"/a2b/export")
+	if !strings.Contains(a2b, "Unit A2B") {
+		t.Fatal("the a2b export page does not name its register")
 	}
 
 	anonymous := &http.Client{

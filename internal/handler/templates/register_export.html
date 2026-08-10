@@ -1,0 +1,27 @@
+{{define "register_export"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}{{.Register}}</p>
+        <h2>{{.Rows}} unit terdaftar</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <p class="panel-empty">
+      {{.Note}} Kop laporan memakai logo dan nama {{.Company}}, dan halaman
+      terakhir memuat blok tanda tangan.
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="{{.BasePath}}/download?format=xlsx">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="{{.BasePath}}/download?format=pdf">{{template "icon" "save"}}Unduh PDF</a>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada unit yang terdaftar, jadi tidak ada yang bisa diunduh.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

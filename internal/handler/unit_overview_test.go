@@ -43,22 +43,66 @@ func TestUnitOverviewCountsBothRegisters(t *testing.T) {
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/unit/overview")
 	for _, fragment := range []string{
-		"TOTAL UNIT DT", "TOTAL UNIT A2B", "DRIVER TERDAFTAR",
-		// Three trucks and two machines.
+		"TOTAL UNIT DT", "DRIVER TERDAFTAR",
+		// Three trucks; one driver appears twice and is one person, not two.
 		">3</p>", ">2</p>",
-		// One driver appears twice and is one person, not two.
-		"DT KECIL", "DT BESAR", "Komatsu",
+		"DT KECIL", "DT BESAR",
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the overview is missing %q", fragment)
 		}
 	}
-	// The fleet-wide tank figure is gone; the per-make column is what remains.
-	if strings.Contains(page, "KAPASITAS TANGKI") {
-		t.Fatal("the overview still shows the fleet tank card")
+	// The machines have a menu of their own; this page is about the trucks.
+	for _, moved := range []string{"TOTAL UNIT A2B", "TOP 5 MEREK A2B", "KAPASITAS TANGKI"} {
+		if strings.Contains(page, moved) {
+			t.Fatalf("the unit overview still carries %q", moved)
+		}
 	}
-	if !strings.Contains(page, "Tangki (L)") {
-		t.Fatal("the make table lost its tank column")
+	if !strings.Contains(page, `href="/a2b/overview"`) {
+		t.Fatal("the unit overview does not point at the machines")
+	}
+}
+
+// The machines are counted on their own page, under their own menu.
+func TestA2BOverviewCountsTheMachines(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedTruck(t, store, "UNT-2026-0001", "B 1 A", "Slamet", "DT KECIL")
+	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 300, 19.3)
+	seedMachine(t, store, 2, "BLD-01", "Komatsu", "PIT B", 400, 26.3)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/overview")
+	for _, fragment := range []string{
+		"TOTAL UNIT A2B", "LOKASI TERPAKAI", "MEREK BERBEDA",
+		"UNIT A2B PER LOKASI", "TOP 5 MEREK A2B",
+		"Komatsu", "Tangki (L)",
+		// Two machines across two locations, one make between them.
+		`<p class="kpi-value">2</p>`, `<p class="kpi-value">1</p>`,
+	} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("the a2b overview is missing %q", fragment)
+		}
+	}
+	// The trucks belong to the other page.
+	if strings.Contains(page, "TOTAL UNIT DT") {
+		t.Fatal("the a2b overview counts dump trucks")
+	}
+}
+
+// The two pages whose forms are still to be built exist behind the menu, so the
+// shape of the app is agreed before the forms are written.
+func TestA2BPlaceholderPagesAreReachable(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	for path, title := range map[string]string{
+		"/a2b/hm":   "Input HM",
+		"/a2b/fuel": "Input Fuel",
+	} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, "SEGERA HADIR") || !strings.Contains(page, title+" sedang disiapkan") {
+			t.Fatalf("%s does not say it is still being built", path)
+		}
 	}
 }
 

@@ -47,10 +47,22 @@ var navItems = []NavItem{
 			Lede: "Ringkasan isi daftar unit DT dan alat berat A2B."},
 		{Key: "unit-dt", Label: "Unit DT", Path: "/unit-dt", Icon: "truck",
 			Lede: "Daftarkan dump truck beserta ukuran bak dan drivernya."},
-		{Key: "unit-a2b", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube",
-			Lede: "Daftarkan alat berat beserta kapasitas dan konsumsi bahan bakarnya."},
 		{Key: "unit-export", Label: "Export Data", Path: "/unit/export", Icon: "save",
-			Lede: "Unduh daftar unit DT dan A2B dalam XLSX atau PDF."},
+			Lede: "Unduh daftar unit DT dalam XLSX atau PDF."},
+	}},
+	// Alat berat has its own menu: hour meters and fuel are recorded per
+	// machine, which a dump truck register has nothing to say about.
+	{Key: "a2b", Label: "A2B", Icon: "cube", Children: []NavItem{
+		{Key: "a2b-overview", Label: "Overview", Path: "/a2b/overview", Icon: "activity",
+			Lede: "Ringkasan alat berat: jumlah, sebaran lokasi, dan mereknya."},
+		{Key: "a2b-unit", Label: "Unit A2B", Path: "/unit-a2b", Icon: "cube",
+			Lede: "Daftarkan alat berat beserta kapasitas dan konsumsi bahan bakarnya."},
+		{Key: "a2b-hm", Label: "Input HM", Path: "/a2b/hm", Icon: "clock",
+			Lede: "Catat pembacaan hour meter setiap alat berat."},
+		{Key: "a2b-fuel", Label: "Input Fuel", Path: "/a2b/fuel", Icon: "fuel",
+			Lede: "Catat pengisian bahan bakar setiap alat berat."},
+		{Key: "a2b-export", Label: "Export Data", Path: "/a2b/export", Icon: "save",
+			Lede: "Unduh daftar alat berat dalam XLSX atau PDF."},
 	}},
 }
 
@@ -67,7 +79,10 @@ const JabatanManagement = "Management"
 var menuAccess = map[string][]string{
 	"produksi": {"Surveyor", "Produksi", "SPV"},
 	"unit":     {"Surveyor", "Produksi", "SPV", "Logistik"},
-	"nota":     {"HR"},
+	// Alat berat is the same fleet seen from another angle, so it is open to
+	// the same positions as the unit register.
+	"a2b":  {"Surveyor", "Produksi", "SPV", "Logistik"},
+	"nota": {"HR"},
 }
 
 // menuKeyFor reports which top-level menu a page belongs to, since permission

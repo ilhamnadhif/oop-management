@@ -1,0 +1,85 @@
+{{define "a2b_overview"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  {{with .Overview}}
+  <section class="panel filter-panel">
+    <div>
+      <p class="eyebrow">{{template "icon" "info"}}DATA TERAKHIR DIMUAT</p>
+      <h2>{{.LastUpdated}}</h2>
+    </div>
+    <p class="hint filter-note">
+      Halaman ini menghitung isi daftar Unit A2B. Untuk dump truck, lihat
+      <a href="/unit/overview">Overview Unit</a>.
+    </p>
+  </section>
+
+  <section class="kpi-grid">
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TOTAL UNIT A2B</p>
+        <p class="kpi-value">{{.TotalA2B}}</p>
+        <p class="kpi-note">Alat berat terdaftar</p>
+      </div>
+      <span class="kpi-icon green">{{template "icon" "cube"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">LOKASI TERPAKAI</p>
+        <p class="kpi-value">{{len .LokasiShares}}</p>
+        <p class="kpi-note">Tempat alat berat tercatat berada</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "pin"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">MEREK BERBEDA</p>
+        <p class="kpi-value">{{len .TopMerek}}</p>
+        <p class="kpi-note">Lima merek terbanyak ditampilkan di bawah</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "tag"}}</span>
+    </article>
+  </section>
+
+  <section class="chart-grid">
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "pin"}}UNIT A2B PER LOKASI</p>
+          <h2>Sebaran alat berat</h2>
+        </div>
+      </div>
+      {{template "chartFigure" $.LokasiChart}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "trophy"}}TOP 5 MEREK A2B</p>
+          <h2>Berdasarkan jumlah unit</h2>
+        </div>
+      </div>
+      {{if .TopMerek}}
+      <table class="rank-table">
+        <thead>
+          <tr><th>Merek / type</th><th class="numeric">Unit</th><th class="numeric">Tangki (L)</th></tr>
+        </thead>
+        <tbody>
+          {{range .TopMerek}}
+          <tr>
+            <td>{{.Merek}}</td>
+            <td class="numeric">{{.Jumlah}}</td>
+            <td class="numeric">{{printf "%.0f" .FuelStorage}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="panel-empty">Belum ada unit A2B terdaftar.</p>
+      {{end}}
+    </article>
+  </section>
+  {{end}}
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

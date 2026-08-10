@@ -257,8 +257,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
 	mux.HandleFunc("/produksi/export/download", s.handleProduksiDownload)
 	mux.HandleFunc("/unit/overview", s.handleUnitOverview)
+	mux.HandleFunc("/a2b/overview", s.handleA2BOverview)
+	mux.HandleFunc("/a2b/hm", s.handleA2BHourMeter)
+	mux.HandleFunc("/a2b/fuel", s.handleA2BFuel)
 	mux.HandleFunc("/unit/export", s.handleUnitExport)
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
+	mux.HandleFunc("/a2b/export", s.handleA2BExport)
+	mux.HandleFunc("/a2b/export/download", s.handleA2BDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/nota", s.handleNota)
@@ -1046,12 +1051,73 @@ func (s *Server) handleUnitOverview(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "unit_overview", data, http.StatusOK)
 }
 
-type UnitExportPageData struct {
+// handleA2BOverview reads the same registers as the unit overview and shows the
+// machines' side of them.
+func (s *Server) handleA2BOverview(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireAccess(w, r, "a2b-overview")
+	if !ok {
+		return
+	}
+	data := UnitOverviewPageData{ShellPageData: s.shellData(user, sessionValue, "a2b-overview")}
+
+	overview, err := s.unitOverview.Build(r.Context())
+	if err != nil {
+		log.Printf("build a2b overview: %v", err)
+		data.Error = "Gagal memuat data unit"
+		s.render(w, "a2b_overview", data, http.StatusOK)
+		return
+	}
+	labels := make([]string, 0, len(overview.LokasiShares))
+	counts := make([]float64, 0, len(overview.LokasiShares))
+	for _, share := range overview.LokasiShares {
+		labels = append(labels, share.Label)
+		counts = append(counts, float64(share.Jumlah))
+	}
+	data.Overview = overview
+	data.LokasiChart = BuildValueChart(labels, counts, 0)
+	s.render(w, "a2b_overview", data, http.StatusOK)
+}
+
+// ComingSoonPageData carries the one sentence a placeholder page needs.
+type ComingSoonPageData struct {
 	ShellPageData
-	UnitDTRows  int
-	UnitA2BRows int
-	Error       string
-	Company     string
+	Note string
+}
+
+func (s *Server) handleA2BHourMeter(w http.ResponseWriter, r *http.Request) {
+	s.renderComingSoon(w, r, "a2b-hm",
+		"Formulir pencatatan hour meter sedang dikerjakan. Sampai selesai, HM awal "+
+			"tiap alat tetap tersimpan lewat form pendaftaran Unit A2B.")
+}
+
+func (s *Server) handleA2BFuel(w http.ResponseWriter, r *http.Request) {
+	s.renderComingSoon(w, r, "a2b-fuel",
+		"Formulir pencatatan pengisian bahan bakar sedang dikerjakan. Kapasitas tangki "+
+			"dan konsumsi per jam tiap alat sudah tercatat di daftar Unit A2B.")
+}
+
+func (s *Server) renderComingSoon(w http.ResponseWriter, r *http.Request, navKey, note string) {
+	user, sessionValue, ok := s.requireAccess(w, r, navKey)
+	if !ok {
+		return
+	}
+	s.render(w, "coming_soon", ComingSoonPageData{
+		ShellPageData: s.shellData(user, sessionValue, navKey),
+		Note:          note,
+	}, http.StatusOK)
+}
+
+// RegisterExportPageData drives one register's download page. Each register has
+// its own page under its own menu: they describe different machines and are
+// downloaded by different people.
+type RegisterExportPageData struct {
+	ShellPageData
+	Register string
+	Rows     int
+	BasePath string
+	Note     string
+	Error    string
+	Company  string
 }
 
 func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
@@ -1059,94 +1125,120 @@ func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data := UnitExportPageData{
+	data := RegisterExportPageData{
 		ShellPageData: s.shellData(user, sessionValue, "unit-export"),
 		Company:       s.company,
+		BasePath:      "/unit/export",
+		Register:      "Unit DT",
+		Note:          "Daftar dump truck lengkap dengan ukuran bak dan drivernya.",
 	}
-
-	dt, err := s.produksi.Units(r.Context())
+	units, err := s.produksi.Units(r.Context())
 	if err != nil {
 		log.Printf("count unit dt for export: %v", err)
 		data.Error = "Gagal memuat data unit"
 	}
-	a2b, err := s.unitA2B.List(r.Context())
+	data.Rows = len(units)
+	s.render(w, "register_export", data, http.StatusOK)
+}
+
+func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
+	user, sessionValue, ok := s.requireAccess(w, r, "a2b-export")
+	if !ok {
+		return
+	}
+	data := RegisterExportPageData{
+		ShellPageData: s.shellData(user, sessionValue, "a2b-export"),
+		Company:       s.company,
+		BasePath:      "/a2b/export",
+		Register:      "Unit A2B",
+		Note:          "Daftar alat berat lengkap dengan kapasitas tangki, konsumsi per jam, dan lokasinya.",
+	}
+	units, err := s.unitA2B.List(r.Context())
 	if err != nil {
 		log.Printf("count unit a2b for export: %v", err)
 		data.Error = "Gagal memuat data unit"
 	}
-	data.UnitDTRows = len(dt)
-	data.UnitA2BRows = len(a2b)
-	s.render(w, "unit_export", data, http.StatusOK)
+	data.Rows = len(units)
+	s.render(w, "register_export", data, http.StatusOK)
 }
 
-// handleUnitDownload streams a register. The two registers share one page but
-// are separate files: merging trucks and machines into one sheet would put
-// unrelated columns side by side.
+// handleUnitDownload streams the dump truck register.
 func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.requireAccess(w, r, "unit-export"); !ok {
 		return
 	}
+	format, ok := downloadFormat(w, r)
+	if !ok {
+		return
+	}
+	units, err := s.produksi.Units(r.Context())
+	if err != nil {
+		log.Printf("read unit dt for export: %v", err)
+		http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
+		return
+	}
+	meta := s.exportMeta("Daftar Unit DT", "", "")
+	meta.Period = export.SnapshotLabel(meta.Generated)
+
+	var payload []byte
+	if format == "xlsx" {
+		payload, err = export.UnitDTXLSX(units, meta)
+	} else {
+		payload, err = export.UnitDTPDF(units, meta)
+	}
+	s.writeRegister(w, "unit-dt", format, payload, err)
+}
+
+// handleA2BDownload streams the machine register. It is a file of its own: the
+// two registers describe different machines with different columns, and merging
+// them would leave half of every row empty.
+func (s *Server) handleA2BDownload(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.requireAccess(w, r, "a2b-export"); !ok {
+		return
+	}
+	format, ok := downloadFormat(w, r)
+	if !ok {
+		return
+	}
+	units, err := s.unitA2B.List(r.Context())
+	if err != nil {
+		log.Printf("read unit a2b for export: %v", err)
+		http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
+		return
+	}
+	meta := s.exportMeta("Daftar Unit A2B", "", "")
+	meta.Period = export.SnapshotLabel(meta.Generated)
+
+	var payload []byte
+	if format == "xlsx" {
+		payload, err = export.UnitA2BXLSX(units, meta)
+	} else {
+		payload, err = export.UnitA2BPDF(units, meta)
+	}
+	s.writeRegister(w, "unit-a2b", format, payload, err)
+}
+
+func downloadFormat(w http.ResponseWriter, r *http.Request) (string, bool) {
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	if format != "xlsx" && format != "pdf" {
 		http.Error(w, "format tidak dikenal", http.StatusBadRequest)
-		return
+		return "", false
 	}
-	dataset := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("dataset")))
-	if dataset != "dt" && dataset != "a2b" {
-		http.Error(w, "dataset tidak dikenal", http.StatusBadRequest)
-		return
-	}
+	return format, true
+}
 
-	var (
-		payload []byte
-		err     error
-		title   string
-		slug    string
-	)
-	if dataset == "dt" {
-		units, listErr := s.produksi.Units(r.Context())
-		if listErr != nil {
-			log.Printf("read unit dt for export: %v", listErr)
-			http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
-			return
-		}
-		title, slug = "Daftar Unit DT", "unit-dt"
-		meta := s.exportMeta(title, "", "")
-		meta.Period = export.SnapshotLabel(meta.Generated)
-		if format == "xlsx" {
-			payload, err = export.UnitDTXLSX(units, meta)
-		} else {
-			payload, err = export.UnitDTPDF(units, meta)
-		}
-	} else {
-		units, listErr := s.unitA2B.List(r.Context())
-		if listErr != nil {
-			log.Printf("read unit a2b for export: %v", listErr)
-			http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
-			return
-		}
-		title, slug = "Daftar Unit A2B", "unit-a2b"
-		meta := s.exportMeta(title, "", "")
-		meta.Period = export.SnapshotLabel(meta.Generated)
-		if format == "xlsx" {
-			payload, err = export.UnitA2BXLSX(units, meta)
-		} else {
-			payload, err = export.UnitA2BPDF(units, meta)
-		}
-	}
+func (s *Server) writeRegister(w http.ResponseWriter, slug, format string, payload []byte, err error) {
 	if err != nil {
 		log.Printf("build %s %s: %v", slug, format, err)
 		http.Error(w, "Gagal membuat berkas", http.StatusInternalServerError)
 		return
 	}
-
 	contentType := "application/pdf"
 	if format == "xlsx" {
 		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	}
-	filename := fmt.Sprintf("daftar-%s.%s", slug, format)
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fmt.Sprintf("daftar-%s.%s", slug, format)))
 	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 	// A register is a snapshot of a moving sheet; a cached copy would quietly go
 	// stale behind the person downloading it.
@@ -1159,7 +1251,7 @@ func (s *Server) handleUnitA2B(w http.ResponseWriter, r *http.Request) {
 		s.handleUnitA2BCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireAccess(w, r, "unit-a2b")
+	user, sessionValue, ok := s.requireAccess(w, r, "a2b-unit")
 	if !ok {
 		return
 	}
@@ -1178,7 +1270,7 @@ func (s *Server) handleUnitA2BCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "unit-a2b") {
+	if !s.allowed(w, user, sessionValue, "a2b-unit") {
 		return
 	}
 
@@ -1271,7 +1363,7 @@ func (s *Server) renderUnitA2B(w http.ResponseWriter, r *http.Request, user *mod
 		log.Printf("load unit a2b options: %v", err)
 	}
 	s.render(w, "unit_a2b", UnitA2BPageData{
-		ShellPageData: s.shellData(user, sessionValue, "unit-a2b"),
+		ShellPageData: s.shellData(user, sessionValue, "a2b-unit"),
 		Form:          form,
 		NextNumber:    next,
 		Options:       options,

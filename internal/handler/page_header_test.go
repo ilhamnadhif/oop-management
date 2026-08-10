@@ -24,7 +24,11 @@ func TestEveryPageHeaderCarriesItsLede(t *testing.T) {
 		"/unit/overview":     "Ringkasan isi daftar unit",
 		"/unit-dt":           "Daftarkan dump truck",
 		"/unit-a2b":          "Daftarkan alat berat",
-		"/unit/export":       "Unduh daftar unit",
+		"/a2b/overview":      "Ringkasan alat berat",
+		"/a2b/hm":            "Catat pembacaan hour meter",
+		"/a2b/fuel":          "Catat pengisian bahan bakar",
+		"/a2b/export":        "Unduh daftar alat berat",
+		"/unit/export":       "Unduh daftar unit DT",
 	}
 	for path, lede := range pages {
 		page := fetchAuthedPage(t, client, testServer.URL+path)
