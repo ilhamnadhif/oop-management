@@ -18,6 +18,10 @@ type Config struct {
 	SessionCookieSecure   bool
 	MaxUploadBytes        int64
 	MaxPhotoChars         int
+	MiMoAPIKey            string
+	MiMoBaseURL           string
+	MiMoModel             string
+	MiMoTimeout           time.Duration
 	// Signatory prints on exported reports. Left empty the report shows a blank
 	// signature line, which is the safe default: a guessed name on a signed
 	// document is worse than none.
@@ -58,6 +62,19 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("MAX_PHOTO_CHARS must be a positive integer")
 	}
 
+	miMoTimeout, err := time.ParseDuration(getenv("MIMO_TIMEOUT", "25s"))
+	if err != nil || miMoTimeout <= 0 || miMoTimeout >= 30*time.Second {
+		return Config{}, fmt.Errorf("MIMO_TIMEOUT must be a positive duration shorter than 30s")
+	}
+	miMoBaseURL := strings.TrimRight(strings.TrimSpace(getenv("MIMO_BASE_URL", "https://api.xiaomimimo.com/v1")), "/")
+	if miMoBaseURL == "" {
+		miMoBaseURL = "https://api.xiaomimimo.com/v1"
+	}
+	miMoModel := strings.TrimSpace(getenv("MIMO_MODEL", "mimo-v2.5"))
+	if miMoModel == "" {
+		miMoModel = "mimo-v2.5"
+	}
+
 	lateTolerance, err := parseInt("ATTENDANCE_LATE_TOLERANCE_MINUTES", getenv("ATTENDANCE_LATE_TOLERANCE_MINUTES", "15"))
 	if err != nil || lateTolerance < 0 {
 		return Config{}, fmt.Errorf("ATTENDANCE_LATE_TOLERANCE_MINUTES must be a non-negative integer")
@@ -73,6 +90,10 @@ func Load() (Config, error) {
 		SessionCookieSecure:   parseBool(getenv("SESSION_COOKIE_SECURE", "false")),
 		MaxUploadBytes:        maxUploadBytes,
 		MaxPhotoChars:         maxPhotoChars,
+		MiMoAPIKey:            strings.TrimSpace(os.Getenv("MIMO_API_KEY")),
+		MiMoBaseURL:           miMoBaseURL,
+		MiMoModel:             miMoModel,
+		MiMoTimeout:           miMoTimeout,
 		SignatoryName:         strings.TrimSpace(os.Getenv("SIGNATORY_NAME")),
 		SignatoryTitle:        getenv("SIGNATORY_TITLE", "Direktur"),
 		SignatoryPlace:        strings.TrimSpace(os.Getenv("SIGNATORY_PLACE")),

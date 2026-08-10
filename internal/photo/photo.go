@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	stddraw "image/draw"
 	"image/jpeg"
 	"image/png"
 	"strings"
@@ -19,6 +20,10 @@ const (
 	MaxOutputChars           = 45000
 	DataURLPrefix            = "data:image/jpeg;base64,"
 	maxDecodeDimension       = 4096
+	maxOCRDimension          = 2048
+	// A 2 MiB JPEG produces a data URL below the scanner's 4 MiB request limit.
+	maxOCRImageBytes   = 2 * 1024 * 1024
+	maxOCRDataURLChars = len(DataURLPrefix) + 4*((maxOCRImageBytes+2)/3)
 )
 
 var (
@@ -27,21 +32,8 @@ var (
 )
 
 func Normalize(raw []byte, maxOutputChars int) (string, error) {
-	if len(raw) == 0 {
-		return "", ErrInvalid
-	}
-	if int64(len(raw)) > MaxInputBytes {
-		return "", ErrTooLarge
-	}
-	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil {
-		return "", fmt.Errorf("%w: decode image config", ErrInvalid)
-	}
-	if config.Width <= 0 || config.Height <= 0 || config.Width > maxDecodeDimension || config.Height > maxDecodeDimension {
-		return "", fmt.Errorf("%w: image dimensions are not supported", ErrInvalid)
-	}
-	if format != "jpeg" && format != "png" && format != "webp" {
-		return "", fmt.Errorf("%w: unsupported image format", ErrInvalid)
+	if _, err := validateRawImageConfig(raw); err != nil {
+		return "", err
 	}
 	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
@@ -65,6 +57,58 @@ func Normalize(raw []byte, maxOutputChars int) (string, error) {
 		}
 	}
 	return "", ErrTooLarge
+}
+
+// RawDataURL validates an uploaded image and returns a sanitized JPEG data URL
+// suitable for OCR. Decoding and re-encoding intentionally strips EXIF, XMP,
+// container metadata, and trailing payloads instead of forwarding upload bytes
+// to the external OCR provider.
+func RawDataURL(raw []byte) (string, error) {
+	if _, err := validateRawImageConfig(raw); err != nil {
+		return "", err
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return "", fmt.Errorf("%w: decode image", ErrInvalid)
+	}
+
+	for _, maxDimension := range []int{maxOCRDimension, 1792, 1536, 1280, 1024} {
+		resized := resize(img, maxDimension)
+		flattened := flattenOnWhite(resized)
+		for _, quality := range []int{90, 82, 74, 66, 58} {
+			encoded, err := encodeJPEG(flattened, quality)
+			if err != nil {
+				return "", fmt.Errorf("encode OCR photo: %w", err)
+			}
+			if len(encoded) <= maxOCRImageBytes {
+				value := DataURLPrefix + base64.StdEncoding.EncodeToString(encoded)
+				if len(value) <= maxOCRDataURLChars {
+					return value, nil
+				}
+			}
+		}
+	}
+	return "", ErrTooLarge
+}
+
+func validateRawImageConfig(raw []byte) (string, error) {
+	if len(raw) == 0 {
+		return "", ErrInvalid
+	}
+	if int64(len(raw)) > MaxInputBytes {
+		return "", ErrTooLarge
+	}
+	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return "", fmt.Errorf("%w: decode image config", ErrInvalid)
+	}
+	if config.Width <= 0 || config.Height <= 0 || config.Width > maxDecodeDimension || config.Height > maxDecodeDimension {
+		return "", fmt.Errorf("%w: image dimensions are not supported", ErrInvalid)
+	}
+	if format != "jpeg" && format != "png" && format != "webp" {
+		return "", fmt.Errorf("%w: unsupported image format", ErrInvalid)
+	}
+	return format, nil
 }
 
 func ValidateDataURL(value string) error {
@@ -113,6 +157,14 @@ func resize(source image.Image, maxDimension int) image.Image {
 	}
 	destination := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
 	draw.CatmullRom.Scale(destination, destination.Bounds(), source, bounds, draw.Over, nil)
+	return destination
+}
+
+func flattenOnWhite(source image.Image) image.Image {
+	bounds := source.Bounds()
+	destination := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	stddraw.Draw(destination, destination.Bounds(), image.White, image.Point{}, stddraw.Src)
+	stddraw.Draw(destination, destination.Bounds(), source, bounds.Min, stddraw.Over)
 	return destination
 }
 

@@ -15,6 +15,7 @@ import (
 	"opp-management/internal/config"
 	"opp-management/internal/export"
 	"opp-management/internal/handler"
+	"opp-management/internal/receipt"
 	"opp-management/internal/repository"
 	"opp-management/internal/service"
 	"opp-management/internal/session"
@@ -65,6 +66,21 @@ func main() {
 		})
 	if err != nil {
 		log.Fatal(err)
+	}
+	if cfg.MiMoAPIKey != "" {
+		scanner, err := receipt.NewMiMoScanner(
+			cfg.MiMoAPIKey,
+			cfg.MiMoBaseURL,
+			cfg.MiMoModel,
+			&http.Client{Timeout: cfg.MiMoTimeout},
+		)
+		if err != nil {
+			log.Fatalf("konfigurasi scan struk MiMo tidak valid: %v", err)
+		}
+		webServer.WithReceiptScanner(scanner)
+		log.Printf("Scan struk MiMo aktif (model=%s)", cfg.MiMoModel)
+	} else {
+		log.Printf("Scan struk MiMo nonaktif: MIMO_API_KEY belum diatur")
 	}
 
 	httpServer := &http.Server{

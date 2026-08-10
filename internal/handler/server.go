@@ -14,17 +14,31 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"opp-management/internal/export"
 	"opp-management/internal/model"
 	"opp-management/internal/photo"
+	"opp-management/internal/receipt"
 	"opp-management/internal/service"
 	"opp-management/internal/session"
 )
 
 //go:embed templates/*.html static/css/* static/js/* static/img/* static/fonts/* static/vendor/leaflet/leaflet.js static/vendor/leaflet/leaflet.css static/vendor/leaflet/images/*
 var assetFiles embed.FS
+
+const (
+	receiptScanRateLimit       = 5
+	receiptScanRateWindow      = time.Minute
+	receiptScanRateMaxUsers    = 4096
+	receiptScanConcurrentLimit = 3
+)
+
+type receiptScanRateEntry struct {
+	windowStart time.Time
+	count       int
+}
 
 type Server struct {
 	auth           *service.AuthService
@@ -42,6 +56,10 @@ type Server struct {
 	now            service.NowFunc
 	maxUploadBytes int64
 	maxPhotoChars  int
+	receiptScanner receipt.Scanner
+	receiptRateMu  sync.Mutex
+	receiptRates   map[string]receiptScanRateEntry
+	receiptSlots   chan struct{}
 	templates      *template.Template
 }
 
@@ -240,8 +258,18 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		maxPhotoChars:  maxPhotoChars,
 		company:        branding.Company,
 		signatory:      branding.Signatory,
+		receiptRates:   make(map[string]receiptScanRateEntry),
+		receiptSlots:   make(chan struct{}, receiptScanConcurrentLimit),
 		templates:      templates,
 	}, nil
+}
+
+// WithReceiptScanner enables the optional AI receipt scanner. Keeping this as
+// an option means Nota input and every existing server fixture keep working
+// when no MiMo API key has been configured yet.
+func (s *Server) WithReceiptScanner(scanner receipt.Scanner) *Server {
+	s.receiptScanner = scanner
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -267,6 +295,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/nota", s.handleNota)
+	mux.HandleFunc("/nota/scan-receipt", s.handleNotaReceiptScan)
 	mux.HandleFunc("/nota/overview", s.handleNotaOverview)
 	mux.HandleFunc("/nota/rekonsiliasi", s.handleRekonsiliasi)
 	mux.HandleFunc("/nota/export", s.handleNotaExport)
@@ -1741,15 +1770,16 @@ func (f NotaFormData) IsCA() bool { return f.Metode == model.NotaMetodeCA }
 
 type NotaPageData struct {
 	ShellPageData
-	Form            NotaFormData
-	NextID          string
-	Options         service.NotaOptions
-	MetodeOptions   []service.NotaMetode
-	KategoriOptions []service.NotaKategori
-	JenisOptions    []string
-	PerjalananDinas string
-	Error           string
-	Success         string
+	Form               NotaFormData
+	NextID             string
+	Options            service.NotaOptions
+	MetodeOptions      []service.NotaMetode
+	KategoriOptions    []service.NotaKategori
+	JenisOptions       []string
+	PerjalananDinas    string
+	ReceiptScanEnabled bool
+	Error              string
+	Success            string
 }
 
 func (s *Server) handleNota(w http.ResponseWriter, r *http.Request) {
@@ -1762,6 +1792,200 @@ func (s *Server) handleNota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderNota(w, r, user, sessionValue, NotaFormData{Tanggal: s.nota.Today()}, "", "", http.StatusOK)
+}
+
+// handleNotaReceiptScan extracts purchase lines from one receipt image. It is
+// deliberately transient: the result only prefills the editable Nota form and
+// never reaches the repository until the person reviews and submits that form.
+func (s *Server) handleNotaReceiptScan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "method not allowed"})
+		return
+	}
+
+	sessionValue, ok := s.currentSession(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "Sesi tidak valid. Silakan masuk kembali."})
+		return
+	}
+	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
+	if err != nil || user.StatusPengguna != model.StatusAktif {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "Sesi tidak valid. Silakan masuk kembali."})
+		return
+	}
+	if !CanAccess(user.Jabatan, "nota-input") {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Jabatan Anda tidak berhak mengakses input Nota."})
+		return
+	}
+	if !s.sessions.ValidCSRF(r, sessionValue) {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "CSRF token tidak valid"})
+		return
+	}
+	if s.receiptScanner == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"ok": false, "error": "Scan struk belum dikonfigurasi. Anda tetap dapat mengisi item secara manual."})
+		return
+	}
+	if allowed, retryAfter := s.allowReceiptScan(sessionValue.UserID); !allowed {
+		writeReceiptScanLimit(w, retryAfter, "Batas scan struk tercapai. Silakan coba lagi sebentar.")
+		return
+	}
+	select {
+	case s.receiptSlots <- struct{}{}:
+		defer func() { <-s.receiptSlots }()
+	default:
+		writeReceiptScanLimit(w, time.Second, "Layanan scan struk sedang memproses permintaan lain. Silakan coba lagi.")
+		return
+	}
+
+	maxReceiptBytes := min(s.maxUploadBytes, photo.MaxInputBytes)
+	maxBody := maxReceiptBytes + 64*1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseMultipartForm(maxBody); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"ok": false, "error": "Foto struk tidak valid atau terlalu besar."})
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+
+	files := r.MultipartForm.File["receipt"]
+	fileCount := 0
+	for _, headers := range r.MultipartForm.File {
+		fileCount += len(headers)
+	}
+	if len(files) != 1 || fileCount != 1 {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"ok": false, "error": "Pilih tepat satu foto struk."})
+		return
+	}
+	file, err := files[0].Open()
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"ok": false, "error": "Foto struk tidak dapat dibaca."})
+		return
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(file, maxReceiptBytes+1))
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"ok": false, "error": "Foto struk tidak dapat dibaca."})
+		return
+	}
+	if len(raw) == 0 || int64(len(raw)) > maxReceiptBytes {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"ok": false, "error": fmt.Sprintf("Ukuran foto struk maksimal %d MB.", maxReceiptBytes/(1024*1024))})
+		return
+	}
+	imageDataURL, err := photo.RawDataURL(raw)
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]interface{}{"ok": false, "error": "Gunakan foto struk berformat JPEG, PNG, atau WebP yang valid."})
+		return
+	}
+
+	result, err := s.receiptScanner.Scan(r.Context(), imageDataURL)
+	if err != nil {
+		status, message := receiptScanError(err)
+		// Scanner errors are intentionally classified; never log an image,
+		// provider response, prompt, or credential here.
+		log.Printf("receipt scan failed (status=%d, kind=%T)", status, err)
+		writeJSON(w, status, map[string]interface{}{"ok": false, "error": message})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":            true,
+		"items":         result.Items,
+		"total_terbaca": result.TotalTerbaca,
+		"warnings":      result.Warnings,
+	})
+}
+
+// allowReceiptScan applies a small, per-user fixed window before any receipt
+// bytes are decoded or sent to the provider. The state map is capped so even a
+// long-running server cannot accumulate an unbounded number of user keys.
+func (s *Server) allowReceiptScan(userID string) (bool, time.Duration) {
+	now := time.Now()
+	if s.now != nil {
+		now = s.now()
+	}
+
+	s.receiptRateMu.Lock()
+	defer s.receiptRateMu.Unlock()
+	if s.receiptRates == nil {
+		s.receiptRates = make(map[string]receiptScanRateEntry)
+	}
+
+	entry, exists := s.receiptRates[userID]
+	if exists && (now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(receiptScanRateWindow))) {
+		entry = receiptScanRateEntry{windowStart: now}
+	}
+	if !exists {
+		s.makeReceiptRateRoom(now)
+		entry = receiptScanRateEntry{windowStart: now}
+	}
+	if entry.count >= receiptScanRateLimit {
+		retryAfter := entry.windowStart.Add(receiptScanRateWindow).Sub(now)
+		if retryAfter < time.Second {
+			retryAfter = time.Second
+		}
+		return false, retryAfter
+	}
+	entry.count++
+	s.receiptRates[userID] = entry
+	return true, 0
+}
+
+// makeReceiptRateRoom is only called for a new user. It first removes expired
+// windows, then evicts the oldest remaining entry if the hard cap is full.
+func (s *Server) makeReceiptRateRoom(now time.Time) {
+	if len(s.receiptRates) < receiptScanRateMaxUsers {
+		return
+	}
+	for userID, entry := range s.receiptRates {
+		if now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(receiptScanRateWindow)) {
+			delete(s.receiptRates, userID)
+		}
+	}
+	if len(s.receiptRates) < receiptScanRateMaxUsers {
+		return
+	}
+
+	oldestUserID := ""
+	var oldestWindow time.Time
+	oldestFound := false
+	for userID, entry := range s.receiptRates {
+		if !oldestFound || entry.windowStart.Before(oldestWindow) {
+			oldestUserID = userID
+			oldestWindow = entry.windowStart
+			oldestFound = true
+		}
+	}
+	if oldestFound {
+		delete(s.receiptRates, oldestUserID)
+	}
+}
+
+func writeReceiptScanLimit(w http.ResponseWriter, retryAfter time.Duration, message string) {
+	seconds := int(math.Ceil(retryAfter.Seconds()))
+	if seconds < 1 {
+		seconds = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{"ok": false, "error": message})
+}
+
+func receiptScanError(err error) (int, string) {
+	switch {
+	case errors.Is(err, receipt.ErrNoItems):
+		return http.StatusUnprocessableEntity, "Tidak ada produk yang dapat dibaca dari foto ini. Coba foto yang lebih jelas atau isi manual."
+	case errors.Is(err, receipt.ErrTimeout):
+		return http.StatusGatewayTimeout, "Scan struk terlalu lama. Silakan coba lagi."
+	case errors.Is(err, receipt.ErrRateLimited), errors.Is(err, receipt.ErrUnavailable):
+		return http.StatusServiceUnavailable, "Layanan scan struk sedang sibuk. Silakan coba lagi sebentar lagi."
+	case errors.Is(err, receipt.ErrInvalidResponse):
+		return http.StatusBadGateway, "Hasil scan belum dapat dibaca dengan aman. Silakan coba lagi atau isi manual."
+	default:
+		return http.StatusBadGateway, "Scan struk gagal. Silakan coba lagi atau isi manual."
+	}
 }
 
 func (s *Server) handleNotaCreate(w http.ResponseWriter, r *http.Request) {
@@ -1901,16 +2125,17 @@ func (s *Server) renderNota(w http.ResponseWriter, r *http.Request, user *model.
 		log.Printf("load nota options: %v", err)
 	}
 	s.render(w, "nota", NotaPageData{
-		ShellPageData:   s.shellData(user, sessionValue, "nota-input"),
-		Form:            form,
-		NextID:          nextID,
-		Options:         options,
-		MetodeOptions:   service.NotaMetodeOptions,
-		KategoriOptions: service.NotaKategoriOptions,
-		JenisOptions:    service.NotaJenisPerjalananOptions,
-		PerjalananDinas: service.NotaSubPerjalananDinas,
-		Error:           errMessage,
-		Success:         success,
+		ShellPageData:      s.shellData(user, sessionValue, "nota-input"),
+		Form:               form,
+		NextID:             nextID,
+		Options:            options,
+		MetodeOptions:      service.NotaMetodeOptions,
+		KategoriOptions:    service.NotaKategoriOptions,
+		JenisOptions:       service.NotaJenisPerjalananOptions,
+		PerjalananDinas:    service.NotaSubPerjalananDinas,
+		ReceiptScanEnabled: s.receiptScanner != nil,
+		Error:              errMessage,
+		Success:            success,
 	}, status)
 }
 

@@ -117,6 +117,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, docker-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: production-vps
+      cancel-in-progress: false
     environment:
       name: production
     permissions:
@@ -129,6 +132,10 @@ jobs:
           APP_HOST_PORT: ${{ vars.APP_HOST_PORT }}
           GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
           GOOGLE_APPLICATION_CREDENTIALS_B64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_B64 }}
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+          MIMO_BASE_URL: ${{ vars.MIMO_BASE_URL }}
+          MIMO_MODEL: ${{ vars.MIMO_MODEL }}
+          MIMO_TIMEOUT: ${{ vars.MIMO_TIMEOUT }}
           DEPLOY_SHA: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
         with:
@@ -138,7 +145,7 @@ jobs:
           port: ${{ secrets.VPS_SSH_PORT }}
           timeout: 2m
           command_timeout: 20m
-          envs: APP_DIR,APP_HOST_PORT,GOOGLE_SPREADSHEET_ID,GOOGLE_APPLICATION_CREDENTIALS_B64,DEPLOY_SHA,REPOSITORY
+          envs: APP_DIR,APP_HOST_PORT,GOOGLE_SPREADSHEET_ID,GOOGLE_APPLICATION_CREDENTIALS_B64,MIMO_API_KEY,MIMO_BASE_URL,MIMO_MODEL,MIMO_TIMEOUT,DEPLOY_SHA,REPOSITORY
           script: |
             set -eu
 
@@ -150,6 +157,15 @@ jobs:
             case "$APP_HOST_PORT" in
               ''|*[!0-9]*) echo "APP_HOST_PORT must be numeric."; exit 1 ;;
             esac
+
+            MIMO_BASE_URL="${MIMO_BASE_URL:-https://api.xiaomimimo.com/v1}"
+            MIMO_MODEL="${MIMO_MODEL:-mimo-v2.5}"
+            MIMO_TIMEOUT="${MIMO_TIMEOUT:-25s}"
+
+            if printf '%s%s%s%s' "$MIMO_API_KEY" "$MIMO_BASE_URL" "$MIMO_MODEL" "$MIMO_TIMEOUT" | grep -q '[[:cntrl:]]'; then
+              echo "MiMo configuration must not contain control characters."
+              exit 1
+            fi
 
             mkdir -p "$APP_DIR/runtime"
 
@@ -168,9 +184,13 @@ jobs:
             GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google-application-credentials.json
             APP_TIMEZONE=Asia/Jakarta
             SESSION_TTL=24h
-            SESSION_COOKIE_SECURE=false
+            SESSION_COOKIE_SECURE=true
             MAX_UPLOAD_BYTES=2097152
             MAX_PHOTO_CHARS=45000
+            MIMO_API_KEY=$MIMO_API_KEY
+            MIMO_BASE_URL=$MIMO_BASE_URL
+            MIMO_MODEL=$MIMO_MODEL
+            MIMO_TIMEOUT=$MIMO_TIMEOUT
             EOF
 
             printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_B64" | base64 --decode > "$APP_DIR/runtime/google-application-credentials.json"
@@ -188,18 +208,33 @@ jobs:
               --name opp-absensi \
               --restart unless-stopped \
               --user "$(id -u):$(id -g)" \
-              --publish "$APP_HOST_PORT:8080" \
+              --publish "172.17.0.1:$APP_HOST_PORT:8080" \
               --env-file "$APP_DIR/runtime/.env" \
               --mount "type=bind,src=$APP_DIR/runtime/google-application-credentials.json,dst=/run/secrets/google-application-credentials.json,readonly" \
               opp-absensi:"$DEPLOY_SHA"
 
+            backend_ready=false
             for attempt in $(seq 1 30); do
-              if curl --fail --silent --show-error "http://127.0.0.1:$APP_HOST_PORT/healthz" >/dev/null; then
-                echo "Production deployment is healthy on port $APP_HOST_PORT."
+              if curl --fail --silent --show-error "http://172.17.0.1:$APP_HOST_PORT/healthz" >/dev/null; then
+                backend_ready=true
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$backend_ready" != true ]; then
+              docker logs --tail 100 opp-absensi || true
+              exit 1
+            fi
+
+            for attempt in $(seq 1 15); do
+              if curl --fail --silent --show-error "https://opp-project.my.id/healthz" >/dev/null; then
+                echo "Production deployment is healthy at https://opp-project.my.id."
                 exit 0
               fi
               sleep 2
             done
 
+            echo "Backend is healthy, but the public HTTPS check failed."
             docker logs --tail 100 opp-absensi || true
             exit 1

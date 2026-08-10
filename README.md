@@ -87,6 +87,27 @@ go run ./cmd/web
 
 Gunakan `SESSION_COOKIE_SECURE=true` dan HTTPS saat production. Credential JSON jangan dimasukkan ke repository.
 
+## Konfigurasi scan struk MiMo
+
+Fitur scan struk pada input Nota memakai model visual Xiaomi MiMo untuk mengubah foto struk menjadi daftar produk yang tetap dapat diperiksa dan diedit sebelum disimpan. API key bersifat opsional: tanpa key, input Nota manual tetap berfungsi dan hanya tombol scan yang dinonaktifkan.
+
+Tambahkan konfigurasi berikut ke `.env` lokal:
+
+```dotenv
+MIMO_API_KEY=your-mimo-api-key
+MIMO_BASE_URL=https://api.xiaomimimo.com/v1
+MIMO_MODEL=mimo-v2.5
+MIMO_TIMEOUT=25s
+```
+
+- `MIMO_API_KEY` harus disimpan hanya di server. Jangan commit key atau mengirimkannya ke JavaScript/browser.
+- `MIMO_BASE_URL` dapat diganti bila jenis akun MiMo menggunakan endpoint berbeda.
+- `MIMO_TIMEOUT` harus lebih dari `0s` dan kurang dari `30s` agar permintaan AI selesai sebelum batas waktu respons server.
+- Foto struk dikirim ke layanan Xiaomi MiMo untuk dianalisis. Pengguna tetap perlu meninjau hasil scan sebelum menyimpan Nota.
+- Aktifkan key pada production hanya setelah aplikasi dilayani melalui HTTPS dan `SESSION_COOKIE_SECURE=true`, agar login serta foto struk tidak melewati jaringan dalam bentuk HTTP biasa.
+
+Untuk deployment GitHub Actions, simpan key sebagai **Actions secret** bernama `MIMO_API_KEY`. Nilai `MIMO_BASE_URL`, `MIMO_MODEL`, dan `MIMO_TIMEOUT` dapat diatur sebagai **Actions variables** dengan nama yang sama; bila kosong, workflow memakai nilai default di atas. Secret hanya diteruskan saat runtime dan tidak dimasukkan ke image Docker.
+
 ## Docker
 
 Build image:

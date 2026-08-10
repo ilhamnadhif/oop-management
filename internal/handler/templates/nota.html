@@ -107,6 +107,27 @@
         </div>
       </div>
 
+      <div class="receipt-scan" data-receipt-scan data-scan-enabled="{{if .ReceiptScanEnabled}}true{{else}}false{{end}}">
+        <div class="receipt-scan-copy">
+          <span class="receipt-scan-icon" aria-hidden="true">{{template "icon" "receipt"}}</span>
+          <div>
+            <h3>Isi item otomatis dari struk</h3>
+            <p>Ambil atau pilih foto yang jelas. AI akan membaca produk, jumlah, satuan, dan harga menjadi daftar yang tetap bisa Anda revisi.</p>
+          </div>
+        </div>
+        <div class="receipt-scan-controls">
+          <label for="foto_kwitansi" class="required-label">{{template "icon" "camera"}}Foto kwitansi / struk *</label>
+          <input id="foto_kwitansi" name="foto_kwitansi" type="file" accept="image/*" capture="environment" required data-receipt-file>
+          <button class="button receipt-scan-button" type="button" data-receipt-scan-button{{if not .ReceiptScanEnabled}} disabled{{end}}>
+            <span class="spinner" aria-hidden="true" hidden data-receipt-scan-spinner></span>
+            {{template "icon" "search"}}<span data-receipt-scan-label>Scan struk dengan AI</span>
+          </button>
+        </div>
+        <p class="receipt-scan-status" role="status" aria-live="polite" data-receipt-scan-status>
+          {{if .ReceiptScanEnabled}}Foto akan dikirim ke layanan Xiaomi MiMo untuk dibaca. Periksa kembali semua hasil sebelum menyimpan.{{else}}Scan AI belum dikonfigurasi. Anda tetap dapat memilih foto dan mengisi item secara manual.{{end}}
+        </p>
+      </div>
+
       {{/* The column captions are written once above the rows on a wide screen;
            on a phone each row becomes a card and carries its own labels. */}}
       <div class="nota-items-head" aria-hidden="true">
@@ -167,10 +188,8 @@
         </div>
       </div>
       <div class="form-grid">
-        <div>
-          <label for="foto_kwitansi" class="required-label">{{template "icon" "camera"}}Foto kwitansi *</label>
-          <input id="foto_kwitansi" name="foto_kwitansi" type="file" accept="image/*" required>
-          <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
+        <div class="receipt-attachment-note">
+          <p class="hint">Foto kwitansi dipilih pada bagian Rincian belanja dan tetap disimpan sebagai lampiran Nota.</p>
         </div>
         <div data-transfer-field{{if not .Form.IsCA}} hidden{{end}}>
           <label for="bukti_transfer" class="required-label">{{template "icon" "camera"}}Bukti transfer *</label>

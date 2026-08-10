@@ -1059,6 +1059,32 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 
 /* Nota, tables, modal and enhanced controls ------------------------------- */
 
+.receipt-scan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 0.72fr);
+  gap: 1rem 1.25rem;
+  margin-bottom: 1.4rem;
+  padding: 1.15rem;
+  border: 1px solid #efbcc2;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff 0%, var(--red-50) 100%);
+}
+.receipt-scan-copy { display: flex; align-items: flex-start; gap: 0.9rem; }
+.receipt-scan-copy h3 { margin: 0 0 0.25rem; color: var(--ink); font-size: 1rem; line-height: 1.35; }
+.receipt-scan-copy p { max-width: 42rem; margin: 0; color: var(--muted); font-size: 0.83rem; line-height: 1.55; }
+.receipt-scan-icon { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border-radius: 11px; color: #fff; background: var(--red-gradient); box-shadow: 0 7px 16px rgba(224, 6, 24, 0.17); }
+.receipt-scan-icon .icon { width: 22px; height: 22px; }
+.receipt-scan-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.55rem; align-content: start; }
+.stack-form .receipt-scan-controls > label { grid-column: 1 / -1; margin-top: 0; }
+.receipt-scan-controls input[type="file"] { min-width: 0; }
+.receipt-scan-button { align-self: stretch; border: 1px solid var(--red-600); color: #fff; white-space: nowrap; background: var(--red-gradient); }
+.receipt-scan-button:hover:not(:disabled) { background: linear-gradient(135deg, #df0719, #b80012); }
+.receipt-scan-button .spinner { margin-right: 0; }
+.receipt-scan-status { grid-column: 1 / -1; margin: 0; padding-top: 0.15rem; color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.receipt-scan-status[data-state="success"] { color: var(--success); }
+.receipt-scan-status[data-state="error"] { color: var(--danger); }
+.receipt-attachment-note { align-content: start; }
+
 .nota-item { border-color: #efd2d5; background: var(--red-50); }
 .nota-item-total,
 .nota-total strong { color: var(--red-600); }
@@ -1174,6 +1200,10 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .clock-card { min-height: 112px; }
   .calc-grid { gap: 0.7rem; }
   .calc-grid > div { min-height: 104px; padding: 1rem; }
+  .receipt-scan { grid-template-columns: 1fr; padding: 1rem; }
+  .receipt-scan-controls { grid-template-columns: 1fr; }
+  .stack-form .receipt-scan-controls > label { grid-column: auto; }
+  .receipt-scan-button { width: 100%; }
   .nota-item { padding: 0.75rem; }
   .filter-panel { align-items: stretch; }
   .filter-form { width: 100%; }

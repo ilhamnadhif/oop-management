@@ -15,6 +15,16 @@
   const statusLabel = form.querySelector("[data-pay-status-label]");
   const list = form.querySelector("[data-item-list]");
   const totalCell = form.querySelector("[data-nota-total]");
+  const receiptScan = form.querySelector("[data-receipt-scan]");
+  const receiptFile = form.querySelector("[data-receipt-file]");
+  const receiptScanButton = form.querySelector("[data-receipt-scan-button]");
+  const receiptScanLabel = form.querySelector("[data-receipt-scan-label]");
+  const receiptScanSpinner = form.querySelector("[data-receipt-scan-spinner]");
+  const receiptScanStatus = form.querySelector("[data-receipt-scan-status]");
+  const submitButton = form.querySelector("[data-submit-button]");
+  const csrfToken = form.querySelector("[name='csrf_token']");
+  const receiptScanEnabled = receiptScan && receiptScan.dataset.scanEnabled === "true";
+  let receiptScanInProgress = false;
 
   const PERJALANAN_DINAS = "Perjalanan Dinas";
 
@@ -150,6 +160,132 @@
     recalculate();
   };
 
+  const hasTypedItems = () =>
+    Array.from(form.querySelectorAll("[data-item-row] input")).some(
+      (input) => String(input.value).trim() !== "",
+    );
+
+  const setReceiptScanStatus = (message, state = "") => {
+    if (!receiptScanStatus) return;
+    receiptScanStatus.textContent = message;
+    if (state) {
+      receiptScanStatus.dataset.state = state;
+    } else {
+      delete receiptScanStatus.dataset.state;
+    }
+  };
+
+  const setReceiptScanBusy = (busy) => {
+    receiptScanInProgress = busy;
+    if (receiptFile) receiptFile.disabled = busy;
+    if (receiptScanButton) receiptScanButton.disabled = busy || !receiptScanEnabled;
+    if (receiptScanSpinner) receiptScanSpinner.hidden = !busy;
+    if (receiptScanLabel) receiptScanLabel.textContent = busy ? "Membaca struk…" : "Scan struk dengan AI";
+    if (submitButton) submitButton.disabled = busy;
+    form.querySelectorAll("[data-item-row] input, [data-add-item], [data-remove-item]").forEach((control) => {
+      control.disabled = busy;
+    });
+    if (receiptScan) receiptScan.setAttribute("aria-busy", String(busy));
+    if (list) list.setAttribute("aria-busy", String(busy));
+  };
+
+  // Build every result from the existing row template. All values are assigned
+  // through DOM properties because model output is untrusted and must never be
+  // interpreted as markup.
+  const replaceRowsFromReceipt = (items) => {
+    if (!list || !Array.isArray(items) || items.length === 0) {
+      throw new Error("Tidak ada produk yang dapat dimasukkan ke daftar.");
+    }
+    const template = list.querySelector("[data-item-row]");
+    if (!template) throw new Error("Daftar item tidak tersedia.");
+
+    const rows = items.slice(0, 50).map((item) => {
+      const row = template.cloneNode(true);
+      row.querySelectorAll("input").forEach((input) => { input.value = ""; });
+      const nama = row.querySelector("[name='item_nama']");
+      const satuan = row.querySelector("[name='item_satuan']");
+      const volume = row.querySelector("[name='item_volume']");
+      const harga = row.querySelector("[name='item_harga']");
+      const subtotal = row.querySelector("[data-item-total]");
+      if (nama) nama.value = String(item.nama_produk ?? "");
+      if (satuan) satuan.value = String(item.satuan ?? "");
+      if (volume) volume.value = String(item.volume ?? "");
+      if (harga) {
+        harga.value = String(item.harga ?? "");
+        formatMoney(harga);
+      }
+      if (subtotal) subtotal.textContent = rupiah(0);
+      return row;
+    });
+
+    list.replaceChildren(...rows);
+    renumber();
+    recalculate();
+  };
+
+  const scanReceipt = async () => {
+    if (!receiptScanEnabled || receiptScanInProgress || !receiptFile) return;
+    const file = receiptFile.files && receiptFile.files[0];
+    if (!file) {
+      receiptFile.click();
+      return;
+    }
+    if (hasTypedItems() && !window.confirm("Hasil scan akan mengganti daftar item yang sudah diisi. Lanjutkan?")) {
+      setReceiptScanStatus("Scan dibatalkan. Foto dan daftar item yang sudah Anda isi tetap dipertahankan.");
+      return;
+    }
+
+    const body = new FormData();
+    body.append("receipt", file, file.name || "receipt");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 28000);
+    let firstScannedName = null;
+    setReceiptScanBusy(true);
+    setReceiptScanStatus("AI sedang membaca produk pada struk…");
+
+    try {
+      const response = await fetch("/nota/scan-receipt", {
+        method: "POST",
+        body,
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-Token": csrfToken ? csrfToken.value : "",
+        },
+        signal: controller.signal,
+      });
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        throw new Error("Layanan scan mengirim respons yang tidak dapat dibaca.");
+      }
+      if (!response.ok || !payload || payload.ok !== true) {
+        throw new Error(payload && payload.error ? String(payload.error) : "Scan struk gagal.");
+      }
+
+      replaceRowsFromReceipt(payload.items);
+      const warnings = Array.isArray(payload.warnings)
+        ? payload.warnings.map((warning) => String(warning).trim()).filter(Boolean).slice(0, 3)
+        : [];
+      const suffix = warnings.length > 0 ? ` Catatan AI: ${warnings.join(" • ")}` : "";
+      setReceiptScanStatus(
+        `${payload.items.length} produk berhasil dimasukkan.${suffix} Revisi bila perlu sebelum menyimpan.`,
+        "success",
+      );
+      firstScannedName = list && list.querySelector("[name='item_nama']");
+    } catch (error) {
+      const message = error && error.name === "AbortError"
+        ? "Scan terlalu lama. Silakan coba lagi atau isi item secara manual."
+        : String(error && error.message ? error.message : "Scan struk gagal. Silakan coba lagi.");
+      setReceiptScanStatus(message, "error");
+    } finally {
+      window.clearTimeout(timeout);
+      setReceiptScanBusy(false);
+      if (firstScannedName) firstScannedName.focus();
+    }
+  };
+
   form.addEventListener("click", (event) => {
     if (event.target.closest("[data-add-item]")) {
       addRow();
@@ -163,6 +299,25 @@
     if (event.target.matches("[data-money]")) formatMoney(event.target);
     if (event.target.matches("[name='item_volume'], [name='item_harga']")) recalculate();
   });
+
+  if (receiptScanButton) receiptScanButton.addEventListener("click", scanReceipt);
+  if (receiptFile && receiptScanEnabled) {
+    receiptFile.addEventListener("change", () => {
+      if (receiptFile.files && receiptFile.files[0]) {
+        setReceiptScanStatus("Foto siap. Tekan “Scan struk dengan AI” untuk membuat daftar produk.");
+      }
+    });
+  }
+
+  // The loading helper for the final form runs on submit. Stop the event in
+  // the capture phase while a scan is active, so that helper never mistakes a
+  // blocked submission for a real save.
+  form.addEventListener("submit", (event) => {
+    if (!receiptScanInProgress) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setReceiptScanStatus("Tunggu hingga scan struk selesai sebelum menyimpan.", "error");
+  }, true);
 
   // The separators are a reading aid only. They are stripped on the way out so
   // the sheet stores a plain number.
