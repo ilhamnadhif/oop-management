@@ -98,7 +98,7 @@ func Load() (Config, error) {
 		SignatoryTitle:        getenv("SIGNATORY_TITLE", "Direktur"),
 		SignatoryPlace:        strings.TrimSpace(os.Getenv("SIGNATORY_PLACE")),
 		CompanyName:           getenv("COMPANY_NAME", "PT Orecon Putra Perkasa"),
-		WorkStart:             getenv("ATTENDANCE_START", "09:00"),
+		WorkStart:             getenv("ATTENDANCE_START", "07:00"),
 		WorkEnd:               getenv("ATTENDANCE_END", "17:00"),
 		LateToleranceMinutes:  lateTolerance,
 	}

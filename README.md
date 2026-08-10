@@ -90,6 +90,20 @@ go run ./cmd/web
 
 Gunakan `SESSION_COOKIE_SECURE=true` dan HTTPS saat production. Credential JSON jangan dimasukkan ke repository.
 
+## Jam kerja absensi
+
+Terlambat, pulang cepat, dan durasi kerja dinilai terhadap satu jam kerja yang berlaku untuk seluruh karyawan:
+
+```dotenv
+ATTENDANCE_START=07:00
+ATTENDANCE_END=17:00
+ATTENDANCE_LATE_TOLERANCE_MINUTES=15
+```
+
+- Format 24 jam `HH:MM`. Jam pulang harus setelah jam masuk, kalau tidak startup gagal alih-alih menilai absensi dengan jadwal yang mustahil.
+- Toleransi adalah menit setelah jam masuk yang belum dihitung terlambat, dan nol adalah nilai yang sah.
+- Nilai default di atas dipakai bila variabelnya tidak diisi.
+
 ## Konfigurasi scan struk MiMo
 
 Fitur scan struk pada input Nota memakai model visual Xiaomi MiMo untuk mengubah foto struk menjadi daftar produk yang tetap dapat diperiksa dan diedit sebelum disimpan. API key bersifat opsional: tanpa key, input Nota manual tetap berfungsi dan hanya tombol scan yang dinonaktifkan.
