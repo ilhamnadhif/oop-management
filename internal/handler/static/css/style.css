@@ -422,6 +422,8 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .filter-form > div { display: grid; gap: 0.35rem; }
 .filter-form label { color: var(--muted); font-size: 0.78rem; }
 .filter-form input { width: auto; min-width: 165px; }
+/* A little wider than the dates: the options are words, not fixed-width dates. */
+.filter-form select { width: auto; min-width: 185px; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.6rem; }
 /* Grid rows stretch, so the panels already match; it is the content inside
@@ -489,7 +491,8 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 }
 @media (max-width: 620px) {
   .kpi-grid { grid-template-columns: 1fr; }
-  .filter-form input { min-width: 0; width: 100%; }
+  .filter-form input,
+  .filter-form select { min-width: 0; width: 100%; }
   .filter-form > div { flex: 1 1 100%; }
 }
 
@@ -872,7 +875,8 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .filter-panel { position: relative; overflow: hidden; padding-left: calc(clamp(1.4rem, 3.5vw, 2.1rem) + 0.35rem); border-top: 3px solid var(--teal); }
 .filter-panel::before { position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--red-600); content: ""; }
 .filter-panel > div > h2 { font-size: 1.2rem; }
-.filter-form input { background: #fbfdfd; }
+.filter-form input,
+.filter-form select { background: #fbfdfd; }
 .kpi-grid { gap: 1rem; }
 .kpi-grid > .panel, .chart-grid > .panel { margin-top: 0; }
 .kpi-card { position: relative; overflow: hidden; min-height: 152px; padding: 1.25rem; border-top: 3px solid var(--red-500); }

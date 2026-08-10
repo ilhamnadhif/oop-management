@@ -173,7 +173,27 @@ func (r *TestRepository) CreateNota(_ context.Context, nota *model.Nota) error {
 }
 
 func (r *TestRepository) ListNota(_ context.Context) ([]model.Nota, error) {
-	return r.NotaList(), nil
+	// The sheet leaves the photo columns unread here; the in-memory store has
+	// to do the same, or a test would pass on data production never returns.
+	notas := r.NotaList()
+	for i := range notas {
+		notas[i].FotoKwitansi = ""
+		notas[i].BuktiTransfer = ""
+		notas[i].BuktiBayar = ""
+	}
+	return notas, nil
+}
+
+// ListNotaWithAttachments reads the receipt photo and nothing else: the sheet
+// stops at that column, so returning the payment proofs here would let a test
+// pass on data production never returns.
+func (r *TestRepository) ListNotaWithAttachments(_ context.Context) ([]model.Nota, error) {
+	notas := r.NotaList()
+	for i := range notas {
+		notas[i].BuktiTransfer = ""
+		notas[i].BuktiBayar = ""
+	}
+	return notas, nil
 }
 
 func (r *TestRepository) ListNotaItems(_ context.Context) ([]model.NotaItem, error) {

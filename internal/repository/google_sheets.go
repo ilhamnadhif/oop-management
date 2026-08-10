@@ -618,18 +618,34 @@ func (r *GoogleSheetsRepository) CreateNota(ctx context.Context, nota *model.Not
 
 // ListNota reads the header columns only, stopping before the attachments.
 func (r *GoogleSheetsRepository) ListNota(ctx context.Context) ([]model.Nota, error) {
-	rows, err := r.readRows(ctx, notaSheet, "J")
+	return r.listNota(ctx, false)
+}
+
+// ListNotaWithAttachments reads one column further, for the receipt photo the
+// export prints. It costs a base64 image per nota, which is why the screens
+// that only list notes call ListNota instead. The transfer and settlement
+// proofs are deliberately left behind: nothing prints them.
+func (r *GoogleSheetsRepository) ListNotaWithAttachments(ctx context.Context) ([]model.Nota, error) {
+	return r.listNota(ctx, true)
+}
+
+func (r *GoogleSheetsRepository) listNota(ctx context.Context, withAttachments bool) ([]model.Nota, error) {
+	lastColumn, width := "J", 10
+	if withAttachments {
+		lastColumn, width = "K", 11
+	}
+	rows, err := r.readRows(ctx, notaSheet, lastColumn)
 	if err != nil {
 		return nil, err
 	}
 	notas := make([]model.Nota, 0, len(rows))
 	for _, row := range dataRows(rows) {
-		row = padRow(row, 10)
+		row = padRow(row, width)
 		notaID := strings.TrimSpace(cellString(row[0]))
 		if notaID == "" {
 			continue
 		}
-		notas = append(notas, model.Nota{
+		nota := model.Nota{
 			NotaID:            notaID,
 			Tanggal:           cellString(row[1]),
 			PIC:               cellString(row[2]),
@@ -640,7 +656,11 @@ func (r *GoogleSheetsRepository) ListNota(ctx context.Context) ([]model.Nota, er
 			SubKategori:       cellString(row[7]),
 			JenisPerjalanan:   cellString(row[8]),
 			Total:             parseFloatCell(row[9]),
-		})
+		}
+		if withAttachments {
+			nota.FotoKwitansi = cellString(row[10])
+		}
+		notas = append(notas, nota)
 	}
 	return notas, nil
 }

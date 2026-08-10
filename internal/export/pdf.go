@@ -25,6 +25,21 @@ const (
 	signatureMM = 46.0
 )
 
+// The appendix prints the photos two to a row. One per row would waste half a
+// landscape page on every receipt; three would shrink a handwritten kwitansi
+// past reading. The cell is a caption block above a fixed frame, sized so two
+// rows fit a page under the letterhead.
+const (
+	appendixColumns   = 2
+	appendixGutter    = 8.0
+	appendixCaptionMM = 9.0
+	appendixImageMM   = 62.0
+	appendixRowGap    = 6.0
+	// appendixTopMM is where the first cell starts: the letterhead block plus
+	// the section heading.
+	appendixTopMM = pageMargin + 20 + 8.0
+)
+
 // RenderPDF writes the signable report: a letterhead on every page, a table
 // with a repeating coloured header, and a signature block at the end.
 func RenderPDF(table Table, meta Meta) ([]byte, error) {
@@ -38,6 +53,10 @@ func RenderPDF(table Table, meta Meta) ([]byte, error) {
 		logoName = "brand-logo"
 		pdf.RegisterImageOptionsReader(logoName, fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(meta.Logo))
 	}
+
+	// The appendix pages carry the same letterhead but no table header: there
+	// is no table on them to name.
+	appendix := false
 
 	// The header and footer run on every page, so a page torn out of the stack
 	// still says what it is and where it came from.
@@ -73,6 +92,10 @@ func RenderPDF(table Table, meta Meta) ([]byte, error) {
 		pdf.Line(pageMargin, top+17, pageWidth-pageMargin, top+17)
 		pdf.SetY(top + 20)
 
+		if appendix {
+			drawAppendixHeading(pdf)
+			return
+		}
 		drawTableHeader(pdf, table.Columns)
 	})
 
@@ -100,6 +123,13 @@ func RenderPDF(table Table, meta Meta) ([]byte, error) {
 	}
 
 	drawSignature(pdf, meta)
+
+	// The photos come after the signature: the signed figures are the report,
+	// and the evidence backs them up rather than interrupting them.
+	if len(table.Attachments) > 0 {
+		appendix = true
+		drawAttachments(pdf, table.Attachments)
+	}
 
 	var buffer bytes.Buffer
 	if err := pdf.Output(&buffer); err != nil {
@@ -259,6 +289,70 @@ func drawTotals(pdf *fpdf.Fpdf, table Table) {
 		pdf.CellFormat(table.Columns[i].Width, 6, tr(text), "1", 0, "R", true, 0, "")
 	}
 	pdf.Ln(-1)
+}
+
+// drawAppendixHeading names the section on every appendix page, so a page torn
+// from the stack is not mistaken for a loose photocopy.
+func drawAppendixHeading(pdf *fpdf.Fpdf) {
+	pdf.SetFont("Helvetica", "B", 8)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFillColor(hexToRGB(headerFill))
+	pdf.CellFormat(pageWidth-2*pageMargin, 6,
+		tr("LAMPIRAN - FOTO KWITANSI"), "", 1, "L", true, 0, "")
+	pdf.SetTextColor(28, 40, 51)
+	pdf.Ln(2)
+}
+
+// drawAttachments lays the photos out in a fixed grid. Every cell is the same
+// height whatever the photo's shape, so the rows stay aligned and a page break
+// falls between rows rather than through a picture.
+func drawAttachments(pdf *fpdf.Fpdf, attachments []Attachment) {
+	columnWidth := (pageWidth - 2*pageMargin - appendixGutter*(appendixColumns-1)) / appendixColumns
+	cellHeight := appendixCaptionMM + appendixImageMM + appendixRowGap
+
+	_, pageHeight := pdf.GetPageSize()
+	_, _, _, bottomMargin := pdf.GetMargins()
+
+	pdf.AddPage()
+	top := pdf.GetY()
+	for index, attachment := range attachments {
+		column := index % appendixColumns
+		if column == 0 && index > 0 {
+			top += cellHeight
+			if top+cellHeight > pageHeight-bottomMargin {
+				pdf.AddPage()
+				top = pdf.GetY()
+			}
+		}
+		left := pageMargin + float64(column)*(columnWidth+appendixGutter)
+		drawAttachment(pdf, attachment, index, left, top, columnWidth)
+	}
+}
+
+func drawAttachment(pdf *fpdf.Fpdf, attachment Attachment, index int, left, top, width float64) {
+	name := fmt.Sprintf("lampiran-%d", index)
+	options := fpdf.ImageOptions{ImageType: attachment.Format}
+	pdf.RegisterImageOptionsReader(name, options, bytes.NewReader(attachment.Image))
+
+	pdf.SetXY(left, top)
+	pdf.SetFont("Helvetica", "B", 7.5)
+	pdf.SetTextColor(28, 40, 51)
+	pdf.CellFormat(width, 4, tr(attachment.Caption), "", 2, "L", false, 0, "")
+	pdf.SetFont("Helvetica", "", 6.5)
+	pdf.SetTextColor(107, 119, 133)
+	pdf.CellFormat(width, 3.4, tr(attachment.Detail), "", 2, "L", false, 0, "")
+	pdf.SetTextColor(28, 40, 51)
+
+	imageWidth, imageHeight := attachment.fit(width, appendixImageMM)
+	x := left + (width-imageWidth)/2
+	y := top + appendixCaptionMM
+
+	// A thin frame, because a photographed receipt is often paper on paper and
+	// its own edges are not always visible.
+	pdf.SetDrawColor(hexToRGB(borderGrey))
+	pdf.SetLineWidth(0.2)
+	pdf.Rect(x-0.8, y-0.8, imageWidth+1.6, imageHeight+1.6, "D")
+	pdf.ImageOptions(name, x, y, imageWidth, imageHeight, false, options, 0, "")
 }
 
 // drawSignature prints the closing block. It starts a page when the remaining

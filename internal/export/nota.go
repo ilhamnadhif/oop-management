@@ -2,6 +2,7 @@ package export
 
 import (
 	"strconv"
+	"strings"
 
 	"opp-management/internal/model"
 )
@@ -10,8 +11,9 @@ import (
 // fields repeat, but every purchase stays visible and the subtotals add up to
 // the money spent. A nota-level export would hide what was actually bought.
 //
-// The attachments are left out. They are base64 images tens of thousands of
-// characters long, which no cell or printed page can show.
+// The receipt photo stays out of the table - it is a base64 image tens of
+// thousands of characters long, which no cell can show - and is printed whole
+// on the appendix pages of the PDF instead.
 var notaColumns = []Column{
 	{Header: "No", Width: 7},
 	{Header: "No Transaksi", Width: 30},
@@ -70,7 +72,39 @@ func NotaTable(rows []model.Nota) Table {
 	}
 
 	table.Totals[notaSubtotalColumn] = subtotal
+	table.Attachments = notaAttachments(rows)
 	return table
+}
+
+// notaAttachments gathers the receipt photos, one nota at a time. Only the
+// kwitansi: it is the evidence the expense happened, which is what the report
+// is asked to stand on. The transfer and settlement proofs say how the money
+// moved afterwards and belong to reconciliation, not to this document.
+//
+// A nota without a photo contributes nothing - an empty frame in the appendix
+// would read as a missing receipt rather than one not yet uploaded.
+func notaAttachments(rows []model.Nota) []Attachment {
+	attachments := make([]Attachment, 0, len(rows))
+	for _, nota := range rows {
+		attachment, ok := decodeAttachment(nota.NotaID, notaAttachmentDetail(nota), nota.FotoKwitansi)
+		if ok {
+			attachments = append(attachments, attachment)
+		}
+	}
+	return attachments
+}
+
+// notaAttachmentDetail is the line under the caption. A photo of a receipt says
+// nothing about which claim it settles, so the date, the PIC and the amount
+// travel with it.
+func notaAttachmentDetail(nota model.Nota) string {
+	parts := make([]string, 0, 3)
+	for _, part := range []string{nota.Tanggal, nota.PIC} {
+		if part = strings.TrimSpace(part); part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(append(parts, "Rp "+FormatMoney(nota.Total)), " - ")
 }
 
 func NotaXLSX(rows []model.Nota, meta Meta) ([]byte, error) {

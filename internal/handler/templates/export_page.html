@@ -20,9 +20,20 @@
         <label for="to">{{template "icon" "calendar"}}Sampai tanggal</label>
         <input id="to" name="to" type="date" value="{{.To}}">
       </div>
+      {{if .MetodeOptions}}
+      <div>
+        <label for="metode">{{template "icon" "list"}}Metode pembayaran</label>
+        <select id="metode" name="metode">
+          <option value=""{{if not .Metode}} selected{{end}}>Semua metode</option>
+          {{range .MetodeOptions}}
+          <option value="{{.Value}}"{{if eq $.Metode .Value}} selected{{end}}>{{.Label}}</option>
+          {{end}}
+        </select>
+      </div>
+      {{end}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="{{.BasePath}}">Reset</a>
-      <p class="hint filter-note">Kosongkan keduanya untuk mengunduh seluruh periode.</p>
+      <p class="hint filter-note">Kosongkan semuanya untuk mengunduh seluruh periode.</p>
     </form>
   </section>
 
@@ -36,10 +47,10 @@
     {{if .Rows}}
     <p class="panel-empty">{{.Note}}</p>
     <div class="action-row export-actions">
-      <a class="button primary" href="{{.BasePath}}/download?format=xlsx{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
+      <a class="button primary" href="{{.BasePath}}/download?format=xlsx{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}{{if .Metode}}&amp;metode={{.Metode}}{{end}}">
         {{template "icon" "save"}}Unduh XLSX
       </a>
-      <a class="button subtle" href="{{.BasePath}}/download?format=pdf{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}">
+      <a class="button subtle" href="{{.BasePath}}/download?format=pdf{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}{{if .Metode}}&amp;metode={{.Metode}}{{end}}">
         {{template "icon" "save"}}Unduh PDF
       </a>
     </div>

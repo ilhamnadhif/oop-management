@@ -34,6 +34,11 @@ type Store interface {
 	MaxNotaSequence(ctx context.Context, prefix string) (int, error)
 	CreateNota(ctx context.Context, nota *model.Nota) error
 	ListNota(ctx context.Context) ([]model.Nota, error)
+	// ListNotaWithAttachments is the same list with the receipt photo read as
+	// well. It is a separate call because that column is a base64 image tens of
+	// thousands of characters long: every screen that only lists notes pays for
+	// it otherwise, and only the export actually prints it.
+	ListNotaWithAttachments(ctx context.Context) ([]model.Nota, error)
 	ListNotaItems(ctx context.Context) ([]model.NotaItem, error)
 	FindNotaRow(ctx context.Context, notaID string) (*model.Nota, int, error)
 	SettleNota(ctx context.Context, rowNumber int, nota *model.Nota) error

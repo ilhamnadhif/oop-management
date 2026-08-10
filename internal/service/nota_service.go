@@ -146,33 +146,68 @@ func (s *NotaService) idPrefix() string {
 	return "NTA-" + s.now().In(s.location).Format("20060102") + "-"
 }
 
-// RowsBetween returns the notes filed in a date range, each with its lines
-// attached, oldest first. Both bounds are inclusive and either may be empty.
-func (s *NotaService) RowsBetween(ctx context.Context, from, to string) ([]model.Nota, string, string, error) {
-	from = strings.TrimSpace(from)
-	to = strings.TrimSpace(to)
-	if from != "" {
-		if _, err := time.Parse("2006-01-02", from); err != nil {
-			return nil, "", "", fmt.Errorf("%w: tanggal awal tidak valid", ErrValidation)
+// NotaFilter narrows an export. Every field may be empty, and an empty field
+// means that axis does not narrow anything. It is a struct rather than three
+// string arguments because two of them are dates and one is not, and at a call
+// site they would be indistinguishable.
+type NotaFilter struct {
+	From string
+	To   string
+	// Metode is a payment method, so a report can cover reimbursements alone
+	// without the cash advances they are settled against.
+	Metode string
+}
+
+// RowsBetween returns the notes the filter selects, each with its lines
+// attached, oldest first. Date bounds are inclusive. It also returns the filter
+// as it was actually applied, so the page can echo what the file will contain
+// rather than what was typed. The photos are left unread: this answers "how
+// many rows will the file have", and loading three base64 images per nota to
+// count them is wasted work.
+func (s *NotaService) RowsBetween(ctx context.Context, filter NotaFilter) ([]model.Nota, NotaFilter, error) {
+	return s.rowsBetween(ctx, filter, false)
+}
+
+// ExportRowsBetween is the same selection with the receipt and payment photos
+// attached, for the report that prints them.
+func (s *NotaService) ExportRowsBetween(ctx context.Context, filter NotaFilter) ([]model.Nota, NotaFilter, error) {
+	return s.rowsBetween(ctx, filter, true)
+}
+
+func (s *NotaService) rowsBetween(ctx context.Context, filter NotaFilter, withAttachments bool) ([]model.Nota, NotaFilter, error) {
+	filter.From = strings.TrimSpace(filter.From)
+	filter.To = strings.TrimSpace(filter.To)
+	if filter.From != "" {
+		if _, err := time.Parse("2006-01-02", filter.From); err != nil {
+			return nil, NotaFilter{}, fmt.Errorf("%w: tanggal awal tidak valid", ErrValidation)
 		}
 	}
-	if to != "" {
-		if _, err := time.Parse("2006-01-02", to); err != nil {
-			return nil, "", "", fmt.Errorf("%w: tanggal akhir tidak valid", ErrValidation)
+	if filter.To != "" {
+		if _, err := time.Parse("2006-01-02", filter.To); err != nil {
+			return nil, NotaFilter{}, fmt.Errorf("%w: tanggal akhir tidak valid", ErrValidation)
 		}
 	}
 	// A reversed range would quietly export nothing, which reads as "no data".
-	if from != "" && to != "" && from > to {
-		from, to = to, from
+	if filter.From != "" && filter.To != "" && filter.From > filter.To {
+		filter.From, filter.To = filter.To, filter.From
 	}
-
-	headers, err := s.store.ListNota(ctx)
+	metode, err := notaMetodeFilter(filter.Metode)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("read nota: %w", err)
+		return nil, NotaFilter{}, err
+	}
+	filter.Metode = metode
+
+	read := s.store.ListNota
+	if withAttachments {
+		read = s.store.ListNotaWithAttachments
+	}
+	headers, err := read(ctx)
+	if err != nil {
+		return nil, NotaFilter{}, fmt.Errorf("read nota: %w", err)
 	}
 	items, err := s.store.ListNotaItems(ctx)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("read nota items: %w", err)
+		return nil, NotaFilter{}, fmt.Errorf("read nota items: %w", err)
 	}
 	byNota := make(map[string][]model.NotaItem, len(headers))
 	for _, item := range items {
@@ -181,10 +216,15 @@ func (s *NotaService) RowsBetween(ctx context.Context, from, to string) ([]model
 
 	rows := make([]model.Nota, 0, len(headers))
 	for _, nota := range headers {
-		if from != "" && nota.Tanggal < from {
+		if filter.From != "" && nota.Tanggal < filter.From {
 			continue
 		}
-		if to != "" && nota.Tanggal > to {
+		if filter.To != "" && nota.Tanggal > filter.To {
+			continue
+		}
+		// Stored values are canonical, but a row typed straight into the sheet
+		// may not be, and a case difference is not a different method.
+		if filter.Metode != "" && !strings.EqualFold(strings.TrimSpace(nota.MetodePembayaran), filter.Metode) {
 			continue
 		}
 		lines := byNota[nota.NotaID]
@@ -198,7 +238,35 @@ func (s *NotaService) RowsBetween(ctx context.Context, from, to string) ([]model
 		}
 		return rows[i].NotaID < rows[j].NotaID
 	})
-	return rows, from, to, nil
+	return rows, filter, nil
+}
+
+// notaMetodeFilter reads the method a report is narrowed to. Empty means every
+// method. An unrecognised one is refused rather than ignored: a filter that
+// silently did nothing would hand over the whole set under a heading saying it
+// covered one method.
+func notaMetodeFilter(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	for _, option := range NotaMetodeOptions {
+		if strings.EqualFold(trimmed, option.Value) {
+			return option.Value, nil
+		}
+	}
+	return "", fmt.Errorf("%w: metode pembayaran tidak dikenal", ErrValidation)
+}
+
+// NotaMetodeLabel is the wording the form and the letterhead use for a stored
+// method value.
+func NotaMetodeLabel(value string) string {
+	for _, option := range NotaMetodeOptions {
+		if strings.EqualFold(strings.TrimSpace(value), option.Value) {
+			return option.Label
+		}
+	}
+	return strings.TrimSpace(value)
 }
 
 // Outstanding lists the reimbursements the company still owes, oldest first,

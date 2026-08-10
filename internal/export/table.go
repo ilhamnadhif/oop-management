@@ -16,6 +16,11 @@ type Table struct {
 	// Totals maps a zero-based column index to its sum. The label spans every
 	// column before the first total.
 	Totals map[int]float64
+
+	// Attachments are the photos the PDF prints after the signature. They are
+	// PDF only: a spreadsheet with images embedded stops being a spreadsheet.
+	// A report with none simply leaves this empty.
+	Attachments []Attachment
 }
 
 func (t Table) totalsStart() int {

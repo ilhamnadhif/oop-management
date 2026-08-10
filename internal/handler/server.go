@@ -165,6 +165,11 @@ type ExportPageData struct {
 	From string
 	To   string
 	Rows int
+	// Metode and MetodeOptions drive an optional second filter. A report with
+	// no method to filter by leaves the options empty and the control is not
+	// drawn, so one template still serves every date-filtered export.
+	Metode        string
+	MetodeOptions []service.NotaMetode
 	// BasePath is where the filter posts back to and where the downloads hang
 	// off, so one template serves every date-filtered export.
 	BasePath string
@@ -935,20 +940,25 @@ func (s *Server) handleNotaExport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	from := strings.TrimSpace(r.URL.Query().Get("from"))
-	to := strings.TrimSpace(r.URL.Query().Get("to"))
+	filter := service.NotaFilter{
+		From:   strings.TrimSpace(r.URL.Query().Get("from")),
+		To:     strings.TrimSpace(r.URL.Query().Get("to")),
+		Metode: strings.TrimSpace(r.URL.Query().Get("metode")),
+	}
 
 	data := ExportPageData{
 		ShellPageData: s.shellData(user, sessionValue, "nota-export"),
-		From:          from,
-		To:            to,
+		From:          filter.From,
+		To:            filter.To,
+		Metode:        filter.Metode,
+		MetodeOptions: service.NotaMetodeOptions,
 		BasePath:      "/nota/export",
 		Note: fmt.Sprintf("Kop laporan memakai logo dan nama %s. Satu baris mewakili satu item "+
 			"nota, sehingga rinciannya tetap terlihat, dan halaman terakhir memuat blok tanda tangan.", s.company),
 		Ready:   true,
 		Company: s.company,
 	}
-	rows, appliedFrom, appliedTo, err := s.nota.RowsBetween(r.Context(), from, to)
+	rows, applied, err := s.nota.RowsBetween(r.Context(), filter)
 	if err != nil {
 		if errors.Is(err, service.ErrValidation) {
 			data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
@@ -962,8 +972,9 @@ func (s *Server) handleNotaExport(w http.ResponseWriter, r *http.Request) {
 	// The report has one row per item, so the count on the page has to be the
 	// number of rows the file will hold, not the number of notes.
 	data.Rows = countNotaItems(rows)
-	data.From = appliedFrom
-	data.To = appliedTo
+	data.From = applied.From
+	data.To = applied.To
+	data.Metode = applied.Metode
 	s.render(w, "export_page", data, http.StatusOK)
 }
 
@@ -985,8 +996,11 @@ func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, from, to, err := s.nota.RowsBetween(r.Context(),
-		r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	rows, applied, err := s.nota.ExportRowsBetween(r.Context(), service.NotaFilter{
+		From:   r.URL.Query().Get("from"),
+		To:     r.URL.Query().Get("to"),
+		Metode: r.URL.Query().Get("metode"),
+	})
 	if err != nil {
 		if errors.Is(err, service.ErrValidation) {
 			http.Error(w, strings.TrimPrefix(err.Error(), "validation error: "), http.StatusUnprocessableEntity)
@@ -997,7 +1011,13 @@ func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta := s.exportMeta("Laporan Nota", from, to)
+	// A report covering one payment method has to say so on its own letterhead:
+	// filtered figures read as the complete set otherwise.
+	title := "Laporan Nota"
+	if applied.Metode != "" {
+		title += " - " + service.NotaMetodeLabel(applied.Metode)
+	}
+	meta := s.exportMeta(title, applied.From, applied.To)
 	var payload []byte
 	contentType := "application/pdf"
 	if format == "xlsx" {
@@ -1012,7 +1032,10 @@ func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := fmt.Sprintf("laporan-nota-%s.%s", exportPeriodSlug(from, to), format)
+	// The method goes in the name too, so two downloads of the same period do
+	// not overwrite each other in the downloads folder.
+	filename := fmt.Sprintf("laporan-nota-%s%s.%s",
+		exportMetodeSlug(applied.Metode), exportPeriodSlug(applied.From, applied.To), format)
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
@@ -1049,6 +1072,15 @@ func exportPeriodLabel(from, to string) string {
 	default:
 		return ""
 	}
+}
+
+// exportMetodeSlug is the method as a filename fragment, empty when the report
+// covers every method.
+func exportMetodeSlug(metode string) string {
+	if metode = strings.TrimSpace(metode); metode == "" {
+		return ""
+	}
+	return strings.ToLower(metode) + "-"
 }
 
 func exportPeriodSlug(from, to string) string {
