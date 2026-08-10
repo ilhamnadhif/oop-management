@@ -121,13 +121,19 @@ func TestAbsensiStatesTheWorkingDay(t *testing.T) {
 	}
 }
 
-// Leave is not recorded anywhere, and a zero would read as "never took leave".
-func TestDashboardSaysLeaveIsNotTrackedYet(t *testing.T) {
+// Once leave is tracked, the personal dashboard links to the real request flow
+// and reports an explicit summary instead of the old unavailable placeholder.
+func TestDashboardShowsPersonalLeaveSummary(t *testing.T) {
 	testServer := newTestServer(t)
 	page := fetchAuthedPage(t, loggedInClient(t, testServer), testServer.URL+"/dashboard")
 
-	if !strings.Contains(page, "CUTI &amp; IZIN") || !strings.Contains(page, "belum dicatat di aplikasi ini") {
-		t.Fatal("the dashboard does not say that leave is untracked")
+	for _, fragment := range []string{"CUTI &amp; IZIN", "Ringkasan leave saya", `href="/leave/request"`, "Hari disetujui tahun", "Menunggu approval"} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("the dashboard leave summary is missing %q", fragment)
+		}
+	}
+	if strings.Contains(page, "belum dicatat di aplikasi ini") {
+		t.Fatal("the dashboard still claims that leave is untracked")
 	}
 }
 

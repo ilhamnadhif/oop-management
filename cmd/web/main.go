@@ -53,9 +53,10 @@ func main() {
 	overviewService := service.NewOverviewService(store, cfg.Timezone, now)
 	unitA2BService := service.NewUnitA2BService(store, cfg.Timezone, now)
 	notaService := service.NewNotaService(store, cfg.Timezone, now)
+	leaveService := service.NewLeaveService(store, cfg.Timezone, now)
 	unitOverviewService := service.NewUnitOverviewService(store, cfg.Timezone, now)
 	sessions := session.NewManager(cfg.SessionTTL, cfg.SessionCookieSecure)
-	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, produksiService, overviewService, unitA2BService, notaService, unitOverviewService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars,
+	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, produksiService, overviewService, unitA2BService, notaService, leaveService, unitOverviewService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars,
 		handler.Branding{
 			Company: cfg.CompanyName,
 			Signatory: export.Signatory{

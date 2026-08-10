@@ -174,16 +174,31 @@
       <div class="panel-heading">
         <div>
           <p class="eyebrow">{{template "icon" "calendar"}}CUTI &amp; IZIN</p>
-          <h2>Belum tersedia</h2>
+          <h2>Ringkasan leave saya</h2>
         </div>
+        <a class="button subtle table-action" href="/leave/request">Buka request</a>
       </div>
-      {{/* Stated rather than left blank: a zero here would read as "no leave
-           taken", which is a claim the app has no data to make. */}}
-      <p class="panel-empty">
-        Cuti dan izin belum dicatat di aplikasi ini, jadi belum ada yang bisa
-        ditampilkan. Angka nol di sini akan terbaca sebagai “tidak pernah cuti”,
-        padahal datanya memang belum ada.
-      </p>
+      {{if $.LeaveError}}
+      <p class="panel-empty">{{$.LeaveError}}</p>
+      {{else}}
+      {{with $.LeaveSummary}}
+      <div class="leave-personal-summary">
+        <p class="leave-personal-stat"><span>Hari disetujui tahun {{.Year}}</span><strong>{{.ApprovedDays}} hari</strong></p>
+        <p class="leave-personal-stat"><span>Menunggu approval</span><strong>{{.PendingCount}}</strong></p>
+        <p class="leave-personal-stat"><span>Status hari ini</span><strong>{{.TodayStatus}}</strong></p>
+      </div>
+      {{if .TodayLeave}}
+      <p class="hint">{{.TodayLeave.JenisLeave}} · {{.TodayLeave.TanggalMulai}}–{{.TodayLeave.TanggalSelesai}}</p>
+      {{else}}
+      <p class="hint">Tidak ada leave aktif hari ini.</p>
+      {{end}}
+      {{else}}
+      <p class="panel-empty">Ringkasan cuti dan izin belum tersedia.</p>
+      {{end}}
+      {{end}}
+      <div class="dashboard-leave-actions">
+        <a class="button primary" href="/leave/request">{{template "icon" "plus"}}Ajukan leave</a>
+      </div>
     </article>
   </section>
   {{end}}

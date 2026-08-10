@@ -1,0 +1,146 @@
+{{define "leave_request"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel leave-hero">
+    <p class="eyebrow">{{template "icon" "calendar"}}CUTI &amp; IZIN</p>
+    <h2>Atur waktu istirahat tanpa kehilangan jejak</h2>
+    <p>Ajukan leave, periksa jumlah hari kerja, lalu pantau keputusan HR dari satu halaman.</p>
+  </section>
+
+  <div class="leave-layout">
+    <form method="post" action="/leave/request" class="panel stack-form" enctype="multipart/form-data"
+      data-leave-form data-has-attachment="{{if .Form.HasAttachment}}true{{else}}false{{end}}" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="operation" value="{{if .Form.Editing}}update{{else}}create{{end}}">
+      {{if .Form.Editing}}<input type="hidden" name="leave_id" value="{{.Form.LeaveID}}">{{end}}
+
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "list"}}{{if .Form.Editing}}EDIT PENGAJUAN{{else}}REQUEST LEAVE{{end}}</p>
+          <h2>{{if .Form.Editing}}{{.Form.LeaveID}}{{else}}Buat pengajuan baru{{end}}</h2>
+        </div>
+        {{if .Form.Editing}}<span class="status-chip pending">MENUNGGU</span>{{end}}
+      </div>
+
+      <div class="leave-form-grid">
+        <div class="span-full">
+          <label for="jenis_leave" class="required-label">{{template "icon" "tag"}}Jenis leave *</label>
+          <select id="jenis_leave" name="jenis_leave" required>
+            <option value="">— Pilih jenis leave —</option>
+            {{range .Types}}<option value="{{.}}"{{if eq $.Form.JenisLeave .}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label for="tanggal_mulai" class="required-label">{{template "icon" "calendar"}}Tanggal mulai *</label>
+          <input id="tanggal_mulai" name="tanggal_mulai" type="date" value="{{.Form.TanggalMulai}}" required>
+        </div>
+        <div>
+          <label for="tanggal_selesai" class="required-label">{{template "icon" "calendar"}}Tanggal selesai *</label>
+          <input id="tanggal_selesai" name="tanggal_selesai" type="date" value="{{.Form.TanggalSelesai}}" required>
+        </div>
+        <p class="leave-day-preview span-full" data-leave-days data-state="idle">
+          {{template "icon" "calculator"}}Pilih rentang tanggal yang valid
+        </p>
+        <div class="span-full">
+          <label for="alasan" class="required-label">{{template "icon" "info"}}Alasan *</label>
+          <textarea id="alasan" name="alasan" rows="5" maxlength="1000" placeholder="Jelaskan alasan pengajuan leave…" required>{{.Form.Alasan}}</textarea>
+        </div>
+        <div class="span-full">
+          <label for="bukti_pendukung">{{template "icon" "paperclip"}}Bukti pendukung</label>
+          <input id="bukti_pendukung" name="bukti_pendukung" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+          <p class="hint" data-leave-attachment-hint>Wajib untuk Cuti Sakit; opsional untuk jenis lain.</p>
+          {{if .Form.HasAttachment}}
+          <div class="leave-attachment-existing">
+            <a class="button subtle" href="/leave/attachment?leave_id={{.Form.LeaveID}}" target="_blank" rel="noopener">
+              {{template "icon" "camera"}}Lihat bukti saat ini
+            </a>
+            <label for="hapus_bukti">
+              <input id="hapus_bukti" name="hapus_bukti" type="checkbox" value="1">
+              Hapus bukti lama
+            </label>
+          </div>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="leave-form-actions">
+        <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+          <span class="spinner" aria-hidden="true" hidden></span>
+          {{template "icon" "save"}}<span data-submit-label>{{if .Form.Editing}}Simpan perubahan{{else}}Kirim request leave{{end}}</span>
+        </button>
+        {{if .Form.Editing}}<a class="button subtle" href="/leave/request">Batal edit</a>{{end}}
+      </div>
+    </form>
+
+    <aside class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "activity"}}RINGKASAN SAYA</p>
+          <h2>{{if .Summary}}Tahun {{.Summary.Year}}{{else}}Leave{{end}}</h2>
+        </div>
+      </div>
+      {{with .Summary}}
+      <div class="leave-personal-summary">
+        <p class="leave-personal-stat"><span>Hari disetujui</span><strong>{{.ApprovedDays}} hari</strong></p>
+        <p class="leave-personal-stat"><span>Menunggu approval</span><strong>{{.PendingCount}}</strong></p>
+        <p class="leave-personal-stat"><span>Status hari ini</span><strong>{{.TodayStatus}}</strong></p>
+      </div>
+      {{else}}
+      <p class="panel-empty">Ringkasan belum dapat dimuat.</p>
+      {{end}}
+      <p class="hint">Jumlah hari memakai Senin–Jumat dan belum mengecualikan hari libur nasional.</p>
+    </aside>
+  </div>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}RIWAYAT REQUEST</p>
+        <h2>{{len .Rows}} pengajuan</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <div class="leave-history">
+      {{range .Rows}}
+      <article class="leave-history-card">
+        <div>
+          <h3>{{.LeaveID}}</h3>
+          <span class="status-chip {{.StatusClass}}">{{.Status}}</span>
+          <p>Dibuat {{.CreatedLabel}}</p>
+        </div>
+        <div>
+          <h3>{{.JenisLeave}} · {{.JumlahHari}} hari</h3>
+          <p>{{.TanggalMulaiLabel}} – {{.TanggalSelesaiLabel}}</p>
+          <p class="leave-reason">{{.Alasan}}</p>
+          {{if .CatatanApproval}}<p><strong>Catatan:</strong> {{.CatatanApproval}}</p>{{end}}
+        </div>
+        <div class="leave-history-actions">
+          {{if .HasBuktiPendukung}}
+          <a class="button subtle table-action" href="/leave/attachment?leave_id={{.LeaveID}}" target="_blank" rel="noopener">
+            {{template "icon" "camera"}}Bukti
+          </a>
+          {{end}}
+          {{if eq .Status "MENUNGGU"}}
+          <a class="button subtle table-action" href="/leave/request?edit={{.LeaveID}}">Edit</a>
+          <form method="post" action="/leave/request">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="operation" value="cancel">
+            <input type="hidden" name="leave_id" value="{{.LeaveID}}">
+            <button class="button reject table-action" type="submit" data-confirm-cancel>Batalkan</button>
+          </form>
+          {{end}}
+        </div>
+      </article>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada request leave. Pengajuan pertama Anda akan muncul di sini.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/leave.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

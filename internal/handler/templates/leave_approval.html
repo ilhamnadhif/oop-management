@@ -1,0 +1,153 @@
+{{define "leave_approval"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading approval-summary">
+      <div>
+        <p class="eyebrow">{{template "icon" "check"}}APPROVAL LEAVE</p>
+        <h2>{{len .Rows}} pengajuan ditemukan</h2>
+      </div>
+      <a class="button subtle" href="/hr/overview">{{template "icon" "chart"}}Buka HR Overview</a>
+    </div>
+
+    <form class="approval-filter-form" method="get" action="/hr/approval-leave">
+      <div class="approval-search-field">
+        <label for="q">{{template "icon" "search"}}Cari karyawan atau ID</label>
+        <input id="q" name="q" type="search" value="{{.Filters.Q}}" placeholder="Nama, NRP, atau LVE-…" autocomplete="off">
+      </div>
+      <div>
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          <option value="SEMUA"{{if eq .StatusFilter "SEMUA"}} selected{{end}}>Semua status</option>
+          {{range .Statuses}}<option value="{{.}}"{{if eq $.StatusFilter .}} selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label for="jenis">Jenis leave</label>
+        <select id="jenis" name="jenis">
+          <option value="">Semua jenis</option>
+          {{range .Types}}<option value="{{.}}"{{if eq $.Filters.JenisLeave .}} selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label for="from">{{template "icon" "calendar"}}Mulai periode</label>
+        <input id="from" name="from" type="date" value="{{.Filters.From}}">
+      </div>
+      <div>
+        <label for="to">{{template "icon" "calendar"}}Akhir periode</label>
+        <input id="to" name="to" type="date" value="{{.Filters.To}}">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/hr/approval-leave">Reset</a>
+    </form>
+    <p class="hint approval-filter-note">Filter tanggal menampilkan request yang periodenya bersinggungan dengan rentang pilihan. Request menunggu diurutkan dari yang paling lama.</p>
+  </section>
+
+  <section class="panel">
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table approval-table">
+        <thead>
+          <tr>
+            <th scope="col">ID request</th>
+            <th scope="col">Karyawan</th>
+            <th scope="col">Jenis</th>
+            <th scope="col">Periode</th>
+            <th scope="col" class="numeric">Hari</th>
+            <th scope="col">Status</th>
+            <th scope="col">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <td>{{.LeaveID}}</td>
+            <td class="wrap"><strong>{{.NamaLengkap}}</strong><br><span class="table-subtext">{{.NRP}} · {{.Jabatan}}</span></td>
+            <td>{{.JenisLeave}}</td>
+            <td>{{.TanggalMulaiLabel}} – {{.TanggalSelesaiLabel}}</td>
+            <td class="numeric">{{.JumlahHari}}</td>
+            <td><span class="status-chip {{.StatusClass}}">{{.Status}}</span></td>
+            <td>
+              <a class="button subtle table-action" data-open-dialog="dialog-{{.LeaveID}}"
+                href="/hr/approval-leave?leave={{.LeaveID}}{{if $.Filters.Q}}&amp;q={{urlquery $.Filters.Q}}{{end}}{{if $.StatusFilter}}&amp;status={{urlquery $.StatusFilter}}{{end}}{{if $.Filters.JenisLeave}}&amp;jenis={{urlquery $.Filters.JenisLeave}}{{end}}{{if $.Filters.From}}&amp;from={{$.Filters.From}}{{end}}{{if $.Filters.To}}&amp;to={{$.Filters.To}}{{end}}">
+                {{template "icon" "info"}}{{if eq .Status "MENUNGGU"}}Tinjau{{else}}Detail{{end}}
+              </a>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Tidak ada pengajuan yang cocok dengan filter ini.</p>
+    {{end}}
+  </section>
+
+  {{range .Rows}}
+  <dialog class="modal leave-approval-modal" id="dialog-{{.LeaveID}}" aria-labelledby="title-{{.LeaveID}}"{{if .Selected}} open{{end}}>
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">{{template "icon" "calendar"}}{{.LeaveID}}</p>
+        <h2 id="title-{{.LeaveID}}">{{.NamaLengkap}}</h2>
+      </div>
+      <a class="icon-button" data-close-dialog
+        href="/hr/approval-leave?{{if $.Filters.Q}}q={{urlquery $.Filters.Q}}&amp;{{end}}{{if $.StatusFilter}}status={{urlquery $.StatusFilter}}&amp;{{end}}{{if $.Filters.JenisLeave}}jenis={{urlquery $.Filters.JenisLeave}}&amp;{{end}}{{if $.Filters.From}}from={{$.Filters.From}}&amp;{{end}}{{if $.Filters.To}}to={{$.Filters.To}}{{end}}"
+        aria-label="Tutup detail {{.LeaveID}}">{{template "icon" "close"}}</a>
+    </div>
+
+    <dl class="leave-facts">
+      <div><dt>NRP / Jabatan</dt><dd>{{.NRP}} · {{.Jabatan}}</dd></div>
+      <div><dt>Status</dt><dd><span class="status-chip {{.StatusClass}}">{{.Status}}</span></dd></div>
+      <div><dt>Jenis leave</dt><dd>{{.JenisLeave}}</dd></div>
+      <div><dt>Durasi</dt><dd>{{.JumlahHari}} hari kerja</dd></div>
+      <div><dt>Tanggal mulai</dt><dd>{{.TanggalMulaiLabel}}</dd></div>
+      <div><dt>Tanggal selesai</dt><dd>{{.TanggalSelesaiLabel}}</dd></div>
+      <div><dt>Diajukan</dt><dd>{{.CreatedLabel}}</dd></div>
+      <div><dt>Bukti pendukung</dt><dd>{{if .HasBuktiPendukung}}Tersedia{{else}}Tidak ada{{end}}</dd></div>
+    </dl>
+
+    <div class="leave-detail-copy">
+      <p class="eyebrow">ALASAN</p>
+      <p class="leave-reason">{{.Alasan}}</p>
+    </div>
+    {{if .HasBuktiPendukung}}
+    <a class="button subtle leave-proof-link" href="/leave/attachment?leave_id={{.LeaveID}}" target="_blank" rel="noopener">
+      {{template "icon" "camera"}}Lihat bukti pendukung
+    </a>
+    {{end}}
+
+    {{if eq .Status "MENUNGGU"}}
+    <form method="post" action="/hr/approval-leave" class="leave-decision-form" data-leave-decision-form>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="leave_id" value="{{.LeaveID}}">
+      <input type="hidden" name="q" value="{{$.Filters.Q}}">
+      <input type="hidden" name="status" value="{{$.StatusFilter}}">
+      <input type="hidden" name="jenis" value="{{$.Filters.JenisLeave}}">
+      <input type="hidden" name="from" value="{{$.Filters.From}}">
+      <input type="hidden" name="to" value="{{$.Filters.To}}">
+      <div>
+        <label for="catatan-{{.LeaveID}}">Catatan keputusan</label>
+        <textarea id="catatan-{{.LeaveID}}" name="catatan_approval" rows="4" maxlength="1000" placeholder="Opsional saat menyetujui, wajib saat menolak"></textarea>
+      </div>
+      <div class="approval-actions">
+        <button class="button approve" type="submit" name="decision" value="approve">{{template "icon" "check"}}Setujui</button>
+        <button class="button reject" type="submit" name="decision" value="reject">{{template "icon" "close"}}Tolak</button>
+      </div>
+    </form>
+    {{else}}
+    <dl class="leave-decision-audit">
+      <div><dt>Diproses oleh</dt><dd>{{if .DiprosesOleh}}{{.DiprosesOleh}}{{else}}-{{end}}</dd></div>
+      <div><dt>Waktu keputusan</dt><dd>{{if .ProcessedLabel}}{{.ProcessedLabel}}{{else}}-{{end}}</dd></div>
+      <div><dt>Catatan</dt><dd class="leave-reason">{{if .CatatanApproval}}{{.CatatanApproval}}{{else}}Tidak ada catatan.{{end}}</dd></div>
+    </dl>
+    {{end}}
+  </dialog>
+  {{end}}
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/dialog.js" defer></script>
+<script src="/static/js/leave.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

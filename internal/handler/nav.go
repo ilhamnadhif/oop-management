@@ -24,6 +24,14 @@ var navItems = []NavItem{
 		Lede: "Ringkasan kehadiran Anda sendiri bulan ini."},
 	{Key: "absensi", Label: "Absensi", Path: "/absensi", Icon: "clock",
 		Lede: "Catat kehadiran hari ini lengkap dengan lokasi dan foto."},
+	{Key: "leave-request", Label: "Request Leave", Path: "/leave/request", Icon: "calendar",
+		Lede: "Ajukan cuti atau izin dan pantau proses persetujuannya."},
+	{Key: "hr", Label: "HR", Icon: "user", Children: []NavItem{
+		{Key: "hr-overview", Label: "Overview", Path: "/hr/overview", Icon: "activity",
+			Lede: "Ringkasan karyawan, kehadiran, lembur, dan pengajuan leave."},
+		{Key: "hr-approval-leave", Label: "Approval Leave", Path: "/hr/approval-leave", Icon: "check",
+			Lede: "Tinjau dan putuskan pengajuan cuti atau izin karyawan."},
+	}},
 	{Key: "produksi", Label: "Produksi", Icon: "chart", Children: []NavItem{
 		{Key: "produksi-overview", Label: "Overview", Path: "/produksi/overview", Icon: "activity",
 			Lede: "Ringkasan volume, ritase, dan unit yang beroperasi."},
@@ -77,6 +85,7 @@ const JabatanManagement = "Management"
 // This is the whole authorisation rule in one place. When HR is given a screen
 // to tick these boxes themselves, it replaces this map and nothing else.
 var menuAccess = map[string][]string{
+	"hr":       {"HR"},
 	"produksi": {"Surveyor", "Produksi", "SPV"},
 	"unit":     {"Surveyor", "Produksi", "SPV", "Logistik"},
 	// Alat berat is the same fleet seen from another angle, so it is open to

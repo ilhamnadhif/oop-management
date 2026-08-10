@@ -13,6 +13,15 @@ const (
 
 	AttendanceBelumClockOut = "BELUM_CLOCK_OUT"
 	AttendanceSelesai       = "SELESAI"
+
+	LeaveStatusMenunggu   = "MENUNGGU"
+	LeaveStatusDisetujui  = "DISETUJUI"
+	LeaveStatusDitolak    = "DITOLAK"
+	LeaveStatusDibatalkan = "DIBATALKAN"
+
+	LeaveJenisCutiTahunan = "Cuti Tahunan"
+	LeaveJenisCutiSakit   = "Cuti Sakit"
+	LeaveJenisIzin        = "Izin"
 )
 
 type User struct {
@@ -130,6 +139,33 @@ type Attendance struct {
 	DurasiMenit      *int
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+// Leave is one employee leave request. Requester fields are snapshots so the
+// audit trail keeps the name, NRP and position that were in effect when the
+// request was submitted. BuktiPendukung is kept out of list reads because it
+// can contain a large base64 data URL.
+type Leave struct {
+	LeaveID            string
+	UserID             string
+	NRP                string
+	NamaLengkap        string
+	Jabatan            string
+	JenisLeave         string
+	TanggalMulai       string
+	TanggalSelesai     string
+	JumlahHari         int
+	Alasan             string
+	Status             string
+	CatatanApproval    string
+	DiprosesOleh       string
+	DiprosesOlehUserID string
+	DiprosesPada       *time.Time
+	DibatalkanPada     *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	HasBuktiPendukung  bool
+	BuktiPendukung     string
 }
 
 // Payment methods and the payment status each one implies. A cash advance is

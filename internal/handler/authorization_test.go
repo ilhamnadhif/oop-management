@@ -11,6 +11,8 @@ import (
 var menuPaths = map[string][]string{
 	"beranda":  {"/dashboard"},
 	"absensi":  {"/absensi"},
+	"leave":    {"/leave/request"},
+	"hr":       {"/hr/overview", "/hr/approval-leave"},
 	"produksi": {"/produksi", "/produksi/overview", "/produksi/export"},
 	"unit":     {"/unit/overview", "/unit-dt", "/unit/export"},
 	"a2b":      {"/a2b/overview", "/unit-a2b", "/a2b/hm", "/a2b/fuel", "/a2b/export"},
@@ -33,7 +35,10 @@ func TestEveryPositionReachesDashboardAndAbsensi(t *testing.T) {
 	for _, jabatan := range []string{"Flagman", "Security", "SHE", "Surveyor", "Logistik", "HR", "SPV", "Management", "Produksi"} {
 		testServer := newTestServer(t)
 		client := loggedInClientAs(t, testServer, jabatan)
-		for _, path := range append(menuPaths["beranda"], menuPaths["absensi"]...) {
+		paths := append([]string{}, menuPaths["beranda"]...)
+		paths = append(paths, menuPaths["absensi"]...)
+		paths = append(paths, menuPaths["leave"]...)
+		for _, path := range paths {
 			if status := statusOf(t, client, testServer.URL+path); status != http.StatusOK {
 				t.Fatalf("%s: %s returned %d", jabatan, path, status)
 			}
@@ -47,15 +52,15 @@ func TestMenusAreOpenToTheirOwnPositions(t *testing.T) {
 	cases := map[string]map[string]bool{
 		// jabatan -> menu -> may open
 		// A2B is the same fleet from another angle, so it follows the unit rule.
-		"Surveyor":   {"produksi": true, "unit": true, "a2b": true, "nota": false},
-		"Produksi":   {"produksi": true, "unit": true, "a2b": true, "nota": false},
-		"SPV":        {"produksi": true, "unit": true, "a2b": true, "nota": false},
-		"Logistik":   {"produksi": false, "unit": true, "a2b": true, "nota": false},
-		"HR":         {"produksi": false, "unit": false, "a2b": false, "nota": true},
-		"Management": {"produksi": true, "unit": true, "a2b": true, "nota": true},
-		"Security":   {"produksi": false, "unit": false, "a2b": false, "nota": false},
-		"Flagman":    {"produksi": false, "unit": false, "a2b": false, "nota": false},
-		"SHE":        {"produksi": false, "unit": false, "a2b": false, "nota": false},
+		"Surveyor":   {"produksi": true, "unit": true, "a2b": true, "nota": false, "hr": false},
+		"Produksi":   {"produksi": true, "unit": true, "a2b": true, "nota": false, "hr": false},
+		"SPV":        {"produksi": true, "unit": true, "a2b": true, "nota": false, "hr": false},
+		"Logistik":   {"produksi": false, "unit": true, "a2b": true, "nota": false, "hr": false},
+		"HR":         {"produksi": false, "unit": false, "a2b": false, "nota": true, "hr": true},
+		"Management": {"produksi": true, "unit": true, "a2b": true, "nota": true, "hr": true},
+		"Security":   {"produksi": false, "unit": false, "a2b": false, "nota": false, "hr": false},
+		"Flagman":    {"produksi": false, "unit": false, "a2b": false, "nota": false, "hr": false},
+		"SHE":        {"produksi": false, "unit": false, "a2b": false, "nota": false, "hr": false},
 	}
 	for jabatan, menus := range cases {
 		testServer := newTestServer(t)
@@ -83,6 +88,12 @@ func TestMenuShowsOnlyWhatThePositionMayOpen(t *testing.T) {
 	if !strings.Contains(hr, `href="/nota"`) {
 		t.Fatal("HR cannot see the nota menu")
 	}
+	if !strings.Contains(hr, `href="/hr/overview"`) || !strings.Contains(hr, `href="/hr/approval-leave"`) {
+		t.Fatal("HR cannot see the HR module")
+	}
+	if !strings.Contains(hr, `href="/leave/request"`) {
+		t.Fatal("HR cannot see Request Leave")
+	}
 	for _, hidden := range []string{`href="/produksi"`, `href="/unit-dt"`} {
 		if strings.Contains(hr, hidden) {
 			t.Fatalf("HR is shown %q", hidden)
@@ -100,13 +111,16 @@ func TestMenuShowsOnlyWhatThePositionMayOpen(t *testing.T) {
 	// A group with nothing left in it disappears rather than opening onto an
 	// empty list.
 	security := navSection(t, fetchAuthedPage(t, loggedInClientAs(t, testServer, "Security"), testServer.URL+"/dashboard"))
-	for _, heading := range []string{">Produksi<", ">Nota<", ">Unit<", ">A2B<"} {
+	for _, heading := range []string{">HR<", ">Produksi<", ">Nota<", ">Unit<", ">A2B<"} {
 		if strings.Contains(security, heading) {
 			t.Fatalf("Security is shown the %q heading with no pages under it", heading)
 		}
 	}
 	if !strings.Contains(security, `href="/absensi"`) {
 		t.Fatal("Security lost the attendance menu")
+	}
+	if !strings.Contains(security, `href="/leave/request"`) {
+		t.Fatal("Security lost Request Leave")
 	}
 }
 

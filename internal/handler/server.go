@@ -48,6 +48,7 @@ type Server struct {
 	overview       *service.OverviewService
 	unitA2B        *service.UnitA2BService
 	nota           *service.NotaService
+	leave          *service.LeaveService
 	unitOverview   *service.UnitOverviewService
 	company        string
 	signatory      export.Signatory
@@ -211,7 +212,7 @@ type Branding struct {
 	Signatory export.Signatory
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, unitOverview *service.UnitOverviewService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, leave *service.LeaveService, unitOverview *service.UnitOverviewService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
 	if strings.TrimSpace(branding.Company) == "" {
 		branding.Company = "PT Orecon Putra Perkasa"
 	}
@@ -250,6 +251,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		overview:       overview,
 		unitA2B:        unitA2B,
 		nota:           nota,
+		leave:          leave,
 		unitOverview:   unitOverview,
 		sessions:       sessions,
 		location:       location,
@@ -280,6 +282,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/dashboard", s.handleDashboard)
 	mux.HandleFunc("/absensi", s.handleAbsensi)
+	mux.HandleFunc("/leave/request", s.handleLeaveRequest)
+	mux.HandleFunc("/leave/attachment", s.handleLeaveAttachment)
+	mux.HandleFunc("/hr/overview", s.handleHROverview)
+	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
 	mux.HandleFunc("/produksi", s.handleProduksi)
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
@@ -541,7 +547,9 @@ func firstLetter(name string) string {
 
 type BerandaPageData struct {
 	ShellPageData
-	Summary *service.AttendanceSummary
+	Summary      *service.AttendanceSummary
+	LeaveSummary *service.LeavePersonalSummary
+	LeaveError   string
 	// JamChart plots the hours worked per day; a gap in it is a day nobody
 	// clocked in, which is as much a reading as a tall bar.
 	JamChart *Chart
@@ -573,6 +581,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Summary = summary
 	data.JamChart = BuildValueChart(labels, hours, 1)
+	leaveSummary, leaveErr := s.leave.PersonalSummary(r.Context(), user.UserID)
+	if leaveErr != nil {
+		log.Printf("build personal leave summary: %v", leaveErr)
+		data.LeaveError = "Ringkasan cuti dan izin belum dapat dimuat."
+	} else {
+		if leaveSummary.TodayStatus == "" {
+			leaveSummary.TodayStatus = "Tidak ada leave"
+		}
+		data.LeaveSummary = leaveSummary
+	}
 	s.render(w, "beranda", data, http.StatusOK)
 }
 

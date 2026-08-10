@@ -22,6 +22,7 @@ type TestRepository struct {
 	produksi   []*model.Produksi
 	unitA2B    []*model.UnitA2B
 	nota       []*model.Nota
+	leaves     []*model.Leave
 }
 
 func NewTestRepository() *TestRepository {
@@ -229,6 +230,10 @@ func (r *TestRepository) UserList() []model.User {
 	return users
 }
 
+func (r *TestRepository) ListUsers(context.Context) ([]model.User, error) {
+	return r.UserList(), nil
+}
+
 // NotaList exposes stored notes to tests, without their line items.
 func (r *TestRepository) NotaList() []model.Nota {
 	r.mu.RLock()
@@ -366,6 +371,26 @@ func (r *TestRepository) ListAttendanceByUser(_ context.Context, userID string) 
 	return rows, nil
 }
 
+func (r *TestRepository) ListAttendanceBetween(_ context.Context, from, to string) ([]model.Attendance, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	rows := make([]model.Attendance, 0, len(r.attendance))
+	for _, attendance := range r.attendance {
+		date := strings.TrimSpace(attendance.TanggalAbsensi)
+		if date == "" || (from != "" && date < from) || (to != "" && date > to) {
+			continue
+		}
+		stored := cloneAttendance(attendance)
+		// Match the production repository: aggregate reads never carry photos.
+		stored.ClockInPhoto = ""
+		stored.ClockOutPhoto = ""
+		rows = append(rows, *stored)
+	}
+	return rows, nil
+}
+
 func (r *TestRepository) CreateAttendance(_ context.Context, attendance *model.Attendance) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -382,6 +407,135 @@ func (r *TestRepository) UpdateAttendance(_ context.Context, rowNumber int, atte
 	}
 	r.attendance[index] = cloneAttendance(attendance)
 	return nil
+}
+
+func (r *TestRepository) MaxLeaveSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, leave := range r.leaves {
+		if !strings.HasPrefix(strings.TrimSpace(leave.LeaveID), prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(strings.TrimSpace(leave.LeaveID), prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateLeave(_ context.Context, leave *model.Leave) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.leaves = append(r.leaves, cloneLeave(leave))
+	return nil
+}
+
+func (r *TestRepository) ListLeave(context.Context) ([]model.Leave, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.Leave, 0, len(r.leaves))
+	for _, leave := range r.leaves {
+		stored := cloneLeave(leave)
+		stored.BuktiPendukung = ""
+		rows = append(rows, *stored)
+	}
+	return rows, nil
+}
+
+func (r *TestRepository) FindLeaveRow(_ context.Context, leaveID string) (*model.Leave, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	wanted := strings.ToUpper(strings.TrimSpace(leaveID))
+	for index, leave := range r.leaves {
+		if strings.ToUpper(strings.TrimSpace(leave.LeaveID)) != wanted {
+			continue
+		}
+		stored := cloneLeave(leave)
+		stored.BuktiPendukung = ""
+		return stored, index + 2, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+func (r *TestRepository) UpdateLeaveRequest(_ context.Context, rowNumber int, leave *model.Leave, updateAttachment bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored, err := r.leaveAtRow(rowNumber)
+	if err != nil {
+		return err
+	}
+	stored.JenisLeave = leave.JenisLeave
+	stored.TanggalMulai = leave.TanggalMulai
+	stored.TanggalSelesai = leave.TanggalSelesai
+	stored.JumlahHari = leave.JumlahHari
+	stored.Alasan = leave.Alasan
+	stored.UpdatedAt = leave.UpdatedAt
+	if updateAttachment {
+		stored.HasBuktiPendukung = leave.HasBuktiPendukung
+		stored.BuktiPendukung = leave.BuktiPendukung
+	}
+	return nil
+}
+
+func (r *TestRepository) CancelLeave(_ context.Context, rowNumber int, leave *model.Leave) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored, err := r.leaveAtRow(rowNumber)
+	if err != nil {
+		return err
+	}
+	stored.Status = leave.Status
+	stored.DibatalkanPada = cloneTime(leave.DibatalkanPada)
+	stored.UpdatedAt = leave.UpdatedAt
+	return nil
+}
+
+func (r *TestRepository) UpdateLeaveDecision(_ context.Context, rowNumber int, leave *model.Leave) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored, err := r.leaveAtRow(rowNumber)
+	if err != nil {
+		return err
+	}
+	stored.Status = leave.Status
+	stored.CatatanApproval = leave.CatatanApproval
+	stored.DiprosesOleh = leave.DiprosesOleh
+	stored.DiprosesOlehUserID = leave.DiprosesOlehUserID
+	stored.DiprosesPada = cloneTime(leave.DiprosesPada)
+	stored.UpdatedAt = leave.UpdatedAt
+	return nil
+}
+
+func (r *TestRepository) ReadLeaveAttachment(_ context.Context, rowNumber int) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	stored, err := r.leaveAtRow(rowNumber)
+	if err != nil {
+		return "", err
+	}
+	return stored.BuktiPendukung, nil
+}
+
+// LeaveList exposes the complete stored rows, including attachments, to tests.
+func (r *TestRepository) LeaveList() []model.Leave {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.Leave, 0, len(r.leaves))
+	for _, leave := range r.leaves {
+		rows = append(rows, *cloneLeave(leave))
+	}
+	return rows
+}
+
+// leaveAtRow expects the caller to hold either r.mu's read or write lock.
+func (r *TestRepository) leaveAtRow(rowNumber int) (*model.Leave, error) {
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.leaves) {
+		return nil, ErrNotFound
+	}
+	return r.leaves[index], nil
 }
 
 func (r *TestRepository) Activities() []*model.LoginActivity {
@@ -415,6 +569,13 @@ func cloneAttendance(attendance *model.Attendance) *model.Attendance {
 	copy.ClockOutLng = cloneFloat(attendance.ClockOutLng)
 	copy.ClockOutAccuracy = cloneFloat(attendance.ClockOutAccuracy)
 	copy.DurasiMenit = cloneInt(attendance.DurasiMenit)
+	return &copy
+}
+
+func cloneLeave(leave *model.Leave) *model.Leave {
+	copy := *leave
+	copy.DiprosesPada = cloneTime(leave.DiprosesPada)
+	copy.DibatalkanPada = cloneTime(leave.DibatalkanPada)
 	return &copy
 }
 

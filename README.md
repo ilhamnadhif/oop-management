@@ -8,7 +8,10 @@ MVP aplikasi absensi server-rendered menggunakan Go, HTML template, JavaScript v
 - Login memakai NRP atau email.
 - Logout dan pencatatan aktivitas login.
 - Clock in/out menggunakan kamera dan geolocation browser.
-- Data tersimpan pada tiga sheet: `user`, `activity login`, dan `absensi data`.
+- Request leave untuk semua role, termasuk edit/cancel selama menunggu dan bukti pendukung untuk Cuti Sakit.
+- HR Overview serta Approval Leave untuk role HR dan Management.
+- Input Produksi, Unit, Nota, rekonsiliasi, export laporan, dan scan struk MiMo.
+- Data tersimpan di Google Sheets dengan schema yang dibuat dan diverifikasi saat startup.
 - Foto selfie dikompresi sebagai JPEG dan disimpan sebagai data URI base64 pada spreadsheet.
 
 ## Menjalankan lokal
@@ -73,7 +76,7 @@ export APP_TIMEZONE=Asia/Jakarta
 go run ./cmd/web
 ```
 
-Saat startup aplikasi akan membuat tiga sheet dan header jika belum tersedia. Header yang sudah ada tetapi tidak sesuai akan menyebabkan startup gagal tanpa menimpa data.
+Saat startup aplikasi akan membuat seluruh sheet dan header yang diperlukan bila belum tersedia, termasuk sheet `Leave`. Header yang sudah ada tetapi tidak sesuai akan menyebabkan startup gagal tanpa menimpa data.
 
 Contoh environment variable minimum:
 

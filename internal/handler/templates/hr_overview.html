@@ -1,0 +1,192 @@
+{{define "hr_overview"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel filter-panel">
+    <div>
+      <p class="eyebrow">{{template "icon" "activity"}}DATA HR TERAKHIR DIMUAT</p>
+      <h2>{{if .Overview}}{{.Overview.LastUpdated}}{{else}}-{{end}}</h2>
+    </div>
+    <form class="filter-form" method="get" action="/hr/overview">
+      <div>
+        <label for="from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <input id="from" name="from" type="date" value="{{.From}}" required>
+      </div>
+      <div>
+        <label for="to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <input id="to" name="to" type="date" value="{{.To}}" required>
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/hr/overview">Reset</a>
+    </form>
+    <p class="hint filter-note">KPI harian memakai tanggal terakhir pada rentang yang dipilih.</p>
+  </section>
+
+  {{with .Overview}}
+  <section class="hr-kpi-grid" aria-label="Ringkasan HR">
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TOTAL KARYAWAN</p>
+        <p class="kpi-value">{{.TotalKaryawan}}</p>
+        <p class="kpi-note">Karyawan aktif per {{$.To}}</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "user"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">HADIR</p>
+        <p class="kpi-value">{{.HadirHariAkhir}}</p>
+        <p class="kpi-note">Sudah mencatat kehadiran pada akhir periode</p>
+      </div>
+      <span class="kpi-icon green">{{template "icon" "check"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">TIDAK HADIR</p>
+        <p class="kpi-value">{{.TidakHadirHariAkhir}}</p>
+        <p class="kpi-note">Tanpa absensi maupun leave disetujui</p>
+      </div>
+      <span class="kpi-icon amber">{{template "icon" "info"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">CUTI &amp; IZIN</p>
+        <p class="kpi-value">{{.CutiHariAkhir}}</p>
+        <p class="kpi-note">Leave disetujui pada akhir periode</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "calendar"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">LEMBUR</p>
+        <p class="kpi-value">{{printf "%.1f" .LemburJam}} <small>jam</small></p>
+        <p class="kpi-note">Akumulasi lembur dalam rentang aktif</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "clock"}}</span>
+    </article>
+  </section>
+
+  <section class="hr-dashboard-grid">
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "chart"}}RINGKASAN ABSENSI</p>
+          <h2>{{$.From}} – {{$.To}}</h2>
+        </div>
+        <p class="hr-legend" aria-label="Legenda grafik">
+          <span><i></i>Hadir</span>
+          <span class="absent"><i></i>Tidak hadir</span>
+          <span class="leave"><i></i>Cuti</span>
+        </p>
+      </div>
+      {{if $.Chart.Points}}
+      <div class="hr-chart-scroll">
+        <svg class="hr-series-chart" viewBox="0 0 820 280" role="img" aria-labelledby="hr-series-title hr-series-desc">
+          <title id="hr-series-title">Kehadiran, ketidakhadiran, dan cuti per hari</title>
+          <desc id="hr-series-desc">Grafik garis untuk rentang {{$.From}} sampai {{$.To}}.</desc>
+          {{range $.Chart.Gridlines}}
+          <line class="hr-chart-gridline" x1="48" x2="772" y1="{{printf "%.1f" .Y}}" y2="{{printf "%.1f" .Y}}"></line>
+          <text class="hr-chart-label" x="38" y="{{printf "%.1f" .Y}}" text-anchor="end" dominant-baseline="middle">{{.Label}}</text>
+          {{end}}
+          <polyline class="hr-series-line present" points="{{$.Chart.HadirPoints}}" vector-effect="non-scaling-stroke"></polyline>
+          <polyline class="hr-series-line absent" points="{{$.Chart.TidakHadirPoints}}" vector-effect="non-scaling-stroke"></polyline>
+          <polyline class="hr-series-line leave" points="{{$.Chart.CutiPoints}}" vector-effect="non-scaling-stroke"></polyline>
+          {{range $.Chart.Points}}
+          <circle class="hr-series-dot present" cx="{{printf "%.1f" .X}}" cy="{{printf "%.1f" .HadirY}}" r="4" vector-effect="non-scaling-stroke"><title>{{.Label}}: {{.Hadir}} hadir</title></circle>
+          <circle class="hr-series-dot absent" cx="{{printf "%.1f" .X}}" cy="{{printf "%.1f" .TidakHadirY}}" r="4" vector-effect="non-scaling-stroke"><title>{{.Label}}: {{.TidakHadir}} tidak hadir</title></circle>
+          <circle class="hr-series-dot leave" cx="{{printf "%.1f" .X}}" cy="{{printf "%.1f" .CutiY}}" r="4" vector-effect="non-scaling-stroke"><title>{{.Label}}: {{.Cuti}} cuti</title></circle>
+          {{if .ShowLabel}}<text class="hr-chart-label" x="{{printf "%.1f" .X}}" y="269" text-anchor="middle">{{.Label}}</text>{{end}}
+          {{end}}
+        </svg>
+      </div>
+      {{else}}
+      <p class="panel-empty">Belum ada data HR pada rentang ini.</p>
+      {{end}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "user"}}DISTRIBUSI KARYAWAN</p>
+          <h2>Berdasarkan jabatan</h2>
+        </div>
+      </div>
+      {{if $.Roles}}
+      <div class="role-distribution">
+        <svg class="role-donut" viewBox="0 0 100 100" role="img" aria-label="Distribusi {{.TotalKaryawan}} karyawan berdasarkan jabatan">
+          <circle class="track" cx="50" cy="50" r="40" pathLength="100"></circle>
+          {{range $.Roles}}
+          <circle class="slice {{.ClassName}}" cx="50" cy="50" r="40" pathLength="100" stroke-dasharray="{{.Dash}}" stroke-dashoffset="{{.Offset}}"></circle>
+          {{end}}
+          <text class="role-donut-number" x="50" y="47">{{.TotalKaryawan}}</text>
+          <text class="role-donut-caption" x="50" y="61">Total</text>
+        </svg>
+        <ul class="role-list">
+          {{range $.Roles}}
+          <li>
+            <span class="role-name"><i class="role-swatch {{.ClassName}}"></i>{{.Jabatan}}</span>
+            <span><strong>{{.Total}}</strong> · {{printf "%.1f" .Percent}}%</span>
+          </li>
+          {{end}}
+        </ul>
+      </div>
+      {{else}}
+      <p class="panel-empty">Belum ada karyawan aktif pada akhir periode.</p>
+      {{end}}
+    </article>
+  </section>
+
+  <section class="hr-bottom-grid">
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "user-plus"}}KARYAWAN BARU</p>
+          <h2>Lima karyawan terbaru</h2>
+        </div>
+      </div>
+      {{if $.NewUsers}}
+      <ul class="compact-list">
+        {{range $.NewUsers}}
+        <li>
+          <span class="compact-list-main">
+            <strong>{{.NamaLengkap}}</strong>
+            <span>{{.NRP}} · {{.Jabatan}}</span>
+          </span>
+          <span class="compact-list-meta">Bergabung<br><strong>{{.JoinLabel}}</strong></span>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="panel-empty">Belum ada karyawan aktif untuk ditampilkan.</p>
+      {{end}}
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "calendar"}}PENGAJUAN TERBARU</p>
+          <h2>Lima request leave terbaru</h2>
+        </div>
+        <a class="button subtle table-action" href="/hr/approval-leave?status=SEMUA">Lihat semua</a>
+      </div>
+      {{if $.Recent}}
+      <ul class="compact-list">
+        {{range $.Recent}}
+        <li>
+          <span class="compact-list-main">
+            <a class="compact-list-link" href="/hr/approval-leave?status=SEMUA&amp;leave={{.LeaveID}}"><strong>{{.NamaLengkap}}</strong></a>
+            <span>{{.JenisLeave}} · {{.JumlahHari}} hari · {{.TanggalMulaiLabel}}–{{.TanggalSelesaiLabel}}</span>
+          </span>
+          <span class="compact-list-meta"><span class="status-chip {{.StatusClass}}">{{.Status}}</span><br>{{.CreatedLabel}}</span>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="panel-empty">Belum ada request leave.</p>
+      {{end}}
+    </article>
+  </section>
+  {{end}}
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

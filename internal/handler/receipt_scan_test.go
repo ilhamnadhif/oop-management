@@ -68,6 +68,7 @@ func newReceiptScanServer(t *testing.T, scanner receipt.Scanner) (*httptest.Serv
 		service.NewOverviewService(store, location, nowFunc),
 		service.NewUnitA2BService(store, location, nowFunc),
 		service.NewNotaService(store, location, nowFunc),
+		service.NewLeaveService(store, location, nowFunc),
 		service.NewUnitOverviewService(store, location, nowFunc),
 		session.NewManager(24*time.Hour, false),
 		location, nowFunc, 2*1024*1024, photo.MaxOutputChars,

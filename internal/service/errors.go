@@ -13,4 +13,5 @@ var (
 	ErrAlreadyClockedOut  = errors.New("already clocked out")
 	ErrInvalidLocation    = errors.New("invalid location")
 	ErrInvalidPhoto       = errors.New("invalid photo")
+	ErrForbidden          = errors.New("forbidden")
 )

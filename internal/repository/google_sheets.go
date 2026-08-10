@@ -21,6 +21,7 @@ const (
 	unitA2BSheet    = "Unit A2B"
 	notaSheet       = "Nota"
 	notaItemSheet   = "Nota Item"
+	leaveSheet      = "Leave"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -94,6 +95,16 @@ var notaItemHeaders = []string{
 	"nota_id", "baris", "nama_produk", "satuan", "volume", "harga", "subtotal",
 }
 
+// The attachment is deliberately last. List and lookup operations stop at S,
+// avoiding large base64 image data unless an authorized handler asks for one
+// specific attachment.
+var leaveHeaders = []string{
+	"leave_id", "user_id", "nrp", "nama_lengkap", "jabatan", "jenis_leave",
+	"tanggal_mulai", "tanggal_selesai", "jumlah_hari", "alasan", "status",
+	"catatan_approval", "diproses_oleh", "diproses_oleh_user_id", "diproses_pada",
+	"dibatalkan_pada", "created_at", "updated_at", "has_bukti_pendukung", "bukti_pendukung",
+}
+
 func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 	spreadsheet, err := r.service.Spreadsheets.Get(r.spreadsheetID).Fields("sheets.properties").Context(ctx).Do()
 	if err != nil {
@@ -107,7 +118,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, unitA2BSheet, notaSheet, notaItemSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -135,6 +146,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: unitA2BSheet, headers: unitA2BHeaders},
 		{name: notaSheet, headers: notaHeaders},
 		{name: notaItemSheet, headers: notaItemHeaders},
+		{name: leaveSheet, headers: leaveHeaders},
 	} {
 		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
 			return err
@@ -210,6 +222,25 @@ func (r *GoogleSheetsRepository) FindUserByIdentifier(ctx context.Context, ident
 		}
 	}
 	return nil, ErrNotFound
+}
+
+func (r *GoogleSheetsRepository) ListUsers(ctx context.Context) ([]model.User, error) {
+	rows, err := r.readRows(ctx, userSheet, "K")
+	if err != nil {
+		return nil, err
+	}
+	users := make([]model.User, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		user, err := rowToUser(row, r.location)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(user.UserID) == "" {
+			continue
+		}
+		users = append(users, *user)
+	}
+	return users, nil
 }
 
 func (r *GoogleSheetsRepository) UserExists(ctx context.Context, nrp, email string) (bool, error) {
@@ -725,6 +756,175 @@ func notaItemToRow(notaID string, item model.NotaItem) []interface{} {
 	}
 }
 
+func (r *GoogleSheetsRepository) MaxLeaveSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, leaveSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateLeave(ctx context.Context, leave *model.Leave) error {
+	return r.appendRow(ctx, leaveSheet, leaveToRow(leave))
+}
+
+// ListLeave deliberately stops at S. Column T can contain a multi-megabyte
+// base64 image and is fetched only by ReadLeaveAttachment.
+func (r *GoogleSheetsRepository) ListLeave(ctx context.Context) ([]model.Leave, error) {
+	rows, err := r.readRows(ctx, leaveSheet, "S")
+	if err != nil {
+		return nil, err
+	}
+	leaves := make([]model.Leave, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		leave, err := rowToLeave(row, r.location)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(leave.LeaveID) == "" {
+			continue
+		}
+		leave.BuktiPendukung = ""
+		leaves = append(leaves, *leave)
+	}
+	return leaves, nil
+}
+
+func (r *GoogleSheetsRepository) FindLeaveRow(ctx context.Context, leaveID string) (*model.Leave, int, error) {
+	rows, err := r.readRows(ctx, leaveSheet, "S")
+	if err != nil {
+		return nil, 0, err
+	}
+	wanted := strings.ToUpper(strings.TrimSpace(leaveID))
+	for _, row := range dataRowsWithIndex(rows) {
+		values := padRow(row.values, 19)
+		if strings.ToUpper(strings.TrimSpace(cellString(values[0]))) != wanted {
+			continue
+		}
+		leave, err := rowToLeave(values, r.location)
+		if err != nil {
+			return nil, 0, err
+		}
+		leave.BuktiPendukung = ""
+		return leave, row.rowNumber, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+// UpdateLeaveRequest changes only requester-editable fields. Snapshot, status,
+// audit and creation columns remain untouched; the attachment is rewritten
+// only when the caller explicitly requests it.
+func (r *GoogleSheetsRepository) UpdateLeaveRequest(ctx context.Context, rowNumber int, leave *model.Leave, updateAttachment bool) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, leaveSheet)
+	}
+	sheet := quoteSheet(leaveSheet)
+	data := []*sheets.ValueRange{
+		{
+			Range: fmt.Sprintf("%s!F%d:J%d", sheet, rowNumber, rowNumber),
+			Values: [][]interface{}{{
+				leave.JenisLeave, leave.TanggalMulai, leave.TanggalSelesai,
+				strconv.Itoa(leave.JumlahHari), leave.Alasan,
+			}},
+		},
+		{
+			Range:  fmt.Sprintf("%s!R%d", sheet, rowNumber),
+			Values: [][]interface{}{{formatDateTime(leave.UpdatedAt)}},
+		},
+	}
+	if updateAttachment {
+		data = append(data, &sheets.ValueRange{
+			Range: fmt.Sprintf("%s!S%d:T%d", sheet, rowNumber, rowNumber),
+			Values: [][]interface{}{{
+				leave.HasBuktiPendukung, leave.BuktiPendukung,
+			}},
+		})
+	}
+	return r.batchUpdateLeave(ctx, rowNumber, "update request", data)
+}
+
+// CancelLeave touches only lifecycle fields. In particular, it never reads or
+// rewrites the attachment.
+func (r *GoogleSheetsRepository) CancelLeave(ctx context.Context, rowNumber int, leave *model.Leave) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, leaveSheet)
+	}
+	sheet := quoteSheet(leaveSheet)
+	data := []*sheets.ValueRange{
+		{Range: fmt.Sprintf("%s!K%d", sheet, rowNumber), Values: [][]interface{}{{leave.Status}}},
+		{Range: fmt.Sprintf("%s!P%d", sheet, rowNumber), Values: [][]interface{}{{formatNullableDateTime(leave.DibatalkanPada)}}},
+		{Range: fmt.Sprintf("%s!R%d", sheet, rowNumber), Values: [][]interface{}{{formatDateTime(leave.UpdatedAt)}}},
+	}
+	return r.batchUpdateLeave(ctx, rowNumber, "cancel", data)
+}
+
+// UpdateLeaveDecision writes the decision and its audit stamp, leaving request
+// contents, cancellation data and attachment intact.
+func (r *GoogleSheetsRepository) UpdateLeaveDecision(ctx context.Context, rowNumber int, leave *model.Leave) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, leaveSheet)
+	}
+	sheet := quoteSheet(leaveSheet)
+	data := []*sheets.ValueRange{
+		{
+			Range: fmt.Sprintf("%s!K%d:O%d", sheet, rowNumber, rowNumber),
+			Values: [][]interface{}{{
+				leave.Status, leave.CatatanApproval, leave.DiprosesOleh,
+				leave.DiprosesOlehUserID, formatNullableDateTime(leave.DiprosesPada),
+			}},
+		},
+		{Range: fmt.Sprintf("%s!R%d", sheet, rowNumber), Values: [][]interface{}{{formatDateTime(leave.UpdatedAt)}}},
+	}
+	return r.batchUpdateLeave(ctx, rowNumber, "update decision", data)
+}
+
+func (r *GoogleSheetsRepository) batchUpdateLeave(ctx context.Context, rowNumber int, action string, data []*sheets.ValueRange) error {
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             data,
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("%s leave row %d: %w", action, rowNumber, err)
+	}
+	return nil
+}
+
+func (r *GoogleSheetsRepository) ReadLeaveAttachment(ctx context.Context, rowNumber int) (string, error) {
+	if rowNumber < 2 {
+		return "", fmt.Errorf("invalid row number %d for sheet %q", rowNumber, leaveSheet)
+	}
+	rangeName := fmt.Sprintf("%s!T%d", quoteSheet(leaveSheet), rowNumber)
+	values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, rangeName).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("read leave attachment row %d: %w", rowNumber, err)
+	}
+	if len(values.Values) == 0 || len(values.Values[0]) == 0 {
+		return "", nil
+	}
+	return cellString(values.Values[0][0]), nil
+}
+
+func leaveToRow(leave *model.Leave) []interface{} {
+	return []interface{}{
+		leave.LeaveID, leave.UserID, leave.NRP, leave.NamaLengkap, leave.Jabatan,
+		leave.JenisLeave, leave.TanggalMulai, leave.TanggalSelesai,
+		strconv.Itoa(leave.JumlahHari), leave.Alasan, leave.Status, leave.CatatanApproval,
+		leave.DiprosesOleh, leave.DiprosesOlehUserID, formatNullableDateTime(leave.DiprosesPada),
+		formatNullableDateTime(leave.DibatalkanPada), formatDateTime(leave.CreatedAt),
+		formatDateTime(leave.UpdatedAt), leave.HasBuktiPendukung, leave.BuktiPendukung,
+	}
+}
+
 func (r *GoogleSheetsRepository) AppendActivity(ctx context.Context, activity *model.LoginActivity) error {
 	return r.appendRow(ctx, activitySheet, activityToRow(activity))
 }
@@ -795,6 +995,102 @@ func (r *GoogleSheetsRepository) ListAttendanceByUser(ctx context.Context, userI
 		})
 	}
 	return rows, nil
+}
+
+// ListAttendanceBetween first reads only the date column to find the smallest
+// contiguous row window that can contain the requested period. It then reads
+// the fields needed by HR reporting from that window while skipping K and Q,
+// the two base64 photo columns. Date strings use YYYY-MM-DD, so lexical
+// comparison preserves chronological order.
+func (r *GoogleSheetsRepository) ListAttendanceBetween(ctx context.Context, from, to string) ([]model.Attendance, error) {
+	sheet := quoteSheet(attendanceSheet)
+	dateColumn, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, sheet+"!F2:F").
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("read attendance dates: %w", err)
+	}
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	firstRow, lastRow, found := attendanceDateRowBounds(dateColumn.Values, from, to, 2)
+	if !found {
+		return []model.Attendance{}, nil
+	}
+
+	response, err := r.service.Spreadsheets.Values.BatchGet(r.spreadsheetID).
+		Ranges(
+			fmt.Sprintf("%s!A%d:J%d", sheet, firstRow, lastRow),
+			fmt.Sprintf("%s!L%d:P%d", sheet, firstRow, lastRow),
+			fmt.Sprintf("%s!R%d:V%d", sheet, firstRow, lastRow),
+		).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("read attendance between dates: %w", err)
+	}
+	if len(response.ValueRanges) != 3 {
+		return nil, fmt.Errorf("read attendance between dates: expected 3 ranges, got %d", len(response.ValueRanges))
+	}
+	first, middle, last := response.ValueRanges[0], response.ValueRanges[1], response.ValueRanges[2]
+	rowCount := len(first.Values)
+	if len(middle.Values) > rowCount {
+		rowCount = len(middle.Values)
+	}
+	if len(last.Values) > rowCount {
+		rowCount = len(last.Values)
+	}
+	rows := make([]model.Attendance, 0, rowCount)
+	for i := 0; i < rowCount; i++ {
+		date := strings.TrimSpace(cellAt(first, i, 5))
+		if date == "" || (from != "" && date < from) || (to != "" && date > to) {
+			continue
+		}
+		values := make([]interface{}, len(attendanceHeaders))
+		for column := 0; column <= 9; column++ {
+			values[column] = cellAt(first, i, column)
+		}
+		// K (clock_in_photo) remains blank.
+		for column := 0; column <= 4; column++ {
+			values[11+column] = cellAt(middle, i, column)
+		}
+		// Q (clock_out_photo) remains blank.
+		for column := 0; column <= 4; column++ {
+			values[17+column] = cellAt(last, i, column)
+		}
+		attendance, err := rowToAttendance(values, r.location)
+		if err != nil {
+			return nil, fmt.Errorf("parse attendance row %d: %w", firstRow+i, err)
+		}
+		rows = append(rows, *attendance)
+	}
+	return rows, nil
+}
+
+// attendanceDateRowBounds returns sheet row numbers, not slice indexes. Taking
+// the minimum and maximum matching row keeps the second fetch correct even if
+// old data is not sorted by attendance date. Rows between those bounds are
+// filtered again after the detailed fetch.
+func attendanceDateRowBounds(values [][]interface{}, from, to string, firstSheetRow int) (int, int, bool) {
+	if firstSheetRow < 1 {
+		return 0, 0, false
+	}
+	first := 0
+	last := 0
+	for index, row := range values {
+		if len(row) == 0 {
+			continue
+		}
+		date := strings.TrimSpace(cellString(row[0]))
+		if date == "" || (from != "" && date < from) || (to != "" && date > to) {
+			continue
+		}
+		rowNumber := firstSheetRow + index
+		if first == 0 || rowNumber < first {
+			first = rowNumber
+		}
+		if rowNumber > last {
+			last = rowNumber
+		}
+	}
+	return first, last, first != 0
 }
 
 // cellAt reads one cell of a fetched range. Sheets drops trailing empty cells,
@@ -1072,6 +1368,67 @@ func rowToAttendance(row []interface{}, location *time.Location) (*model.Attenda
 		CreatedAt:        createdAt.In(location),
 		UpdatedAt:        updatedAt.In(location),
 	}, nil
+}
+
+func rowToLeave(row []interface{}, location *time.Location) (*model.Leave, error) {
+	row = padRow(row, len(leaveHeaders))
+	jumlahHari, err := strconv.Atoi(strings.TrimSpace(cellString(row[8])))
+	if err != nil {
+		return nil, fmt.Errorf("parse leave jumlah_hari: %w", err)
+	}
+	diprosesPada, err := parseOptionalTime(cellString(row[14]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse leave diproses_pada: %w", err)
+	}
+	dibatalkanPada, err := parseOptionalTime(cellString(row[15]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse leave dibatalkan_pada: %w", err)
+	}
+	createdAt, err := parseDateTime(cellString(row[16]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse leave created_at: %w", err)
+	}
+	updatedAt, err := parseDateTime(cellString(row[17]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse leave updated_at: %w", err)
+	}
+	hasAttachment, err := parseBoolCell(row[18])
+	if err != nil {
+		return nil, fmt.Errorf("parse leave has_bukti_pendukung: %w", err)
+	}
+	return &model.Leave{
+		LeaveID:            cellString(row[0]),
+		UserID:             cellString(row[1]),
+		NRP:                cellString(row[2]),
+		NamaLengkap:        cellString(row[3]),
+		Jabatan:            cellString(row[4]),
+		JenisLeave:         cellString(row[5]),
+		TanggalMulai:       cellString(row[6]),
+		TanggalSelesai:     cellString(row[7]),
+		JumlahHari:         jumlahHari,
+		Alasan:             cellString(row[9]),
+		Status:             cellString(row[10]),
+		CatatanApproval:    cellString(row[11]),
+		DiprosesOleh:       cellString(row[12]),
+		DiprosesOlehUserID: cellString(row[13]),
+		DiprosesPada:       diprosesPada,
+		DibatalkanPada:     dibatalkanPada,
+		CreatedAt:          createdAt,
+		UpdatedAt:          updatedAt,
+		HasBuktiPendukung:  hasAttachment,
+		BuktiPendukung:     cellString(row[19]),
+	}, nil
+}
+
+func parseBoolCell(cell interface{}) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(cellString(cell))) {
+	case "true", "1", "ya", "yes":
+		return true, nil
+	case "", "false", "0", "tidak", "no":
+		return false, nil
+	default:
+		return false, fmt.Errorf("unsupported boolean %q", cellString(cell))
+	}
 }
 
 func parseDateTime(value string, location *time.Location) (time.Time, error) {
