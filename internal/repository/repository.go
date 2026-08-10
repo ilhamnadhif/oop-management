@@ -18,6 +18,9 @@ type Store interface {
 	UserExists(ctx context.Context, nrp, email string) (bool, error)
 	CreateUser(ctx context.Context, user *model.User) error
 	UpdateLastLogin(ctx context.Context, userID string, at time.Time) error
+	FindUserRow(ctx context.Context, userID string) (*model.User, int, error)
+	UpdateUserProfile(ctx context.Context, rowNumber int, user *model.User, updatePhoto bool) error
+	ReadUserPhoto(ctx context.Context, rowNumber int) (string, error)
 	AppendActivity(ctx context.Context, activity *model.LoginActivity) error
 	UnitDTExists(ctx context.Context, nopol string) (bool, error)
 	MaxUnitDTSequence(ctx context.Context, prefix string) (int, error)

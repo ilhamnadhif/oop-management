@@ -251,7 +251,11 @@ func (r *TestRepository) UserList() []model.User {
 }
 
 func (r *TestRepository) ListUsers(context.Context) ([]model.User, error) {
-	return r.UserList(), nil
+	users := r.UserList()
+	for i := range users {
+		users[i].FotoProfil = ""
+	}
+	return users, nil
 }
 
 // NotaList exposes stored notes to tests, without their line items.
@@ -305,7 +309,7 @@ func (r *TestRepository) FindUserByID(_ context.Context, userID string) (*model.
 	defer r.mu.RUnlock()
 	for _, user := range r.users {
 		if user.UserID == userID {
-			return cloneUser(user), nil
+			return readUser(user), nil
 		}
 	}
 	return nil, ErrNotFound
@@ -317,7 +321,7 @@ func (r *TestRepository) FindUserByIdentifier(_ context.Context, identifier stri
 	identifier = strings.ToLower(strings.TrimSpace(identifier))
 	for _, user := range r.users {
 		if strings.ToLower(user.NRP) == identifier || strings.ToLower(user.Email) == identifier {
-			return cloneUser(user), nil
+			return readUser(user), nil
 		}
 	}
 	return nil, ErrNotFound
@@ -359,6 +363,52 @@ func (r *TestRepository) UpdateLastLogin(_ context.Context, userID string, at ti
 		}
 	}
 	return ErrNotFound
+}
+
+// FindUserRow mirrors the sheet: the returned user carries no photo, because
+// the read that finds it stops before that column.
+func (r *TestRepository) FindUserRow(_ context.Context, userID string) (*model.User, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for i, user := range r.users {
+		if user.UserID != userID {
+			continue
+		}
+		// Row 1 is the header in the sheet, so the first record sits on row 2.
+		return readUser(user), i + 2, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+func (r *TestRepository) UpdateUserProfile(_ context.Context, rowNumber int, user *model.User, updatePhoto bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.users) {
+		return fmt.Errorf("invalid user row number %d", rowNumber)
+	}
+	stored := r.users[index]
+	stored.NamaLengkap = user.NamaLengkap
+	stored.NoTelp = user.NoTelp
+	stored.TanggalLahir = user.TanggalLahir
+	stored.UpdatedAt = user.UpdatedAt
+	// A save that carries no new image leaves the stored one alone, the way a
+	// write of only the profile columns does on the sheet.
+	if updatePhoto {
+		stored.PunyaFoto = user.PunyaFoto
+		stored.FotoProfil = user.FotoProfil
+	}
+	return nil
+}
+
+func (r *TestRepository) ReadUserPhoto(_ context.Context, rowNumber int) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.users) {
+		return "", fmt.Errorf("invalid user row number %d", rowNumber)
+	}
+	return r.users[index].FotoProfil, nil
 }
 
 func (r *TestRepository) AppendActivity(_ context.Context, activity *model.LoginActivity) error {
@@ -574,6 +624,17 @@ func cloneUser(user *model.User) *model.User {
 		copy.LastLoginAt = timePtr(*user.LastLoginAt)
 	}
 	return &copy
+}
+
+// readUser is cloneUser for the lookup paths, which on the sheet stop one
+// column short of the photo. Only ReadUserPhoto returns the image, and a test
+// that found it elsewhere would be passing on data production never returns.
+// The write paths keep using cloneUser: stripping there would discard the photo
+// on the way in.
+func readUser(user *model.User) *model.User {
+	stored := cloneUser(user)
+	stored.FotoProfil = ""
+	return stored
 }
 
 func cloneActivity(activity *model.LoginActivity) *model.LoginActivity {

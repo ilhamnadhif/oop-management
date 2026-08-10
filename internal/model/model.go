@@ -36,6 +36,17 @@ type User struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	LastLoginAt    *time.Time
+
+	// Personal details the employee maintains. Both may be empty: they were
+	// added after people already had accounts, and neither is needed to log in.
+	NoTelp       string
+	TanggalLahir string
+
+	// PunyaFoto says whether a profile photo exists without carrying it.
+	// FotoProfil is a base64 data URL tens of thousands of characters long, so
+	// it is read one row at a time and never as part of a listing.
+	PunyaFoto  bool
+	FotoProfil string
 }
 
 type LoginActivity struct {

@@ -45,7 +45,7 @@ type AttendanceSummary struct {
 	BelumPulang int
 
 	// Counted over the same month, against the working day in force.
-	Jadwal         Schedule
+	Jadwal      Schedule
 	TepatWaktu  int
 	Terlambat   int
 	MasukAwal   int

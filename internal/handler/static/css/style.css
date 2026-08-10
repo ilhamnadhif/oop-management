@@ -150,7 +150,10 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .sidebar-copy { margin-bottom: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
 
 /* The account sits in the top right, where the date already was. */
-.account-avatar { display: grid; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border-radius: 50%; color: var(--navy); background: #e8eff2; font-size: 0.95rem; font-weight: 600; }
+.account-avatar { display: grid; overflow: hidden; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border-radius: 50%; color: var(--navy); background: #e8eff2; font-size: 0.95rem; font-weight: 600; }
+/* Fills the circle whatever shape was uploaded; a portrait letterboxed into a
+   round frame reads as a broken image rather than a photo. */
+.account-avatar-photo { width: 100%; height: 100%; object-fit: cover; }
 .account-identity { display: grid; min-width: 0; text-align: left; }
 /* Long names must ellipsis rather than push the logout button out of reach. */
 .account-name { margin-bottom: 0; overflow: hidden; color: var(--navy-dark); font-size: 0.88rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -171,6 +174,11 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .account-logout { display: flex; width: 100%; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; border: 0; border-radius: 9px; color: var(--danger); background: transparent; font-size: 0.83rem; font-weight: 600; text-align: left; cursor: pointer; }
 .account-logout:hover { background: #fff0f0; }
 .account-logout:focus-visible { outline: 2px solid var(--danger); outline-offset: 1px; }
+/* Same shape as the logout row so the menu reads as one list, but in the body
+   colour: only the destructive action is red. */
+.account-action { display: flex; width: 100%; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; border-radius: 9px; color: var(--navy-dark); font-size: 0.83rem; font-weight: 600; text-decoration: none; }
+.account-action:hover { background: #eef3f6; }
+.account-action:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
 .sidebar-scrim { position: fixed; inset: 0; z-index: 1050; background: rgba(16, 47, 72, 0.45); }
 
 .topbar, .panel-heading, .action-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -324,6 +332,32 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .modal[open] { position: fixed; inset: 0; margin: auto; box-shadow: 0 0 0 100vmax rgba(16, 47, 72, 0.62), 0 24px 60px rgba(16, 47, 72, 0.35); }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .modal-head h2 { margin: 0.2rem 0 0; font-size: 1.1rem; }
+
+/* Profile ----------------------------------------------------------------- */
+
+/* Wider than the other dialogs: this one holds a two-column field grid, and at
+   560px the labels and their inputs stop sitting side by side. */
+.profile-modal { width: min(760px, calc(100vw - 2rem)); }
+.profile-modal-note { margin-top: -0.5rem; margin-bottom: 1rem; }
+.profile-form { display: grid; gap: 1.1rem; }
+.profile-photo-field { display: flex; align-items: center; gap: 1rem; padding-bottom: 1.1rem; border-bottom: 1px solid var(--line); }
+.profile-photo-preview { display: grid; overflow: hidden; width: 78px; height: 78px; flex: 0 0 78px; place-items: center; border-radius: 50%; background: #e8eff2; }
+.profile-photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.profile-photo-initial { color: var(--navy); font-size: 1.8rem; font-weight: 700; }
+.profile-photo-controls { display: grid; min-width: 0; gap: 0.35rem; }
+.profile-photo-controls .hint { margin: 0; }
+.profile-photo-remove { display: flex; align-items: center; gap: 0.45rem; color: var(--muted); font-size: 0.8rem; }
+.profile-photo-remove input { width: auto; min-height: 0; }
+.profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
+.profile-grid > div { display: grid; min-width: 0; gap: 0.35rem; }
+.profile-grid .hint { margin: 0; }
+.profile-actions { display: flex; justify-content: flex-end; }
+
+@media (max-width: 600px) {
+  .profile-grid { grid-template-columns: 1fr; }
+  .profile-photo-field { flex-wrap: wrap; }
+  .profile-actions .button { width: 100%; }
+}
 
 .reconcile-total { margin: 0; font-size: 0.85rem; color: var(--muted); }
 .reconcile-total strong { color: var(--navy); font-variant-numeric: tabular-nums; }
@@ -1077,7 +1111,12 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .role-swatch.role-slice-5 { background: #b91124; }
 .role-swatch.role-slice-6 { background: #60a5fa; }
 .role-swatch.role-slice-7 { background: #7d8c97; }
-.compact-list-main { min-width: 0; }
+/* The face sits before the name and never shrinks, so a long job title wraps
+   rather than squeezing the avatar into an oval. */
+.person-avatar { display: grid; overflow: hidden; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border-radius: 50%; color: var(--navy); background: #e8eff2; font-size: 0.9rem; font-weight: 700; }
+.person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* Grows so the meta column stays right-aligned once an avatar shares the row. */
+.compact-list-main { min-width: 0; flex: 1 1 auto; }
 .compact-list-main strong,
 .compact-list-main span { display: block; }
 .compact-list-main span { margin-top: 0.18rem; color: var(--muted); font-size: 0.77rem; }

@@ -29,7 +29,18 @@ const (
 var userHeaders = []string{
 	"user_id", "tanggal_gabung", "nama_lengkap", "nrp", "jabatan", "email",
 	"password_hash", "status_pengguna", "created_at", "updated_at", "last_login_at",
+	// Maintained from the profile dialog. punya_foto is read with the rest of
+	// the row; foto_profil is a base64 image and is fetched only by ReadUserPhoto.
+	"no_telp", "tanggal_lahir", "punya_foto", "foto_profil",
 }
+
+// userReadColumn stops one short of the photo. Every listing and every lookup
+// uses it: the session user is loaded on each authenticated request, and
+// dragging one base64 image per row through that would cost megabytes an hour.
+const (
+	userReadColumn  = "N"
+	userPhotoColumn = "O"
+)
 
 var activityHeaders = []string{
 	"activity_id", "user_id", "nrp", "email", "activity_type", "activity_time",
@@ -190,7 +201,7 @@ func (r *GoogleSheetsRepository) ensureHeader(ctx context.Context, sheetName str
 }
 
 func (r *GoogleSheetsRepository) FindUserByID(ctx context.Context, userID string) (*model.User, error) {
-	rows, err := r.readRows(ctx, userSheet, "K")
+	rows, err := r.readRows(ctx, userSheet, userReadColumn)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +219,7 @@ func (r *GoogleSheetsRepository) FindUserByID(ctx context.Context, userID string
 
 func (r *GoogleSheetsRepository) FindUserByIdentifier(ctx context.Context, identifier string) (*model.User, error) {
 	identifier = strings.ToLower(strings.TrimSpace(identifier))
-	rows, err := r.readRows(ctx, userSheet, "K")
+	rows, err := r.readRows(ctx, userSheet, userReadColumn)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +236,7 @@ func (r *GoogleSheetsRepository) FindUserByIdentifier(ctx context.Context, ident
 }
 
 func (r *GoogleSheetsRepository) ListUsers(ctx context.Context) ([]model.User, error) {
-	rows, err := r.readRows(ctx, userSheet, "K")
+	rows, err := r.readRows(ctx, userSheet, userReadColumn)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +255,7 @@ func (r *GoogleSheetsRepository) ListUsers(ctx context.Context) ([]model.User, e
 }
 
 func (r *GoogleSheetsRepository) UserExists(ctx context.Context, nrp, email string) (bool, error) {
-	rows, err := r.readRows(ctx, userSheet, "K")
+	rows, err := r.readRows(ctx, userSheet, userReadColumn)
 	if err != nil {
 		return false, err
 	}
@@ -267,17 +278,84 @@ func (r *GoogleSheetsRepository) CreateUser(ctx context.Context, user *model.Use
 }
 
 func (r *GoogleSheetsRepository) UpdateLastLogin(ctx context.Context, userID string, at time.Time) error {
-	rows, err := r.readRows(ctx, userSheet, "K")
+	rows, err := r.readRows(ctx, userSheet, userReadColumn)
 	if err != nil {
 		return err
 	}
-	user, rowNumber, err := findUserRow(rows, userID, r.location)
+	_, rowNumber, err := findUserRow(rows, userID, r.location)
 	if err != nil {
 		return err
 	}
-	user.LastLoginAt = &at
-	user.UpdatedAt = at
-	return r.updateRow(ctx, userSheet, rowNumber, userToRow(user), "K")
+	// Only the two timestamp cells are written. Rewriting the whole row would
+	// blank the profile photo, which this read deliberately did not fetch.
+	rangeName := fmt.Sprintf("%s!J%d:K%d", quoteSheet(userSheet), rowNumber, rowNumber)
+	_, err = r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName,
+		&sheets.ValueRange{Values: [][]interface{}{{formatDateTime(at), formatDateTime(at)}}}).
+		ValueInputOption("RAW").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update last login row %d: %w", rowNumber, err)
+	}
+	return nil
+}
+
+// FindUserRow locates a user and reports the row it sits on. Like every other
+// user read it stops before the photo.
+func (r *GoogleSheetsRepository) FindUserRow(ctx context.Context, userID string) (*model.User, int, error) {
+	rows, err := r.readRows(ctx, userSheet, userReadColumn)
+	if err != nil {
+		return nil, 0, err
+	}
+	return findUserRow(rows, userID, r.location)
+}
+
+// UpdateUserProfile writes only the cells the profile dialog owns. The photo is
+// written only when a new one was supplied, so saving a phone number does not
+// have to carry the existing image back up to the sheet.
+func (r *GoogleSheetsRepository) UpdateUserProfile(ctx context.Context, rowNumber int, user *model.User, updatePhoto bool) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, userSheet)
+	}
+	sheet := quoteSheet(userSheet)
+	data := []*sheets.ValueRange{
+		{Range: fmt.Sprintf("%s!C%d", sheet, rowNumber), Values: [][]interface{}{{user.NamaLengkap}}},
+		{Range: fmt.Sprintf("%s!J%d", sheet, rowNumber), Values: [][]interface{}{{formatDateTime(user.UpdatedAt)}}},
+		{
+			Range:  fmt.Sprintf("%s!L%d:M%d", sheet, rowNumber, rowNumber),
+			Values: [][]interface{}{{user.NoTelp, user.TanggalLahir}},
+		},
+	}
+	if updatePhoto {
+		data = append(data, &sheets.ValueRange{
+			Range:  fmt.Sprintf("%s!N%d:O%d", sheet, rowNumber, rowNumber),
+			Values: [][]interface{}{{user.PunyaFoto, user.FotoProfil}},
+		})
+	}
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             data,
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update profile row %d: %w", rowNumber, err)
+	}
+	return nil
+}
+
+// ReadUserPhoto fetches one profile photo, the only read that touches that
+// column.
+func (r *GoogleSheetsRepository) ReadUserPhoto(ctx context.Context, rowNumber int) (string, error) {
+	if rowNumber < 2 {
+		return "", fmt.Errorf("invalid row number %d for sheet %q", rowNumber, userSheet)
+	}
+	rangeName := fmt.Sprintf("%s!%s%d", quoteSheet(userSheet), userPhotoColumn, rowNumber)
+	values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, rangeName).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("read user photo row %d: %w", rowNumber, err)
+	}
+	if len(values.Values) == 0 || len(values.Values[0]) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(cellString(values.Values[0][0])), nil
 }
 
 // findUserRow returns the user and its 1-based sheet row number, which is what
@@ -1258,6 +1336,7 @@ func userToRow(user *model.User) []interface{} {
 	return []interface{}{
 		user.UserID, user.TanggalGabung, user.NamaLengkap, user.NRP, user.Jabatan, user.Email,
 		user.PasswordHash, user.StatusPengguna, formatDateTime(user.CreatedAt), formatDateTime(user.UpdatedAt), lastLogin,
+		user.NoTelp, user.TanggalLahir, user.PunyaFoto, user.FotoProfil,
 	}
 }
 
@@ -1298,6 +1377,10 @@ func rowToUser(row []interface{}, location *time.Location) (*model.User, error) 
 		}
 		lastLoginAt = &parsed
 	}
+	punyaFoto, err := parseBoolCell(row[13])
+	if err != nil {
+		return nil, fmt.Errorf("parse user punya_foto: %w", err)
+	}
 	return &model.User{
 		UserID:         cellString(row[0]),
 		TanggalGabung:  cellString(row[1]),
@@ -1310,6 +1393,12 @@ func rowToUser(row []interface{}, location *time.Location) (*model.User, error) 
 		CreatedAt:      createdAt,
 		UpdatedAt:      updatedAt,
 		LastLoginAt:    lastLoginAt,
+		NoTelp:         cellString(row[11]),
+		TanggalLahir:   cellString(row[12]),
+		PunyaFoto:      punyaFoto,
+		// Left empty by every read that stops at userReadColumn, which is all
+		// of them; ReadUserPhoto fetches the image on its own.
+		FotoProfil: cellString(row[14]),
 	}, nil
 }
 

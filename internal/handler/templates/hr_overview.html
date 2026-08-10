@@ -142,6 +142,7 @@
       <ul class="compact-list">
         {{range .BelumAbsenNama}}
         <li>
+          {{template "personAvatar" .}}
           <span class="compact-list-main">
             <strong>{{.NamaLengkap}}</strong>
             <span>{{if .NRP}}{{.NRP}} · {{end}}{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</span>
@@ -166,6 +167,7 @@
       <ul class="compact-list">
         {{range .CutiHariAkhirNama}}
         <li>
+          {{template "personAvatar" .}}
           <span class="compact-list-main">
             <strong>{{.NamaLengkap}}</strong>
             <span>{{if .NRP}}{{.NRP}} · {{end}}{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</span>

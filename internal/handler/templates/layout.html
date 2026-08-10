@@ -86,7 +86,13 @@
              and no JavaScript; the menu holds the one destructive action. */}}
         <details class="account-menu">
           <summary class="account-summary">
-            <span class="account-avatar" aria-hidden="true">{{.UserInitial}}</span>
+            {{/* The photo lives in a column no listing reads, so it is fetched
+                 by URL rather than inlined. The stamp is the account's own
+                 updated_at: a new picture is a new URL, an unchanged one is
+                 served from cache. */}}
+            <span class="account-avatar" aria-hidden="true">
+              {{- if .User.PunyaFoto}}<img class="account-avatar-photo" src="/profile/photo?v={{.User.UpdatedAt.Unix}}" alt="">{{else}}{{.UserInitial}}{{end -}}
+            </span>
             <span class="account-identity">
               <span class="account-name">{{.User.NamaLengkap}}</span>
               <span class="account-role">{{.User.Jabatan}}</span>
@@ -96,6 +102,11 @@
           <div class="account-dropdown">
             <p class="account-dropdown-name">{{.User.NamaLengkap}}</p>
             <p class="account-dropdown-role">{{.User.Jabatan}}</p>
+            {{/* A link, not a button: without the dialog script it navigates to
+                 the same form on its own page, so the settings stay reachable. */}}
+            <a class="account-action" href="/profile" data-open-dialog="profileDialog">
+              {{template "icon" "user"}}<span>Profil</span>
+            </a>
             <form method="post" action="/logout">
               <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
               <button class="account-logout" type="submit">{{template "icon" "logout"}}<span>Keluar</span></button>
@@ -104,6 +115,18 @@
         </details>
       </div>
     </header>
+
+    <dialog class="modal profile-modal" id="profileDialog" aria-labelledby="profileDialogTitle">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">{{template "icon" "user"}}DATA PRIBADI</p>
+          <h2 id="profileDialogTitle">{{.User.NamaLengkap}}</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="Tutup profil">{{template "icon" "close"}}</button>
+      </div>
+      <p class="hint profile-modal-note">NRP dan jabatan dikelola HR dan tidak dapat diubah di sini.</p>
+      {{template "profileForm" .}}
+    </dialog>
     <main class="app-shell">
       {{/* Title and breadcrumb are rendered here so every page gets the same
            pairing and no page can drift out of step. */}}
@@ -123,6 +146,9 @@
   </div>
 </div>
 <script src="/static/js/shell.js" defer></script>
+{{/* The profile dialog rides in the shell, so its script does too. Pages that
+     carry dialogs of their own no longer load it themselves. */}}
+<script src="/static/js/dialog.js" defer></script>
 {{end}}
 
 {{define "brandLogo"}}

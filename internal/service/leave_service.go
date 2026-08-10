@@ -77,12 +77,19 @@ type HRJabatanShare struct {
 // HRPersonOnDay names one person behind a headline figure. A count says how
 // many were missing; only a name says who to call.
 type HRPersonOnDay struct {
+	UserID      string
 	NamaLengkap string
 	NRP         string
 	Jabatan     string
 	// Keterangan is the leave type for someone away, empty for someone who
 	// simply has no attendance recorded.
 	Keterangan string
+	// PunyaFoto and FotoVersi describe the avatar without carrying it. The
+	// picture lives in a column no listing reads, so the page asks for it by
+	// URL; the version is the account's own updated_at, which makes a changed
+	// photo a new URL and an unchanged one a cache hit.
+	PunyaFoto bool
+	FotoVersi int64
 }
 
 // hrPersonOnDay falls back to the user id when a row has no name against it,
@@ -90,10 +97,13 @@ type HRPersonOnDay struct {
 // as a blank line.
 func hrPersonOnDay(user model.User, userID, keterangan string) HRPersonOnDay {
 	person := HRPersonOnDay{
+		UserID:      userID,
 		NamaLengkap: strings.TrimSpace(user.NamaLengkap),
 		NRP:         strings.TrimSpace(user.NRP),
 		Jabatan:     strings.TrimSpace(user.Jabatan),
 		Keterangan:  strings.TrimSpace(keterangan),
+		PunyaFoto:   user.PunyaFoto,
+		FotoVersi:   user.UpdatedAt.Unix(),
 	}
 	if person.NamaLengkap == "" {
 		person.NamaLengkap = userID

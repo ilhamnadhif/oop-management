@@ -1,0 +1,105 @@
+{{/* personAvatar draws one person's face in a list. It takes anything carrying
+     UserID, NamaLengkap, PunyaFoto and FotoVersi. The photo is requested by URL
+     because it lives in a column no listing reads; without one the initial
+     stands in, so every row keeps the same shape. */}}
+{{define "personAvatar"}}
+<span class="person-avatar" aria-hidden="true">
+  {{- if .PunyaFoto}}<img src="/profile/photo?user_id={{.UserID}}&amp;v={{.FotoVersi}}" alt="" loading="lazy">{{else}}{{inisial .NamaLengkap}}{{end -}}
+</span>
+{{end}}
+
+{{/* One form, two homes: the dialog every page carries in its topbar, and the
+     standalone page a browser without JavaScript lands on. It reads only
+     ShellPageData fields, so it can be dropped into any page's data. */}}
+{{define "profileForm"}}
+<form class="profile-form" method="post" action="/profile" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+  <div class="profile-photo-field">
+    <span class="profile-photo-preview">
+      {{if .User.PunyaFoto}}
+      <img src="/profile/photo?v={{.User.UpdatedAt.Unix}}" alt="Foto profil {{.User.NamaLengkap}}">
+      {{else}}
+      <span class="profile-photo-initial" aria-hidden="true">{{.UserInitial}}</span>
+      {{end}}
+    </span>
+    <div class="profile-photo-controls">
+      <label for="foto_profil">{{template "icon" "camera"}}Foto profil</label>
+      <input id="foto_profil" name="foto_profil" type="file" accept="image/jpeg,image/png,image/webp">
+      <p class="hint">Foto dikecilkan otomatis sebelum disimpan.</p>
+      {{if .User.PunyaFoto}}
+      <label class="profile-photo-remove" for="hapus_foto">
+        <input id="hapus_foto" name="hapus_foto" type="checkbox" value="1">
+        Hapus foto saat ini
+      </label>
+      {{end}}
+    </div>
+  </div>
+
+  <div class="profile-grid">
+    <div>
+      <label for="nama_lengkap">{{template "icon" "user"}}Nama lengkap</label>
+      <input id="nama_lengkap" name="nama_lengkap" type="text" maxlength="120" required
+        value="{{.User.NamaLengkap}}" autocomplete="name">
+    </div>
+    <div>
+      <label for="no_telp">{{template "icon" "phone"}}Nomor telepon <span class="hint">(opsional)</span></label>
+      <input id="no_telp" name="no_telp" type="tel" maxlength="20" inputmode="tel"
+        value="{{.User.NoTelp}}" placeholder="08xxxxxxxxxx" autocomplete="tel">
+    </div>
+    <div>
+      <label for="tanggal_lahir">{{template "icon" "calendar"}}Tanggal lahir <span class="hint">(opsional)</span></label>
+      <input id="tanggal_lahir" name="tanggal_lahir" type="date" value="{{.User.TanggalLahir}}" autocomplete="bday">
+    </div>
+    <div>
+      <label for="profil_email">{{template "icon" "mail"}}Email</label>
+      <input id="profil_email" type="email" value="{{.User.Email}}" disabled>
+      <p class="hint">Email adalah identitas masuk dan diubah lewat HR.</p>
+    </div>
+    {{/* NRP and jabatan identify this person to everyone else in the sheet, so
+         they are shown but never editable here. */}}
+    <div>
+      <label for="profil_nrp">{{template "icon" "hash"}}NRP</label>
+      <input id="profil_nrp" type="text" value="{{.User.NRP}}" disabled>
+    </div>
+    <div>
+      <label for="profil_jabatan">{{template "icon" "users"}}Jabatan</label>
+      <input id="profil_jabatan" type="text" value="{{.User.Jabatan}}" disabled>
+    </div>
+    <div>
+      <label for="profil_tanggal_gabung">{{template "icon" "calendar"}}Tanggal gabung</label>
+      <input id="profil_tanggal_gabung" type="text" value="{{.User.TanggalGabung}}" disabled>
+    </div>
+    <div>
+      <label for="profil_status">{{template "icon" "check"}}Status pengguna</label>
+      <input id="profil_status" type="text" value="{{.User.StatusPengguna}}" disabled>
+    </div>
+  </div>
+
+  <div class="profile-actions">
+    {{/* Named for what it saves. The dialog rides on every page, so a bare
+         "Simpan perubahan" would sit next to another form's identical button. */}}
+    <button class="button primary" type="submit">{{template "icon" "save"}}Simpan data pribadi</button>
+  </div>
+</form>
+{{end}}
+
+{{/* The standalone page. It is where a save lands and where the account menu
+     link goes when the dialog script is unavailable. */}}
+{{define "profile_page"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "user"}}DATA PRIBADI</p>
+        <h2>{{.User.NamaLengkap}}</h2>
+      </div>
+    </div>
+    {{template "profileForm" .}}
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

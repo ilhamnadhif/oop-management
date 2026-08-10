@@ -244,6 +244,9 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		// Money is written grouped everywhere it appears, so the templates do
 		// not each reinvent the formatting.
 		"rupiah": formatRupiah,
+		// The avatar letter, for the lists that show people the shell header
+		// does not. Walking runes is not something a template can do.
+		"inisial": firstLetter,
 	}).ParseFS(assetFiles, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -289,6 +292,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/absensi", s.handleAbsensi)
 	mux.HandleFunc("/leave/request", s.handleLeaveRequest)
 	mux.HandleFunc("/leave/attachment", s.handleLeaveAttachment)
+	mux.HandleFunc("/profile", s.handleProfile)
+	mux.HandleFunc("/profile/photo", s.handleProfilePhoto)
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
 	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
 	mux.HandleFunc("/produksi", s.handleProduksi)
