@@ -37,12 +37,18 @@ func assertWithinViewBox(t *testing.T, name string, chart *Chart) {
 func TestChartsStayInsideTheViewBox(t *testing.T) {
 	labels := []string{"01/08", "02/08", "03/08", "04/08", "05/08", "06/08"}
 	values := []float64{2280.4, 1720.9, 860.2, 1660.1, 3775.45, 550}
-	kecil := []int{160, 65, 22, 120, 310, 40}
-	besar := []int{14, 26, 15, 8, 9, 3}
+	// The ritase split is two counts against each other, drawn by the same
+	// grouped builder as the volumes.
+	kecil := []float64{160, 65, 22, 120, 310, 40}
+	besar := []float64{14, 26, 15, 8, 9, 3}
 
 	assertWithinViewBox(t, "value", BuildValueChart(labels, values, 0))
-	assertWithinViewBox(t, "stacked", BuildStackedChart(labels, kecil, besar))
-	assertWithinViewBox(t, "grouped", BuildGroupedChart(labels, values, []float64{2000, 1500, 800, 1600, 3500, 500}))
+	assertWithinViewBox(t, "ritase", BuildGroupedChart(labels, kecil, besar,
+		GroupedSeries{Name: "kecil", Label: "DT Kecil"},
+		GroupedSeries{Name: "besar", Label: "DT Besar"}))
+	assertWithinViewBox(t, "grouped", BuildGroupedChart(labels, values, []float64{2000, 1500, 800, 1600, 3500, 500},
+		GroupedSeries{Name: "real", Label: "Volume Real", Decimals: 2},
+		GroupedSeries{Name: "opp", Label: "Volume OPP", Decimals: 2}))
 
 	// A long unfiltered run must survive the same check.
 	many := make([]string, 60)
@@ -125,9 +131,10 @@ func TestBarChartsCarryBadgesThatFit(t *testing.T) {
 	labels := []string{"Jun 2026", "Jul 2026", "Agu 2026"}
 
 	charts := map[string]*Chart{
-		"value":   BuildValueChart(labels, []float64{1200, 0, 3775}, 0),
-		"stacked": BuildStackedChart(labels, []int{160, 0, 310}, []int{14, 0, 9}),
-		"grouped": BuildGroupedChart(labels, []float64{1200, 0, 3775}, []float64{1100, 0, 3500}),
+		"value": BuildValueChart(labels, []float64{1200, 0, 3775}, 0),
+		"grouped": BuildGroupedChart(labels, []float64{1200, 0, 3775}, []float64{1100, 0, 3500},
+			GroupedSeries{Name: "real", Label: "Volume Real", Decimals: 2},
+			GroupedSeries{Name: "opp", Label: "Volume OPP", Decimals: 2}),
 	}
 
 	for name, chart := range charts {

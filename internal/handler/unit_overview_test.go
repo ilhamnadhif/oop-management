@@ -43,9 +43,9 @@ func TestUnitOverviewCountsBothRegisters(t *testing.T) {
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/unit/overview")
 	for _, fragment := range []string{
-		"TOTAL UNIT DT", "TOTAL UNIT A2B", "DRIVER TERDAFTAR", "KAPASITAS TANGKI A2B",
-		// Three trucks, two machines, 700 litres of tank between them.
-		">3</p>", ">2</p>", "700 <small>L</small>",
+		"TOTAL UNIT DT", "TOTAL UNIT A2B", "DRIVER TERDAFTAR",
+		// Three trucks and two machines.
+		">3</p>", ">2</p>",
 		// One driver appears twice and is one person, not two.
 		"DT KECIL", "DT BESAR", "Komatsu",
 	} {
@@ -53,8 +53,12 @@ func TestUnitOverviewCountsBothRegisters(t *testing.T) {
 			t.Fatalf("the overview is missing %q", fragment)
 		}
 	}
-	if !strings.Contains(page, "45.6 L/jam") {
-		t.Fatalf("the overview does not total the fuel rate: %s", page)
+	// The fleet-wide tank figure is gone; the per-make column is what remains.
+	if strings.Contains(page, "KAPASITAS TANGKI") {
+		t.Fatal("the overview still shows the fleet tank card")
+	}
+	if !strings.Contains(page, "Tangki (L)") {
+		t.Fatal("the make table lost its tank column")
 	}
 }
 

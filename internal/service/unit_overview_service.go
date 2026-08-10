@@ -39,10 +39,8 @@ type UnitOverview struct {
 	TanpaDriver int
 	Drivers     int
 
-	FuelStorageTotal float64
-	FuelRateTotal    float64
-	LokasiShares     []UnitShare
-	TopMerek         []UnitMerekRank
+	LokasiShares []UnitShare
+	TopMerek     []UnitMerekRank
 
 	LastUpdated string
 }
@@ -127,12 +125,7 @@ func (s *UnitOverviewService) Build(ctx context.Context) (*UnitOverview, error) 
 		}
 		rank.Jumlah++
 		rank.FuelStorage += machine.FuelStorage
-
-		overview.FuelStorageTotal += machine.FuelStorage
-		overview.FuelRateTotal += machine.FRUnit
 	}
-	overview.FuelStorageTotal = round2(overview.FuelStorageTotal)
-	overview.FuelRateTotal = round2(overview.FuelRateTotal)
 	overview.LokasiShares = sharesOf(perLokasi, len(machines))
 
 	ranks := make([]UnitMerekRank, 0, len(perMerek))

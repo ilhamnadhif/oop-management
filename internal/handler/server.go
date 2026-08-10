@@ -737,7 +737,9 @@ func (s *Server) handleNotaOverview(w http.ResponseWriter, r *http.Request) {
 	data.DibayarRupiah = formatRupiah(overview.Dibayar)
 	data.RataRupiah = formatRupiah(overview.RataRata)
 	data.SpendChart = BuildLineChart(labels, spend, 2)
-	data.MethodChart = BuildGroupedChart(labels, advances, reimbursements)
+	data.MethodChart = BuildGroupedChart(labels, advances, reimbursements,
+		GroupedSeries{Name: "real", Label: "CA", Decimals: 2},
+		GroupedSeries{Name: "opp", Label: "Reimburse", Decimals: 2})
 	data.CountChart = BuildValueChart(labels, counts, 0)
 	s.render(w, "nota_overview", data, http.StatusOK)
 }
@@ -1310,9 +1312,18 @@ func (s *Server) handleProduksiOverview(w http.ResponseWriter, r *http.Request) 
 	data.From = overview.From
 	data.To = overview.To
 	data.VolumeChart = BuildLineChart(seriesLabels(overview.Series), seriesVolumes(overview.Series), 0)
-	data.RitaseChart = BuildStackedChart(seriesLabels(overview.Series), seriesKecil(overview.Series), seriesBesar(overview.Series))
+	// Side by side rather than stacked: stacked, the DT Besar count was a sliver
+	// on top of the DT Kecil bar and the badge carried only the total, so the
+	// two numbers the chart is named after could not be read off it.
+	data.RitaseChart = BuildGroupedChart(seriesLabels(overview.Series),
+		countsAsFloats(seriesKecil(overview.Series)), countsAsFloats(seriesBesar(overview.Series)),
+		GroupedSeries{Name: "kecil", Label: "DT Kecil"},
+		GroupedSeries{Name: "besar", Label: "DT Besar"})
 	data.UnitChart = BuildValueChart(seriesLabels(overview.Series), seriesUnits(overview.Series), 0)
-	data.CompareChart = BuildGroupedChart(seriesLabels(overview.Series), seriesVolumes(overview.Series), seriesOPP(overview.Series))
+	data.CompareChart = BuildGroupedChart(seriesLabels(overview.Series),
+		seriesVolumes(overview.Series), seriesOPP(overview.Series),
+		GroupedSeries{Name: "real", Label: "Volume Real", Decimals: 2},
+		GroupedSeries{Name: "opp", Label: "Volume OPP", Decimals: 2})
 	s.render(w, "produksi_overview", data, http.StatusOK)
 }
 
@@ -1346,6 +1357,15 @@ func seriesUnits(points []service.DatePoint) []float64 {
 		values[i] = float64(point.Units)
 	}
 	return values
+}
+
+// countsAsFloats feeds whole counts to a chart that plots decimals.
+func countsAsFloats(values []int) []float64 {
+	out := make([]float64, len(values))
+	for i, value := range values {
+		out[i] = float64(value)
+	}
+	return out
 }
 
 func seriesKecil(points []service.DatePoint) []int {

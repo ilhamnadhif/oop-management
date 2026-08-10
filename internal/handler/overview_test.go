@@ -26,13 +26,22 @@ func TestOverviewPageShowsTotalsAndCharts(t *testing.T) {
 	client := loggedInClient(t, testServer)
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi/overview")
 
+	// A card reading "0.00 L — no fuel data yet" claimed a figure the app has
+	// no source for, so it is gone rather than left showing a zero.
+	if strings.Contains(page, "STOCK FUEL") {
+		t.Fatal("the overview still shows the fuel card")
+	}
+
 	for _, fragment := range []string{
-		"TOTAL PRODUKSI", "TOTAL RITASE", "UNIT DT AKTIF", "STOCK FUEL",
+		"TOTAL PRODUKSI", "TOTAL RITASE", "UNIT DT AKTIF",
 		"40.50", // total volume
 		">2<",   // ritase and active units
 		// Unfiltered, the charts group by month.
 		"PRODUKSI PER BULAN",
 		"RITASE DT KECIL VS DT BESAR",
+		// Side by side, so each kind carries its own bar and its own number.
+		`series-kecil`, `series-besar`,
+		"· DT Kecil", "· DT Besar",
 		"UNIT AKTIF PER BULAN",
 		"VOLUME VS VOLUME OPP",
 		"Volume Real",

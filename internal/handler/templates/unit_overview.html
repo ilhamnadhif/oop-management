@@ -39,14 +39,6 @@
       </div>
       <span class="kpi-icon purple">{{template "icon" "user"}}</span>
     </article>
-    <article class="panel kpi-card">
-      <div>
-        <p class="eyebrow">KAPASITAS TANGKI A2B</p>
-        <p class="kpi-value">{{printf "%.0f" .FuelStorageTotal}} <small>L</small></p>
-        <p class="kpi-note">Konsumsi {{printf "%.1f" .FuelRateTotal}} L/jam bila semua jalan</p>
-      </div>
-      <span class="kpi-icon amber">{{template "icon" "fuel"}}</span>
-    </article>
   </section>
 
   {{if .TanpaDriver}}

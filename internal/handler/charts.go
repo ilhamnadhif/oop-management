@@ -211,69 +211,20 @@ func BuildValueChart(labels []string, values []float64, decimals int) *Chart {
 	return chart
 }
 
-// BuildStackedChart stacks two counts per entry, which is how the ritase split
-// reads as one total rather than two competing bars.
-func BuildStackedChart(labels []string, lower, upper []int) *Chart {
-	chart := newChart()
-	if len(labels) == 0 {
-		chart.Empty = true
-		return chart
-	}
-	max := 0.0
-	for i := range labels {
-		if total := float64(lower[i] + upper[i]); total > max {
-			max = total
-		}
-	}
-	max = niceMax(max)
-	chart.PlotTop += 16
-	chart.addTicks(max, 0)
-
-	plotWidth := chart.PlotRight - chart.PlotLeft
-	plotHeight := chart.PlotBottom - chart.PlotTop
-	slot := plotWidth / float64(len(labels))
-	barWidth := math.Max(2, math.Min(24, slot*0.62))
-	stride := labelStride(len(labels))
-	chart.LabelStride = stride
-
-	for i := range labels {
-		centre := chart.PlotLeft + slot*(float64(i)+0.5)
-		lowerHeight := float64(lower[i]) / max * plotHeight
-		upperHeight := float64(upper[i]) / max * plotHeight
-		top := ChartBar{
-			X: centre - barWidth/2, Y: chart.PlotBottom - lowerHeight - upperHeight,
-			Width: barWidth, Height: upperHeight,
-			Label: labels[i], Value: fmt.Sprintf("%d", upper[i]), Series: "besar",
-		}
-		// The badge carries the combined total: two numbers stacked on one thin
-		// bar would overlap, and the total is what the eye is after anyway.
-		total := fmt.Sprintf("%d", lower[i]+upper[i])
-		if i%stride == 0 && badgeFits(total, slot*float64(stride)) {
-			top.Badge = true
-			top.BadgeWidth = badgeWidth(total)
-			top.BadgeX = centre - top.BadgeWidth/2
-			top.BadgeY = top.Y - 20
-			top.Value = total
-		}
-		chart.Bars = append(chart.Bars,
-			ChartBar{
-				X: centre - barWidth/2, Y: chart.PlotBottom - lowerHeight,
-				Width: barWidth, Height: lowerHeight,
-				Label: labels[i], Value: fmt.Sprintf("%d", lower[i]), Series: "kecil",
-			},
-			top,
-		)
-		if i%stride == 0 {
-			chart.XLabels = append(chart.XLabels, ChartLabel{X: centre, Y: chart.PlotBottom + 14, Text: labels[i], Angle: -45})
-		}
-	}
-	return chart
-}
-
 // BuildGroupedChart puts two bars side by side in each slot, which is how a
 // realised figure reads against its nominal: they are alternatives to compare,
 // not parts of one total to stack.
-func BuildGroupedChart(labels []string, first, second []float64) *Chart {
+// GroupedSeries names one of the two bars in a grouped chart: the class its
+// colour comes from, the words its tooltip uses, and how precisely its value is
+// written. Without it the tooltips of every grouped chart would read "Volume
+// Real", whatever the chart is actually about.
+type GroupedSeries struct {
+	Name     string
+	Label    string
+	Decimals int
+}
+
+func BuildGroupedChart(labels []string, first, second []float64, firstSeries, secondSeries GroupedSeries) *Chart {
 	chart := newChart()
 	if len(labels) == 0 {
 		chart.Empty = true
@@ -309,12 +260,14 @@ func BuildGroupedChart(labels []string, first, second []float64) *Chart {
 		realBar := ChartBar{
 			X: centre - barWidth - gap/2, Y: chart.PlotBottom - firstHeight,
 			Width: barWidth, Height: firstHeight,
-			Label: labels[i] + " · Volume Real", Value: trimNumber(first[i], 2), Series: "real",
+			Label: labels[i] + " · " + firstSeries.Label,
+			Value: trimNumber(first[i], firstSeries.Decimals), Series: firstSeries.Name,
 		}
 		oppBar := ChartBar{
 			X: centre + gap/2, Y: chart.PlotBottom - secondHeight,
 			Width: barWidth, Height: secondHeight,
-			Label: labels[i] + " · Volume OPP", Value: trimNumber(second[i], 2), Series: "opp",
+			Label: labels[i] + " · " + secondSeries.Label,
+			Value: trimNumber(second[i], secondSeries.Decimals), Series: secondSeries.Name,
 		}
 		// Two badges share one slot here, so each only gets half the room
 		// against the neighbouring slot.
