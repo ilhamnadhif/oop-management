@@ -184,7 +184,7 @@ jobs:
             GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google-application-credentials.json
             APP_TIMEZONE=Asia/Jakarta
             SESSION_TTL=24h
-            SESSION_COOKIE_SECURE=false  # HTTP untuk sekarang; ganti true jika sudah ada HTTPS via reverse proxy
+            SESSION_COOKIE_SECURE=true
             MAX_UPLOAD_BYTES=2097152
             MAX_PHOTO_CHARS=45000
             MIMO_API_KEY=$MIMO_API_KEY
