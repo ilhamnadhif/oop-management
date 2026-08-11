@@ -326,7 +326,7 @@ func TestSidebarGroupsPagesUnderHeadings(t *testing.T) {
 	}
 
 	// Every page sits inside a sublist.
-	for _, page := range []string{"Overview", "Input Data", "Export Data", "Unit DT", "Unit A2B", "Input HM", "Input Fuel"} {
+	for _, page := range []string{"Overview", "Input Data", "Export Data", "Unit DT", "Unit A2B", "Input HM", "Fuel Keluar"} {
 		at := strings.Index(nav, ">"+page+"<")
 		if at < 0 {
 			t.Fatalf("page %q is missing from the menu", page)

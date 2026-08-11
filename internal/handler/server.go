@@ -50,6 +50,8 @@ type Server struct {
 	nota           *service.NotaService
 	leave          *service.LeaveService
 	unitOverview   *service.UnitOverviewService
+	fuelMasuk      *service.FuelMasukService
+	fuelKeluar     *service.FuelKeluarService
 	company        string
 	signatory      export.Signatory
 	sessions       *session.Manager
@@ -218,7 +220,7 @@ type Branding struct {
 	Signatory export.Signatory
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, leave *service.LeaveService, unitOverview *service.UnitOverviewService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, leave *service.LeaveService, unitOverview *service.UnitOverviewService, fuelMasuk *service.FuelMasukService, fuelKeluar *service.FuelKeluarService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
 	if strings.TrimSpace(branding.Company) == "" {
 		branding.Company = "PT Orecon Putra Perkasa"
 	}
@@ -262,6 +264,8 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		nota:           nota,
 		leave:          leave,
 		unitOverview:   unitOverview,
+		fuelMasuk:      fuelMasuk,
+		fuelKeluar:     fuelKeluar,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -305,7 +309,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/unit/overview", s.handleUnitOverview)
 	mux.HandleFunc("/a2b/overview", s.handleA2BOverview)
 	mux.HandleFunc("/a2b/hm", s.handleA2BHourMeter)
-	mux.HandleFunc("/a2b/fuel", s.handleA2BFuel)
+	mux.HandleFunc("/a2b/fuel-keluar", s.handleFuelKeluar)
+	mux.HandleFunc("/a2b/fuel-keluar/foto", s.handleFuelKeluarPhoto)
+	mux.HandleFunc("/a2b/fuel-masuk", s.handleFuelMasuk)
+	mux.HandleFunc("/a2b/fuel-masuk/approval", s.handleFuelMasukApproval)
+	mux.HandleFunc("/a2b/fuel-masuk/foto", s.handleFuelMasukPhoto)
 	mux.HandleFunc("/unit/export", s.handleUnitExport)
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
 	mux.HandleFunc("/a2b/export", s.handleA2BExport)
@@ -1174,12 +1182,6 @@ func (s *Server) handleA2BHourMeter(w http.ResponseWriter, r *http.Request) {
 	s.renderComingSoon(w, r, "a2b-hm",
 		"Formulir pencatatan hour meter sedang dikerjakan. Sampai selesai, HM awal "+
 			"tiap alat tetap tersimpan lewat form pendaftaran Unit A2B.")
-}
-
-func (s *Server) handleA2BFuel(w http.ResponseWriter, r *http.Request) {
-	s.renderComingSoon(w, r, "a2b-fuel",
-		"Formulir pencatatan pengisian bahan bakar sedang dikerjakan. Kapasitas tangki "+
-			"dan konsumsi per jam tiap alat sudah tercatat di daftar Unit A2B.")
 }
 
 func (s *Server) renderComingSoon(w http.ResponseWriter, r *http.Request, navKey, note string) {

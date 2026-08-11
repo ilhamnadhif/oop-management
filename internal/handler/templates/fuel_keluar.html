@@ -1,0 +1,148 @@
+{{define "fuel_keluar"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "fuel"}}FUEL KELUAR</p>
+        <h2>Catat pengisian bahan bakar alat berat</h2>
+      </div>
+    </div>
+
+    {{if .Units}}
+    <form method="post" action="/a2b/fuel-keluar" class="stack-form" enctype="multipart/form-data" data-loading-form data-fuel-keluar-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+      <div class="form-grid">
+        <div>
+          <label for="no_transaksi">{{template "icon" "hash"}}No transaksi</label>
+          <input id="no_transaksi" type="text" value="{{.NextFuelOutID}}" disabled>
+        </div>
+        <div>
+          <label for="tanggal">{{template "icon" "calendar"}}Tanggal input</label>
+          <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div>
+          <label for="id_unit">{{template "icon" "cube"}}ID unit</label>
+          {{/* A closed list: fuel booked against a machine nobody registered
+               belongs to nothing. The names come from the A2B register. */}}
+          <select id="id_unit" name="id_unit" data-fuel-unit required>
+            <option value="">Pilih ID unit…</option>
+            {{range .Units}}
+            <option value="{{.IDUnit}}" data-nama-unit="{{.NamaUnit}}"{{if eq .IDUnit $.Form.IDUnit}} selected{{end}}>{{.IDUnit}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div>
+          <label for="nama_unit">{{template "icon" "truck"}}Nama unit</label>
+          {{/* Filled in from the register, never posted: the server looks the
+               name up again from the id it was given. */}}
+          <input id="nama_unit" type="text" value="" placeholder="Terisi otomatis dari ID unit" data-fuel-nama-unit disabled>
+        </div>
+      </div>
+
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="hm_awal">{{template "icon" "clock"}}HM awal flow meter</label>
+          <input id="hm_awal" name="hm_awal" type="number" value="{{.Form.HMAwalFlowMeter}}" step="0.01" min="0" data-fuel-awal required>
+        </div>
+        <div>
+          <label for="hm_akhir">{{template "icon" "clock"}}HM akhir flow meter</label>
+          <input id="hm_akhir" name="hm_akhir" type="number" value="{{.Form.HMAkhirFlowMeter}}" step="0.01" min="0" data-fuel-akhir required>
+        </div>
+        <div>
+          <label for="fuel_liter">{{template "icon" "fuel"}}Fuel (liter)</label>
+          {{/* The flow meter is a running total, so the litres are the distance
+               between the two readings. The server computes it either way. */}}
+          <input id="fuel_liter" type="text" value="" placeholder="Selisih flow meter" data-fuel-liter disabled>
+        </div>
+      </div>
+      <p class="hint">HM awal terisi dari pengisian terakhir. Ubah bila angka di flow meter berbeda.</p>
+
+      <div class="form-grid">
+        <div>
+          <label for="hm_alat_berat">{{template "icon" "clock"}}HM alat berat pengisian <span class="hint">(opsional)</span></label>
+          <input id="hm_alat_berat" name="hm_alat_berat" type="number" value="{{.Form.HMAlatBerat}}" step="0.01" min="0" placeholder="Pembacaan HM alat saat diisi">
+        </div>
+        <div>
+          <label for="operator">{{template "icon" "user"}}Operator</label>
+          <input id="operator" name="operator" type="text" list="operatorList" value="{{.Form.Operator}}" placeholder="Pilih atau ketik nama operator…" autocomplete="off" required>
+          <datalist id="operatorList">
+            {{range .OperatorOptions}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+      </div>
+
+      <label for="foto_flow_meter">{{template "icon" "camera"}}Foto akhir flow meter</label>
+      <input id="foto_flow_meter" name="foto_flow_meter" type="file" accept="image/*" required>
+      <p class="hint">Bukti angka akhir yang diketik di atas. Foto dikecilkan otomatis sebelum disimpan.</p>
+
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "save"}}<span data-submit-label>Simpan fuel keluar</span>
+      </button>
+    </form>
+    {{else}}
+    <p class="panel-empty">Belum ada unit A2B terdaftar. Daftarkan alat berat lebih dulu di <a href="/unit-a2b">Unit A2B</a>, karena fuel keluar dicatat per unit.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}RIWAYAT</p>
+        <h2>{{len .Rows}} pengisian tercatat</h2>
+      </div>
+      <a class="button subtle" href="/a2b/fuel-masuk">{{template "icon" "fuel"}}Fuel masuk</a>
+    </div>
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">No transaksi</th>
+            <th scope="col">Tanggal input</th>
+            <th scope="col">ID unit</th>
+            <th scope="col">Nama unit</th>
+            <th scope="col" class="numeric">HM awal</th>
+            <th scope="col" class="numeric">HM akhir</th>
+            <th scope="col" class="numeric">Fuel (L)</th>
+            <th scope="col" class="numeric">HM alat berat</th>
+            <th scope="col">Operator</th>
+            <th scope="col">Foto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <td>{{.FuelOutID}}</td>
+            <td>{{.TanggalLabel}}</td>
+            <td>{{.IDUnit}}</td>
+            <td class="wrap">{{.NamaUnit}}</td>
+            <td class="numeric">{{.AwalLabel}}</td>
+            <td class="numeric">{{.AkhirLabel}}</td>
+            <td class="numeric">{{.LiterLabel}}</td>
+            <td class="numeric">{{if .HMAlatBeratLabel}}{{.HMAlatBeratLabel}}{{else}}-{{end}}</td>
+            <td class="wrap">{{.Operator}}</td>
+            <td class="fuel-photo-links">
+              <a href="{{.PhotoURL}}" target="_blank" rel="noopener" title="Foto akhir flow meter">{{template "icon" "camera"}}</a>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada pengisian yang tercatat.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/fuel-keluar.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

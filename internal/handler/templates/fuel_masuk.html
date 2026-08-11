@@ -1,0 +1,141 @@
+{{define "fuel_masuk"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "fuel"}}FUEL MASUK</p>
+        <h2>Catat kiriman fuel dari vendor</h2>
+      </div>
+    </div>
+
+    <form method="post" action="/a2b/fuel-masuk" class="stack-form" enctype="multipart/form-data" data-loading-form data-fuel-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+      <label for="no_transaksi">{{template "icon" "hash"}}No transaksi</label>
+      <input id="no_transaksi" type="text" value="{{.NextFuelID}}" disabled>
+
+      <label for="tanggal_input">{{template "icon" "calendar"}}Tanggal &amp; waktu input</label>
+      <input id="tanggal_input" name="tanggal_input" type="datetime-local" value="{{.Form.TanggalInput}}" required>
+
+      <div class="form-grid">
+        <div>
+          <label for="vendor">{{template "icon" "tag"}}Vendor</label>
+          <input id="vendor" name="vendor" type="text" list="vendorList" value="{{.Form.Vendor}}" placeholder="Pilih atau ketik nama vendor…" autocomplete="off" required>
+          <datalist id="vendorList">
+            {{range .Options.Vendors}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+        <div>
+          <label for="driver">{{template "icon" "user"}}Nama driver</label>
+          <input id="driver" name="driver" type="text" list="fuelDriverList" value="{{.Form.Driver}}" placeholder="Pilih atau ketik nama driver…" autocomplete="off" required>
+          <datalist id="fuelDriverList">
+            {{range .Options.Drivers}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div>
+          <label for="nopol">{{template "icon" "truck"}}No. polisi truck</label>
+          <input id="nopol" name="nopol" type="text" value="{{.Form.Nopol}}" placeholder="B 1234 ABC"
+            pattern="[A-Za-z]{1,2} ?[0-9]{1,4} ?[A-Za-z]{1,3}"
+            title="Format: 1-2 huruf, spasi, 1-4 angka, spasi, 1-3 huruf. Contoh B 1234 ABC"
+            autocomplete="off" data-nopol required>
+        </div>
+        <div>
+          <label for="jumlah_liter">{{template "icon" "fuel"}}Jumlah fuel masuk (liter)</label>
+          <input id="jumlah_liter" name="jumlah_liter" type="number" value="{{.Form.JumlahLiter}}" placeholder="8010" step="0.01" min="0.01" required>
+        </div>
+      </div>
+
+      <label for="keterangan">{{template "icon" "check"}}Keterangan</label>
+      <select id="keterangan" name="keterangan" data-fuel-keterangan required>
+        {{range .KeteranganOptions}}
+        <option value="{{.}}" {{if eq . $.Form.Keterangan}}selected{{end}}>{{.}}</option>
+        {{end}}
+      </select>
+
+      {{/* Shown only when the delivery does not match. The server ignores the
+           field for a matching delivery, so the two columns cannot disagree. */}}
+      <div data-fuel-selisih{{if eq .Form.Keterangan "sesuai"}} hidden{{end}}>
+        <label for="liter_tidak_sesuai">{{template "icon" "percent"}}Liter tidak sesuai (liter)</label>
+        <input id="liter_tidak_sesuai" name="liter_tidak_sesuai" type="number" value="{{.Form.LiterTidakSesuai}}" placeholder="150" step="0.01" min="0.01">
+        <p class="hint">Selisih antara surat jalan dan yang benar-benar masuk ke tangki.</p>
+      </div>
+
+      <p class="eyebrow fuel-photo-heading">{{template "icon" "camera"}}FOTO BUKTI BONGKAR</p>
+      <p class="hint">Keempat foto wajib. Foto dikecilkan otomatis sebelum disimpan.</p>
+      <div class="form-grid">
+        {{range .PhotoKinds}}
+        <div>
+          <label for="{{.Field}}">{{template "icon" "camera"}}{{.Label}}</label>
+          <input id="{{.Field}}" name="{{.Field}}" type="file" accept="image/*" capture="environment" required>
+        </div>
+        {{end}}
+      </div>
+
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "save"}}<span data-submit-label>Simpan fuel masuk</span>
+      </button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}RIWAYAT</p>
+        <h2>{{len .Rows}} kiriman tercatat</h2>
+      </div>
+      <a class="button subtle" href="/a2b/fuel-masuk/approval">{{template "icon" "check"}}Buka approval</a>
+    </div>
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">No transaksi</th>
+            <th scope="col">Tanggal &amp; waktu input</th>
+            <th scope="col">Vendor</th>
+            <th scope="col">Driver</th>
+            <th scope="col">No. polisi</th>
+            <th scope="col" class="numeric">Fuel masuk (L)</th>
+            <th scope="col">Keterangan</th>
+            <th scope="col" class="numeric">Tidak sesuai (L)</th>
+            <th scope="col">Status approval</th>
+            <th scope="col">Foto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <td>{{.FuelID}}</td>
+            <td>{{.TanggalLabel}}</td>
+            <td class="wrap">{{.Vendor}}</td>
+            <td class="wrap">{{.Driver}}</td>
+            <td>{{.Nopol}}</td>
+            <td class="numeric">{{.JumlahLabel}}</td>
+            <td>{{.Keterangan}}</td>
+            <td class="numeric">{{if .TidakSesuai}}{{.SelisihLabel}}{{else}}-{{end}}</td>
+            <td><span class="status-chip {{.StatusClass}}">{{.StatusApproval}}</span></td>
+            <td class="fuel-photo-links">
+              {{range .Photos}}<a href="{{.URL}}" target="_blank" rel="noopener" title="{{.Label}}">{{template "icon" "camera"}}</a>{{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada kiriman fuel yang tercatat.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/combobox.js" defer></script>
+<script src="/static/js/fuel.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

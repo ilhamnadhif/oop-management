@@ -11,6 +11,8 @@ MVP aplikasi absensi server-rendered menggunakan Go, HTML template, JavaScript v
 - Request leave untuk semua role, termasuk edit/cancel selama menunggu dan bukti pendukung untuk Cuti Sakit.
 - HR Overview serta Approval Leave untuk role HR dan Management.
 - Input Produksi, Unit, Nota, rekonsiliasi, export laporan, dan scan struk MiMo.
+- Fuel Masuk: catat kiriman fuel vendor dengan empat foto bukti bongkar, lalu approval oleh Logistik dan Management.
+- Fuel Keluar: catat pengisian tiap alat berat dari pembacaan flow meter; liter dihitung dari selisih dan unit diambil dari register Unit A2B.
 - Data tersimpan di Google Sheets dengan schema yang dibuat dan diverifikasi saat startup.
 - Foto selfie dikompresi sebagai JPEG dan disimpan sebagai data URI base64 pada spreadsheet.
 
@@ -76,7 +78,7 @@ export APP_TIMEZONE=Asia/Jakarta
 go run ./cmd/web
 ```
 
-Saat startup aplikasi akan membuat seluruh sheet dan header yang diperlukan bila belum tersedia, termasuk sheet `Leave`. Header yang sudah ada tetapi tidak sesuai akan menyebabkan startup gagal tanpa menimpa data.
+Saat startup aplikasi akan membuat seluruh sheet dan header yang diperlukan bila belum tersedia, termasuk sheet `Leave`, `Fuel Masuk`, dan `Fuel Keluar`. Header yang sudah ada tetapi tidak sesuai akan menyebabkan startup gagal tanpa menimpa data.
 
 Contoh environment variable minimum:
 

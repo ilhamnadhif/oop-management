@@ -48,6 +48,25 @@ type Store interface {
 	ListNotaItems(ctx context.Context) ([]model.NotaItem, error)
 	FindNotaRow(ctx context.Context, notaID string) (*model.Nota, int, error)
 	SettleNota(ctx context.Context, rowNumber int, nota *model.Nota) error
+	MaxFuelMasukSequence(ctx context.Context, prefix string) (int, error)
+	CreateFuelMasuk(ctx context.Context, fuel *model.FuelMasuk) error
+	// ListFuelMasuk reads every column except the four photos. Those sit in the
+	// middle of the row because the sheet's column order was fixed before this
+	// app existed, so the listing is stitched from the ranges either side of
+	// them rather than dragging four base64 images per row into every page.
+	ListFuelMasuk(ctx context.Context) ([]model.FuelMasuk, error)
+	FindFuelMasukRow(ctx context.Context, fuelID string) (*model.FuelMasuk, int, error)
+	UpdateFuelMasukDecision(ctx context.Context, rowNumber int, fuel *model.FuelMasuk) error
+	// ReadFuelMasukPhoto fetches one photo. photoIndex is 0-3 in the order the
+	// sheet holds them: truck, tank before, flowmeter, tank after.
+	ReadFuelMasukPhoto(ctx context.Context, rowNumber, photoIndex int) (string, error)
+	MaxFuelKeluarSequence(ctx context.Context, prefix string) (int, error)
+	CreateFuelKeluar(ctx context.Context, fuel *model.FuelKeluar) error
+	// ListFuelKeluar reads every column except the flowmeter photo, which is a
+	// base64 image sitting between the delivery columns and the audit trail.
+	ListFuelKeluar(ctx context.Context) ([]model.FuelKeluar, error)
+	FindFuelKeluarRow(ctx context.Context, fuelOutID string) (*model.FuelKeluar, int, error)
+	ReadFuelKeluarPhoto(ctx context.Context, rowNumber int) (string, error)
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	ListAttendanceByUser(ctx context.Context, userID string) ([]model.Attendance, error)
 	ListAttendanceBetween(ctx context.Context, from, to string) ([]model.Attendance, error)

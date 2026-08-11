@@ -40,6 +40,8 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *repository.TestRep
 		service.NewNotaService(store, location, nowFunc),
 		service.NewLeaveService(store, location, nowFunc),
 		service.NewUnitOverviewService(store, location, nowFunc),
+		service.NewFuelMasukService(store, location, nowFunc),
+		service.NewFuelKeluarService(store, location, nowFunc),
 		session.NewManager(24*time.Hour, false),
 		location, nowFunc, 2*1024*1024, photo.MaxOutputChars,
 		Branding{Company: "PT Orecon Putra Perkasa", Signatory: export.Signatory{Title: "Direktur"}},

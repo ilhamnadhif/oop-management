@@ -1,0 +1,144 @@
+{{define "fuel_masuk_approval"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading approval-summary">
+      <div>
+        <p class="eyebrow">{{template "icon" "check"}}APPROVAL FUEL MASUK</p>
+        <h2>{{len .Rows}} kiriman ditemukan</h2>
+      </div>
+      <a class="button subtle" href="/a2b/fuel-masuk">{{template "icon" "fuel"}}Input fuel masuk</a>
+    </div>
+
+    <form class="approval-filter-form" method="get" action="/a2b/fuel-masuk/approval">
+      <div class="approval-search-field">
+        <label for="q">{{template "icon" "search"}}Cari vendor, nopol, atau no transaksi</label>
+        <input id="q" name="q" type="search" value="{{.Filters.Q}}" placeholder="Vendor, B 1234 ABC, atau FUEL-…" autocomplete="off">
+      </div>
+      <div>
+        <label for="status">Status approval</label>
+        <select id="status" name="status">
+          <option value="SEMUA"{{if eq .StatusFilter "SEMUA"}} selected{{end}}>Semua status</option>
+          {{range .Statuses}}<option value="{{.}}"{{if eq $.StatusFilter .}} selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label for="from">{{template "icon" "calendar"}}Mulai periode</label>
+        <input id="from" name="from" type="date" value="{{.Filters.From}}">
+      </div>
+      <div>
+        <label for="to">{{template "icon" "calendar"}}Akhir periode</label>
+        <input id="to" name="to" type="date" value="{{.Filters.To}}">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/a2b/fuel-masuk/approval">Reset</a>
+    </form>
+    <p class="hint approval-filter-note">Filter tanggal memakai waktu input kiriman. Yang masih menunggu diurutkan dari yang paling lama.</p>
+  </section>
+
+  <section class="panel">
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table approval-table">
+        <thead>
+          <tr>
+            <th scope="col">No transaksi</th>
+            <th scope="col">Tanggal &amp; waktu input</th>
+            <th scope="col">Vendor</th>
+            <th scope="col">No. polisi</th>
+            <th scope="col" class="numeric">Fuel masuk (L)</th>
+            <th scope="col">Keterangan</th>
+            <th scope="col">Status</th>
+            <th scope="col">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <td>{{.FuelID}}</td>
+            <td>{{.TanggalLabel}}</td>
+            <td class="wrap"><strong>{{.Vendor}}</strong><br><span class="table-subtext">{{.Driver}}</span></td>
+            <td>{{.Nopol}}</td>
+            <td class="numeric">{{.JumlahLabel}}</td>
+            <td>{{.Keterangan}}{{if .TidakSesuai}} <span class="table-subtext">(-{{.SelisihLabel}} L)</span>{{end}}</td>
+            <td><span class="status-chip {{.StatusClass}}">{{.StatusApproval}}</span></td>
+            <td>
+              {{/* A link, not a script-only button: without JavaScript it
+                   reloads the page with this delivery's dialog already open. */}}
+              <a class="button subtle table-action" data-open-dialog="dialog-{{.FuelID}}"
+                href="/a2b/fuel-masuk/approval?fuel={{.FuelID}}{{if $.Filters.Q}}&amp;q={{urlquery $.Filters.Q}}{{end}}{{if $.StatusFilter}}&amp;status={{urlquery $.StatusFilter}}{{end}}{{if $.Filters.From}}&amp;from={{$.Filters.From}}{{end}}{{if $.Filters.To}}&amp;to={{$.Filters.To}}{{end}}">
+                {{template "icon" "info"}}{{if eq .StatusApproval "MENUNGGU"}}Tinjau{{else}}Detail{{end}}
+              </a>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Tidak ada kiriman fuel yang cocok dengan filter ini.</p>
+    {{end}}
+  </section>
+
+  {{range .Rows}}
+  <dialog class="modal leave-approval-modal" id="dialog-{{.FuelID}}" aria-labelledby="title-{{.FuelID}}"{{if .Selected}} open{{end}}>
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">{{template "icon" "fuel"}}{{.FuelID}}</p>
+        <h2 id="title-{{.FuelID}}">{{.Vendor}}</h2>
+      </div>
+      <a class="icon-button" data-close-dialog
+        href="/a2b/fuel-masuk/approval?{{if $.Filters.Q}}q={{urlquery $.Filters.Q}}&amp;{{end}}{{if $.StatusFilter}}status={{urlquery $.StatusFilter}}&amp;{{end}}{{if $.Filters.From}}from={{$.Filters.From}}&amp;{{end}}{{if $.Filters.To}}to={{$.Filters.To}}{{end}}"
+        aria-label="Tutup detail {{.FuelID}}">{{template "icon" "close"}}</a>
+    </div>
+
+    <dl class="leave-facts">
+      <div><dt>Tanggal &amp; waktu input</dt><dd>{{.TanggalLabel}}</dd></div>
+      <div><dt>Status</dt><dd><span class="status-chip {{.StatusClass}}">{{.StatusApproval}}</span></dd></div>
+      <div><dt>Nama driver</dt><dd>{{.Driver}}</dd></div>
+      <div><dt>No. polisi truck</dt><dd>{{.Nopol}}</dd></div>
+      <div><dt>Jumlah fuel masuk</dt><dd>{{.JumlahLabel}} liter</dd></div>
+      <div><dt>Keterangan</dt><dd>{{.Keterangan}}</dd></div>
+      <div><dt>Liter tidak sesuai</dt><dd>{{if .TidakSesuai}}{{.SelisihLabel}} liter{{else}}-{{end}}</dd></div>
+      <div><dt>Diinput oleh</dt><dd>{{if .CreatedBy}}{{.CreatedBy}}{{else}}-{{end}}</dd></div>
+    </dl>
+
+    <div class="fuel-proof-links">
+      {{range .Photos}}
+      <a class="button subtle" href="{{.URL}}" target="_blank" rel="noopener">{{template "icon" "camera"}}{{.Label}}</a>
+      {{end}}
+    </div>
+
+    {{if eq .StatusApproval "MENUNGGU"}}
+    <form method="post" action="/a2b/fuel-masuk/approval" class="leave-decision-form">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="fuel_id" value="{{.FuelID}}">
+      <input type="hidden" name="q" value="{{$.Filters.Q}}">
+      <input type="hidden" name="status" value="{{$.StatusFilter}}">
+      <input type="hidden" name="from" value="{{$.Filters.From}}">
+      <input type="hidden" name="to" value="{{$.Filters.To}}">
+      <div>
+        <label for="catatan-{{.FuelID}}">Catatan keputusan</label>
+        <textarea id="catatan-{{.FuelID}}" name="catatan_approval" rows="4" maxlength="1000" placeholder="Opsional saat menyetujui, wajib saat menolak"></textarea>
+      </div>
+      <div class="approval-actions">
+        <button class="button approve" type="submit" name="decision" value="approve">{{template "icon" "check"}}Setujui</button>
+        <button class="button reject" type="submit" name="decision" value="reject">{{template "icon" "close"}}Tolak</button>
+      </div>
+    </form>
+    {{else}}
+    <dl class="leave-decision-audit">
+      <div><dt>Diproses oleh</dt><dd>{{if .DiprosesOleh}}{{.DiprosesOleh}}{{else}}-{{end}}</dd></div>
+      <div><dt>Waktu keputusan</dt><dd>{{if .ProcessedLabel}}{{.ProcessedLabel}}{{else}}-{{end}}</dd></div>
+      <div><dt>Catatan</dt><dd class="leave-reason">{{if .CatatanApproval}}{{.CatatanApproval}}{{else}}Tidak ada catatan.{{end}}</dd></div>
+    </dl>
+    {{end}}
+  </dialog>
+  {{end}}
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/dialog.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

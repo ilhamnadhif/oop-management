@@ -69,8 +69,15 @@ var navItems = []NavItem{
 			Lede: "Daftarkan alat berat beserta kapasitas dan konsumsi bahan bakarnya."},
 		{Key: "a2b-hm", Label: "Input HM", Path: "/a2b/hm", Icon: "clock",
 			Lede: "Catat pembacaan hour meter setiap alat berat."},
-		{Key: "a2b-fuel", Label: "Input Fuel", Path: "/a2b/fuel", Icon: "fuel",
-			Lede: "Catat pengisian bahan bakar setiap alat berat."},
+		// The tank has two sides: what a vendor delivers into it, and what is
+		// pumped out of it into a machine. They are recorded separately because
+		// only one of them needs a sign-off.
+		{Key: "a2b-fuel-masuk", Label: "Fuel Masuk", Path: "/a2b/fuel-masuk", Icon: "fuel",
+			Lede: "Catat kiriman fuel dari vendor lengkap dengan foto bukti bongkar."},
+		{Key: "a2b-fuel-keluar", Label: "Fuel Keluar", Path: "/a2b/fuel-keluar", Icon: "fuel",
+			Lede: "Catat pengisian bahan bakar tiap alat berat lewat pembacaan flow meter."},
+		{Key: "a2b-fuel-approval", Label: "Approval Fuel Masuk", Path: "/a2b/fuel-masuk/approval", Icon: "check",
+			Lede: "Tinjau foto bongkar dan putuskan kiriman fuel yang masuk."},
 		{Key: "a2b-export", Label: "Export Data", Path: "/a2b/export", Icon: "save",
 			Lede: "Unduh daftar alat berat dalam XLSX atau PDF."},
 	}},
@@ -96,6 +103,15 @@ var menuAccess = map[string][]string{
 	"nota": {"HR"},
 }
 
+// pageAccess narrows a single page inside a menu everyone in that menu can
+// otherwise open. Recording a fuel delivery and signing one off are different
+// jobs, so the approval page is closed to the positions that only record.
+//
+// A page listed here ignores its menu rule entirely.
+var pageAccess = map[string][]string{
+	"a2b-fuel-approval": {"Logistik"},
+}
+
 // menuKeyFor reports which top-level menu a page belongs to, since permission
 // is granted over a menu rather than over each page under it.
 func menuKeyFor(key string) string {
@@ -119,6 +135,9 @@ func CanAccess(jabatan, key string) bool {
 	if strings.EqualFold(strings.TrimSpace(jabatan), JabatanManagement) {
 		return true
 	}
+	if allowed, restricted := pageAccess[key]; restricted {
+		return positionListed(jabatan, allowed)
+	}
 	menu := menuKeyFor(key)
 	allowed, restricted := menuAccess[menu]
 	if !restricted {
@@ -128,6 +147,10 @@ func CanAccess(jabatan, key string) bool {
 		}
 		return true
 	}
+	return positionListed(jabatan, allowed)
+}
+
+func positionListed(jabatan string, allowed []string) bool {
 	for _, position := range allowed {
 		if strings.EqualFold(strings.TrimSpace(jabatan), position) {
 			return true

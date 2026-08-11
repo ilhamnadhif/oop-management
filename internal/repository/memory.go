@@ -24,6 +24,8 @@ type TestRepository struct {
 	unitA2B    []*model.UnitA2B
 	nota       []*model.Nota
 	leaves     []*model.Leave
+	fuelMasuk  []*model.FuelMasuk
+	fuelKeluar []*model.FuelKeluar
 }
 
 func NewTestRepository() *TestRepository {
@@ -647,6 +649,204 @@ func (r *TestRepository) leaveAtRow(rowNumber int) (*model.Leave, error) {
 		return nil, ErrNotFound
 	}
 	return r.leaves[index], nil
+}
+
+func (r *TestRepository) MaxFuelMasukSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, fuel := range r.fuelMasuk {
+		trimmed := strings.TrimSpace(fuel.FuelID)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateFuelMasuk(_ context.Context, fuel *model.FuelMasuk) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fuelMasuk = append(r.fuelMasuk, cloneFuelMasuk(fuel))
+	return nil
+}
+
+// ListFuelMasuk drops the photos, as the Sheets listing does, so a handler that
+// accidentally relies on them fails in tests rather than in production.
+func (r *TestRepository) ListFuelMasuk(context.Context) ([]model.FuelMasuk, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.FuelMasuk, 0, len(r.fuelMasuk))
+	for _, fuel := range r.fuelMasuk {
+		rows = append(rows, *withoutFuelPhotos(cloneFuelMasuk(fuel)))
+	}
+	return rows, nil
+}
+
+func (r *TestRepository) FindFuelMasukRow(_ context.Context, fuelID string) (*model.FuelMasuk, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	wanted := strings.ToUpper(strings.TrimSpace(fuelID))
+	for index, fuel := range r.fuelMasuk {
+		if strings.ToUpper(strings.TrimSpace(fuel.FuelID)) != wanted {
+			continue
+		}
+		return withoutFuelPhotos(cloneFuelMasuk(fuel)), index + 2, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+func (r *TestRepository) UpdateFuelMasukDecision(_ context.Context, rowNumber int, fuel *model.FuelMasuk) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored, err := r.fuelMasukAtRow(rowNumber)
+	if err != nil {
+		return err
+	}
+	stored.StatusApproval = fuel.StatusApproval
+	stored.CatatanApproval = fuel.CatatanApproval
+	stored.DiprosesOleh = fuel.DiprosesOleh
+	stored.DiprosesOlehUserID = fuel.DiprosesOlehUserID
+	stored.DiprosesPada = cloneTime(fuel.DiprosesPada)
+	stored.UpdatedAt = fuel.UpdatedAt
+	return nil
+}
+
+func (r *TestRepository) ReadFuelMasukPhoto(_ context.Context, rowNumber, photoIndex int) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	stored, err := r.fuelMasukAtRow(rowNumber)
+	if err != nil {
+		return "", err
+	}
+	switch photoIndex {
+	case 0:
+		return stored.FotoTruckDepan, nil
+	case 1:
+		return stored.FotoTangkiSebelum, nil
+	case 2:
+		return stored.FotoFlowmeter, nil
+	case 3:
+		return stored.FotoTangkiSetelah, nil
+	default:
+		return "", fmt.Errorf("invalid fuel photo index %d", photoIndex)
+	}
+}
+
+func (r *TestRepository) fuelMasukAtRow(rowNumber int) (*model.FuelMasuk, error) {
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.fuelMasuk) {
+		return nil, ErrNotFound
+	}
+	return r.fuelMasuk[index], nil
+}
+
+// FuelMasukList exposes the complete stored rows, photos included, to tests.
+func (r *TestRepository) FuelMasukList() []model.FuelMasuk {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.FuelMasuk, 0, len(r.fuelMasuk))
+	for _, fuel := range r.fuelMasuk {
+		rows = append(rows, *cloneFuelMasuk(fuel))
+	}
+	return rows
+}
+
+func cloneFuelMasuk(fuel *model.FuelMasuk) *model.FuelMasuk {
+	copy := *fuel
+	copy.DiprosesPada = cloneTime(fuel.DiprosesPada)
+	return &copy
+}
+
+func withoutFuelPhotos(fuel *model.FuelMasuk) *model.FuelMasuk {
+	fuel.FotoTruckDepan = ""
+	fuel.FotoTangkiSebelum = ""
+	fuel.FotoFlowmeter = ""
+	fuel.FotoTangkiSetelah = ""
+	return fuel
+}
+
+func (r *TestRepository) MaxFuelKeluarSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, fuel := range r.fuelKeluar {
+		trimmed := strings.TrimSpace(fuel.FuelOutID)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateFuelKeluar(_ context.Context, fuel *model.FuelKeluar) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fuelKeluar = append(r.fuelKeluar, cloneFuelKeluar(fuel))
+	return nil
+}
+
+// ListFuelKeluar drops the photo, as the Sheets listing does.
+func (r *TestRepository) ListFuelKeluar(context.Context) ([]model.FuelKeluar, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.FuelKeluar, 0, len(r.fuelKeluar))
+	for _, fuel := range r.fuelKeluar {
+		stored := cloneFuelKeluar(fuel)
+		stored.FotoAkhirFlowMeter = ""
+		rows = append(rows, *stored)
+	}
+	return rows, nil
+}
+
+func (r *TestRepository) FindFuelKeluarRow(_ context.Context, fuelOutID string) (*model.FuelKeluar, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	wanted := strings.ToUpper(strings.TrimSpace(fuelOutID))
+	for index, fuel := range r.fuelKeluar {
+		if strings.ToUpper(strings.TrimSpace(fuel.FuelOutID)) != wanted {
+			continue
+		}
+		stored := cloneFuelKeluar(fuel)
+		stored.FotoAkhirFlowMeter = ""
+		return stored, index + 2, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+func (r *TestRepository) ReadFuelKeluarPhoto(_ context.Context, rowNumber int) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.fuelKeluar) {
+		return "", ErrNotFound
+	}
+	return r.fuelKeluar[index].FotoAkhirFlowMeter, nil
+}
+
+// FuelKeluarList exposes the complete stored rows, photo included, to tests.
+func (r *TestRepository) FuelKeluarList() []model.FuelKeluar {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.FuelKeluar, 0, len(r.fuelKeluar))
+	for _, fuel := range r.fuelKeluar {
+		rows = append(rows, *cloneFuelKeluar(fuel))
+	}
+	return rows
+}
+
+func cloneFuelKeluar(fuel *model.FuelKeluar) *model.FuelKeluar {
+	copy := *fuel
+	copy.HMAlatBerat = cloneFloat(fuel.HMAlatBerat)
+	return &copy
 }
 
 func (r *TestRepository) Activities() []*model.LoginActivity {

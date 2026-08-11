@@ -15,8 +15,10 @@ var menuPaths = map[string][]string{
 	"hr":       {"/hr/overview", "/hr/approval-leave"},
 	"produksi": {"/produksi", "/produksi/overview", "/produksi/export"},
 	"unit":     {"/unit/overview", "/unit-dt", "/unit/export"},
-	"a2b":      {"/a2b/overview", "/unit-a2b", "/a2b/hm", "/a2b/fuel", "/a2b/export"},
-	"nota":     {"/nota", "/nota/overview", "/nota/rekonsiliasi", "/nota/export"},
+	// The fuel masuk approval page is deliberately absent: it is narrower than
+	// its menu, and TestFuelMasukApprovalIsNarrowerThanInput covers it.
+	"a2b":  {"/a2b/overview", "/unit-a2b", "/a2b/hm", "/a2b/fuel-masuk", "/a2b/fuel-keluar", "/a2b/export"},
+	"nota": {"/nota", "/nota/overview", "/nota/rekonsiliasi", "/nota/export"},
 }
 
 func statusOf(t *testing.T, client *http.Client, url string) int {

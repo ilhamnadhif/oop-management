@@ -89,20 +89,15 @@ func TestA2BOverviewCountsTheMachines(t *testing.T) {
 	}
 }
 
-// The two pages whose forms are still to be built exist behind the menu, so the
-// shape of the app is agreed before the forms are written.
+// The page whose form is still to be built exists behind the menu, so the shape
+// of the app is agreed before the form is written.
 func TestA2BPlaceholderPagesAreReachable(t *testing.T) {
 	testServer := newTestServer(t)
 	client := loggedInClient(t, testServer)
 
-	for path, title := range map[string]string{
-		"/a2b/hm":   "Input HM",
-		"/a2b/fuel": "Input Fuel",
-	} {
-		page := fetchAuthedPage(t, client, testServer.URL+path)
-		if !strings.Contains(page, "SEGERA HADIR") || !strings.Contains(page, title+" sedang disiapkan") {
-			t.Fatalf("%s does not say it is still being built", path)
-		}
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/hm")
+	if !strings.Contains(page, "SEGERA HADIR") || !strings.Contains(page, "Input HM sedang disiapkan") {
+		t.Fatal("/a2b/hm does not say it is still being built")
 	}
 }
 

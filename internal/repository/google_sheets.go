@@ -23,6 +23,8 @@ const (
 	notaSheet       = "Nota"
 	notaItemSheet   = "Nota Item"
 	leaveSheet      = "Leave"
+	fuelMasukSheet  = "Fuel Masuk"
+	fuelKeluarSheet = "Fuel Keluar"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -124,6 +126,53 @@ var leaveHeaders = []string{
 	"dibatalkan_pada", "created_at", "updated_at", "has_bukti_pendukung", "bukti_pendukung",
 }
 
+// The first thirteen columns are the delivery sheet as the site already keeps
+// it, photos and all. Everything this app adds - the approval note and the
+// audit trail - is appended after them, so an existing sheet keeps its layout.
+var fuelMasukHeaders = []string{
+	"no_transaksi", "tanggal_waktu_input", "vendor", "nama_driver", "nopol_truck",
+	"jumlah_fuel_masuk_liter", "keterangan", "liter_tidak_sesuai", "status_approval",
+	"foto_truck_tampak_depan", "foto_tangki_sebelum_bongkar", "foto_flowmeter",
+	"foto_tangki_setelah_bongkar",
+	"catatan_approval", "diproses_oleh", "diproses_oleh_user_id", "diproses_pada",
+	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+}
+
+// The first ten columns are the dispensing log as the site keeps it; the audit
+// trail this app adds follows them.
+var fuelKeluarHeaders = []string{
+	"no_transaksi", "tanggal_input", "id_unit", "nama_unit",
+	"hm_awal_flow_meter", "hm_akhir_flow_meter", "fuel_liter",
+	"hm_alat_berat_pengisian", "operator", "foto_akhir_flow_meter",
+	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+}
+
+// The photo sits at J, so reads stop at I and resume at K for the same reason
+// the fuel masuk listing does.
+const (
+	fuelOutHeadColumn  = "I"
+	fuelOutTailRange   = "K:N"
+	fuelOutHeadWidth   = 9
+	fuelOutTailWidth   = 4
+	fuelOutPhotoColumn = "J"
+)
+
+// Reads stop at I and resume at N: J to M hold four base64 photos, and a list
+// of a hundred deliveries would otherwise be several hundred megabytes.
+const (
+	fuelHeadColumn = "I"
+	fuelTailRange  = "N:U"
+	// Columns in the head range, and the count of the tail range, so the two
+	// reads can be stitched back into one row.
+	fuelHeadWidth  = 9
+	fuelPhotoCount = 4
+	fuelTailWidth  = 8
+	// The photos sit at J, K, L and M.
+	fuelPhotoFirstColumn = 'J'
+	fuelStatusColumn     = "I"
+	fuelUpdatedColumn    = "U"
+)
+
 func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 	spreadsheet, err := r.service.Spreadsheets.Get(r.spreadsheetID).Fields("sheets.properties").Context(ctx).Do()
 	if err != nil {
@@ -137,7 +186,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet, fuelMasukSheet, fuelKeluarSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -167,6 +216,8 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: notaSheet, headers: notaHeaders},
 		{name: notaItemSheet, headers: notaItemHeaders},
 		{name: leaveSheet, headers: leaveHeaders},
+		{name: fuelMasukSheet, headers: fuelMasukHeaders},
+		{name: fuelKeluarSheet, headers: fuelKeluarHeaders},
 	} {
 		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
 			return err
@@ -1091,6 +1142,371 @@ func leaveToRow(leave *model.Leave) []interface{} {
 		formatNullableDateTime(leave.DibatalkanPada), formatDateTime(leave.CreatedAt),
 		formatDateTime(leave.UpdatedAt), leave.HasBuktiPendukung, leave.BuktiPendukung,
 	}
+}
+
+func (r *GoogleSheetsRepository) MaxFuelMasukSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, fuelMasukSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateFuelMasuk(ctx context.Context, fuel *model.FuelMasuk) error {
+	return r.appendRow(ctx, fuelMasukSheet, fuelMasukToRow(fuel))
+}
+
+func (r *GoogleSheetsRepository) ListFuelMasuk(ctx context.Context) ([]model.FuelMasuk, error) {
+	rows, err := r.readFuelMasukRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	deliveries := make([]model.FuelMasuk, 0, len(rows))
+	for _, row := range rows {
+		fuel, err := rowToFuelMasuk(row.values, r.location)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(fuel.FuelID) == "" {
+			continue
+		}
+		deliveries = append(deliveries, *fuel)
+	}
+	return deliveries, nil
+}
+
+func (r *GoogleSheetsRepository) FindFuelMasukRow(ctx context.Context, fuelID string) (*model.FuelMasuk, int, error) {
+	rows, err := r.readFuelMasukRows(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	wanted := strings.ToUpper(strings.TrimSpace(fuelID))
+	for _, row := range rows {
+		if strings.ToUpper(strings.TrimSpace(cellString(row.values[0]))) != wanted {
+			continue
+		}
+		fuel, err := rowToFuelMasuk(row.values, r.location)
+		if err != nil {
+			return nil, 0, err
+		}
+		return fuel, row.rowNumber, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+// readFuelMasukRows fetches the two ranges either side of the photos and puts
+// them back together, leaving the four photo cells empty.
+func (r *GoogleSheetsRepository) readFuelMasukRows(ctx context.Context) ([]indexedRow, error) {
+	sheet := quoteSheet(fuelMasukSheet)
+	response, err := r.service.Spreadsheets.Values.BatchGet(r.spreadsheetID).
+		Ranges(sheet+"!A:"+fuelHeadColumn, sheet+"!"+fuelTailRange).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("read rows from %s: %w", fuelMasukSheet, err)
+	}
+	if len(response.ValueRanges) != 2 {
+		return nil, fmt.Errorf("read rows from %s: expected 2 ranges, got %d", fuelMasukSheet, len(response.ValueRanges))
+	}
+	head, tail := response.ValueRanges[0], response.ValueRanges[1]
+
+	rows := make([]indexedRow, 0, len(head.Values))
+	// Row 1 is the header and both ranges start there, so one index walks both.
+	for index := 1; index < len(head.Values); index++ {
+		values := padRow(head.Values[index], fuelHeadWidth)[:fuelHeadWidth]
+		if isBlankRow(values) {
+			continue
+		}
+		merged := make([]interface{}, 0, len(fuelMasukHeaders))
+		merged = append(merged, values...)
+		for photo := 0; photo < fuelPhotoCount; photo++ {
+			merged = append(merged, "")
+		}
+		if index < len(tail.Values) {
+			merged = append(merged, padRow(tail.Values[index], fuelTailWidth)[:fuelTailWidth]...)
+		}
+		rows = append(rows, indexedRow{values: padRow(merged, len(fuelMasukHeaders)), rowNumber: index + 1})
+	}
+	return rows, nil
+}
+
+// UpdateFuelMasukDecision writes the status and its audit stamp. The delivery
+// itself and the four photos are never rewritten, so an approval cannot damage
+// the evidence it was granted on.
+func (r *GoogleSheetsRepository) UpdateFuelMasukDecision(ctx context.Context, rowNumber int, fuel *model.FuelMasuk) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, fuelMasukSheet)
+	}
+	sheet := quoteSheet(fuelMasukSheet)
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data: []*sheets.ValueRange{
+			{
+				Range:  fmt.Sprintf("%s!%s%d", sheet, fuelStatusColumn, rowNumber),
+				Values: [][]interface{}{{fuel.StatusApproval}},
+			},
+			{
+				Range: fmt.Sprintf("%s!N%d:Q%d", sheet, rowNumber, rowNumber),
+				Values: [][]interface{}{{
+					fuel.CatatanApproval, fuel.DiprosesOleh, fuel.DiprosesOlehUserID,
+					formatNullableDateTime(fuel.DiprosesPada),
+				}},
+			},
+			{
+				Range:  fmt.Sprintf("%s!%s%d", sheet, fuelUpdatedColumn, rowNumber),
+				Values: [][]interface{}{{formatDateTime(fuel.UpdatedAt)}},
+			},
+		},
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update fuel masuk decision row %d: %w", rowNumber, err)
+	}
+	return nil
+}
+
+func (r *GoogleSheetsRepository) ReadFuelMasukPhoto(ctx context.Context, rowNumber, photoIndex int) (string, error) {
+	if rowNumber < 2 {
+		return "", fmt.Errorf("invalid row number %d for sheet %q", rowNumber, fuelMasukSheet)
+	}
+	if photoIndex < 0 || photoIndex >= fuelPhotoCount {
+		return "", fmt.Errorf("invalid fuel photo index %d", photoIndex)
+	}
+	column := string(rune(fuelPhotoFirstColumn + photoIndex))
+	rangeName := fmt.Sprintf("%s!%s%d", quoteSheet(fuelMasukSheet), column, rowNumber)
+	values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, rangeName).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("read fuel masuk photo row %d: %w", rowNumber, err)
+	}
+	if len(values.Values) == 0 || len(values.Values[0]) == 0 {
+		return "", nil
+	}
+	return cellString(values.Values[0][0]), nil
+}
+
+func fuelMasukToRow(fuel *model.FuelMasuk) []interface{} {
+	return []interface{}{
+		fuel.FuelID, formatDateTime(fuel.TanggalInput), fuel.Vendor, fuel.Driver, fuel.Nopol,
+		formatFloat(fuel.JumlahLiter), fuel.Keterangan, formatFloat(fuel.LiterTidakSesuai),
+		fuel.StatusApproval,
+		fuel.FotoTruckDepan, fuel.FotoTangkiSebelum, fuel.FotoFlowmeter, fuel.FotoTangkiSetelah,
+		fuel.CatatanApproval, fuel.DiprosesOleh, fuel.DiprosesOlehUserID,
+		formatNullableDateTime(fuel.DiprosesPada),
+		fuel.CreatedBy, fuel.CreatedByID, formatDateTime(fuel.CreatedAt), formatDateTime(fuel.UpdatedAt),
+	}
+}
+
+func rowToFuelMasuk(row []interface{}, location *time.Location) (*model.FuelMasuk, error) {
+	row = padRow(row, len(fuelMasukHeaders))
+	tanggalInput, err := parseDateTime(cellString(row[1]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse fuel masuk tanggal_waktu_input: %w", err)
+	}
+	diprosesPada, err := parseOptionalTime(cellString(row[16]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse fuel masuk diproses_pada: %w", err)
+	}
+	createdAt, err := parseDateTime(cellString(row[19]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse fuel masuk created_at: %w", err)
+	}
+	updatedAt, err := parseDateTime(cellString(row[20]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse fuel masuk updated_at: %w", err)
+	}
+	return &model.FuelMasuk{
+		FuelID:             cellString(row[0]),
+		TanggalInput:       tanggalInput,
+		Vendor:             cellString(row[2]),
+		Driver:             cellString(row[3]),
+		Nopol:              cellString(row[4]),
+		JumlahLiter:        parseFloatCell(row[5]),
+		Keterangan:         cellString(row[6]),
+		LiterTidakSesuai:   parseFloatCell(row[7]),
+		StatusApproval:     cellString(row[8]),
+		FotoTruckDepan:     cellString(row[9]),
+		FotoTangkiSebelum:  cellString(row[10]),
+		FotoFlowmeter:      cellString(row[11]),
+		FotoTangkiSetelah:  cellString(row[12]),
+		CatatanApproval:    cellString(row[13]),
+		DiprosesOleh:       cellString(row[14]),
+		DiprosesOlehUserID: cellString(row[15]),
+		DiprosesPada:       diprosesPada,
+		CreatedBy:          cellString(row[17]),
+		CreatedByID:        cellString(row[18]),
+		CreatedAt:          createdAt,
+		UpdatedAt:          updatedAt,
+	}, nil
+}
+
+func (r *GoogleSheetsRepository) MaxFuelKeluarSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, fuelKeluarSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateFuelKeluar(ctx context.Context, fuel *model.FuelKeluar) error {
+	return r.appendRow(ctx, fuelKeluarSheet, fuelKeluarToRow(fuel))
+}
+
+func (r *GoogleSheetsRepository) ListFuelKeluar(ctx context.Context) ([]model.FuelKeluar, error) {
+	rows, err := r.readFuelKeluarRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dispenses := make([]model.FuelKeluar, 0, len(rows))
+	for _, row := range rows {
+		fuel, err := rowToFuelKeluar(row.values, r.location)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(fuel.FuelOutID) == "" {
+			continue
+		}
+		dispenses = append(dispenses, *fuel)
+	}
+	return dispenses, nil
+}
+
+func (r *GoogleSheetsRepository) FindFuelKeluarRow(ctx context.Context, fuelOutID string) (*model.FuelKeluar, int, error) {
+	rows, err := r.readFuelKeluarRows(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	wanted := strings.ToUpper(strings.TrimSpace(fuelOutID))
+	for _, row := range rows {
+		if strings.ToUpper(strings.TrimSpace(cellString(row.values[0]))) != wanted {
+			continue
+		}
+		fuel, err := rowToFuelKeluar(row.values, r.location)
+		if err != nil {
+			return nil, 0, err
+		}
+		return fuel, row.rowNumber, nil
+	}
+	return nil, 0, ErrNotFound
+}
+
+// readFuelKeluarRows stitches the ranges either side of the photo column back
+// into one row, leaving the photo cell empty.
+func (r *GoogleSheetsRepository) readFuelKeluarRows(ctx context.Context) ([]indexedRow, error) {
+	sheet := quoteSheet(fuelKeluarSheet)
+	response, err := r.service.Spreadsheets.Values.BatchGet(r.spreadsheetID).
+		Ranges(sheet+"!A:"+fuelOutHeadColumn, sheet+"!"+fuelOutTailRange).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("read rows from %s: %w", fuelKeluarSheet, err)
+	}
+	if len(response.ValueRanges) != 2 {
+		return nil, fmt.Errorf("read rows from %s: expected 2 ranges, got %d", fuelKeluarSheet, len(response.ValueRanges))
+	}
+	head, tail := response.ValueRanges[0], response.ValueRanges[1]
+
+	rows := make([]indexedRow, 0, len(head.Values))
+	for index := 1; index < len(head.Values); index++ {
+		values := padRow(head.Values[index], fuelOutHeadWidth)[:fuelOutHeadWidth]
+		if isBlankRow(values) {
+			continue
+		}
+		merged := make([]interface{}, 0, len(fuelKeluarHeaders))
+		merged = append(merged, values...)
+		merged = append(merged, "")
+		if index < len(tail.Values) {
+			merged = append(merged, padRow(tail.Values[index], fuelOutTailWidth)[:fuelOutTailWidth]...)
+		}
+		rows = append(rows, indexedRow{values: padRow(merged, len(fuelKeluarHeaders)), rowNumber: index + 1})
+	}
+	return rows, nil
+}
+
+func (r *GoogleSheetsRepository) ReadFuelKeluarPhoto(ctx context.Context, rowNumber int) (string, error) {
+	if rowNumber < 2 {
+		return "", fmt.Errorf("invalid row number %d for sheet %q", rowNumber, fuelKeluarSheet)
+	}
+	rangeName := fmt.Sprintf("%s!%s%d", quoteSheet(fuelKeluarSheet), fuelOutPhotoColumn, rowNumber)
+	values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, rangeName).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("read fuel keluar photo row %d: %w", rowNumber, err)
+	}
+	if len(values.Values) == 0 || len(values.Values[0]) == 0 {
+		return "", nil
+	}
+	return cellString(values.Values[0][0]), nil
+}
+
+func fuelKeluarToRow(fuel *model.FuelKeluar) []interface{} {
+	return []interface{}{
+		fuel.FuelOutID, fuel.Tanggal, fuel.IDUnit, fuel.NamaUnit,
+		formatFloat(fuel.HMAwalFlowMeter), formatFloat(fuel.HMAkhirFlowMeter), formatFloat(fuel.Liter),
+		optionalFloat(fuel.HMAlatBerat), fuel.Operator, fuel.FotoAkhirFlowMeter,
+		fuel.CreatedBy, fuel.CreatedByID, formatDateTime(fuel.CreatedAt), formatDateTime(fuel.UpdatedAt),
+	}
+}
+
+func rowToFuelKeluar(row []interface{}, location *time.Location) (*model.FuelKeluar, error) {
+	row = padRow(row, len(fuelKeluarHeaders))
+	hmAlatBerat, err := parseOptionalFloatCell(row[7])
+	if err != nil {
+		return nil, fmt.Errorf("parse fuel keluar hm_alat_berat_pengisian: %w", err)
+	}
+	createdAt, err := parseDateTime(cellString(row[12]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse fuel keluar created_at: %w", err)
+	}
+	updatedAt, err := parseDateTime(cellString(row[13]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse fuel keluar updated_at: %w", err)
+	}
+	return &model.FuelKeluar{
+		FuelOutID:          cellString(row[0]),
+		Tanggal:            cellString(row[1]),
+		IDUnit:             cellString(row[2]),
+		NamaUnit:           cellString(row[3]),
+		HMAwalFlowMeter:    parseFloatCell(row[4]),
+		HMAkhirFlowMeter:   parseFloatCell(row[5]),
+		Liter:              parseFloatCell(row[6]),
+		HMAlatBerat:        hmAlatBerat,
+		Operator:           cellString(row[8]),
+		FotoAkhirFlowMeter: cellString(row[9]),
+		CreatedBy:          cellString(row[10]),
+		CreatedByID:        cellString(row[11]),
+		CreatedAt:          createdAt,
+		UpdatedAt:          updatedAt,
+	}, nil
+}
+
+// parseOptionalFloatCell keeps an empty cell as "nobody took this reading",
+// which a plain zero would quietly turn into a reading of zero hours.
+func parseOptionalFloatCell(cell interface{}) (*float64, error) {
+	raw := strings.TrimSpace(cellString(cell))
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return nil, fmt.Errorf("unsupported number %q", raw)
+	}
+	return &value, nil
 }
 
 func (r *GoogleSheetsRepository) AppendActivity(ctx context.Context, activity *model.LoginActivity) error {

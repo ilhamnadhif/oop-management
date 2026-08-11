@@ -55,8 +55,10 @@ func main() {
 	notaService := service.NewNotaService(store, cfg.Timezone, now)
 	leaveService := service.NewLeaveService(store, cfg.Timezone, now)
 	unitOverviewService := service.NewUnitOverviewService(store, cfg.Timezone, now)
+	fuelMasukService := service.NewFuelMasukService(store, cfg.Timezone, now)
+	fuelKeluarService := service.NewFuelKeluarService(store, cfg.Timezone, now)
 	sessions := session.NewManager(cfg.SessionTTL, cfg.SessionCookieSecure)
-	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, produksiService, overviewService, unitA2BService, notaService, leaveService, unitOverviewService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars,
+	webServer, err := handler.NewServer(authService, attendanceService, unitDTService, produksiService, overviewService, unitA2BService, notaService, leaveService, unitOverviewService, fuelMasukService, fuelKeluarService, sessions, cfg.Timezone, now, cfg.MaxUploadBytes, cfg.MaxPhotoChars,
 		handler.Branding{
 			Company: cfg.CompanyName,
 			Signatory: export.Signatory{

@@ -26,7 +26,8 @@ func TestEveryPageHeaderCarriesItsLede(t *testing.T) {
 		"/unit-a2b":          "Daftarkan alat berat",
 		"/a2b/overview":      "Ringkasan alat berat",
 		"/a2b/hm":            "Catat pembacaan hour meter",
-		"/a2b/fuel":          "Catat pengisian bahan bakar",
+		"/a2b/fuel-masuk":    "Catat kiriman fuel dari vendor",
+		"/a2b/fuel-keluar":   "Catat pengisian bahan bakar tiap alat berat",
 		"/a2b/export":        "Unduh daftar alat berat",
 		"/unit/export":       "Unduh daftar unit DT",
 	}

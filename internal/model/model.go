@@ -236,6 +236,78 @@ type Nota struct {
 	DirekonsiliasiOlehID string
 }
 
+// A delivery is either the quantity written on the delivery note or it is not.
+// The two words are stored as the vendor writes them on the sheet, in lower
+// case, so the column reads the same whether a person or this app filled it in.
+const (
+	FuelKeteranganSesuai      = "sesuai"
+	FuelKeteranganTidakSesuai = "tidak sesuai"
+
+	FuelStatusMenunggu  = "MENUNGGU"
+	FuelStatusDisetujui = "DISETUJUI"
+	FuelStatusDitolak   = "DITOLAK"
+)
+
+// FuelMasuk is one fuel delivery from a vendor into the site tank. The four
+// photos are the whole point of recording it: a delivery note says how many
+// litres were sent, and only the flowmeter and the tank either side of the
+// discharge say how many arrived. They are base64 images tens of thousands of
+// characters long, so no listing carries them.
+type FuelMasuk struct {
+	FuelID string
+	// TanggalInput is when the delivery was recorded. It is entered rather than
+	// stamped, because a delivery that arrives after hours is written up later.
+	TanggalInput     time.Time
+	Vendor           string
+	Driver           string
+	Nopol            string
+	JumlahLiter      float64
+	Keterangan       string
+	LiterTidakSesuai float64
+	StatusApproval   string
+
+	FotoTruckDepan    string
+	FotoTangkiSebelum string
+	FotoFlowmeter     string
+	FotoTangkiSetelah string
+
+	// Filled in when the delivery is approved or rejected, after the row exists.
+	CatatanApproval    string
+	DiprosesOleh       string
+	DiprosesOlehUserID string
+	DiprosesPada       *time.Time
+
+	CreatedBy   string
+	CreatedByID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// FuelKeluar is one dispense of fuel from the site tank into a machine. The
+// flowmeter on the pump is a running total, so the litres are the distance
+// between the two readings rather than a figure anyone types.
+type FuelKeluar struct {
+	FuelOutID string
+	Tanggal   string
+	// IDUnit and NamaUnit are a snapshot of the A2B register at the time of
+	// dispensing: a machine later renamed must not silently rewrite history.
+	IDUnit           string
+	NamaUnit         string
+	HMAwalFlowMeter  float64
+	HMAkhirFlowMeter float64
+	Liter            float64
+	// HMAlatBerat is the machine's own hour meter when it was filled. It is
+	// optional, and nil is a reading nobody took rather than a reading of zero.
+	HMAlatBerat        *float64
+	Operator           string
+	FotoAkhirFlowMeter string
+
+	CreatedBy   string
+	CreatedByID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // NotaItem is one line of a nota. It lives in its own sheet: keeping the lines
 // beside the header would repeat the attachments, which are base64 images tens
 // of thousands of characters long, once per line.

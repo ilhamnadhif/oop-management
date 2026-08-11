@@ -1156,6 +1156,15 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .leave-reason { white-space: pre-wrap; }
 .dashboard-leave-actions { margin-top: 1rem; }
 
+/* Fuel masuk: four photos per delivery, listed as icons in the table and as
+   named links in the approval dialog. */
+.fuel-photo-heading { margin: 0.4rem 0 0; }
+.fuel-photo-links { display: flex; gap: 0.4rem; }
+.fuel-photo-links a { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
+.fuel-photo-links a:hover { border-color: var(--teal); color: var(--teal); }
+.fuel-proof-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+.fuel-proof-links .button { width: 100%; }
+
 /* Responsive -------------------------------------------------------------- */
 
 @media (min-width: 1200px) {
@@ -1295,6 +1304,7 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .approval-actions,
   .approval-filter-form,
   .leave-decision-audit,
+  .fuel-proof-links,
   .role-distribution { grid-template-columns: 1fr; }
   .approval-search-field,
   .leave-decision-audit > div:last-child { grid-column: auto; }
