@@ -358,3 +358,21 @@ func TestFuelMasukPagesRedirectAnonymousUsersToLogin(t *testing.T) {
 		}
 	}
 }
+
+// The delivered litres and the shortfall take a decimal comma too.
+func TestFuelMasukAcceptsADecimalComma(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	client := loggedInClientAs(t, testServer, "Logistik")
+	fields := fuelFields()
+	fields["jumlah_liter"] = "8010,4"
+	fields["keterangan"] = model.FuelKeteranganTidakSesuai
+	fields["liter_tidak_sesuai"] = "150,25"
+
+	response := postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fields, testJPEG(t))
+	requireFuelResponse(t, response, http.StatusOK, "menunggu approval")
+
+	stored := store.FuelMasukList()[0]
+	if stored.JumlahLiter != 8010.4 || stored.LiterTidakSesuai != 150.25 {
+		t.Fatalf("litres were not parsed: %+v", stored)
+	}
+}

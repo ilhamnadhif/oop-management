@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -170,7 +171,8 @@ func TestFuelKeluarFormOpensOnTheLastClosingReading(t *testing.T) {
 	postFuelKeluar(t, client, testServer, fuelKeluarCSRF(t, client, testServer), fuelKeluarFields(), testJPEG(t)).Body.Close()
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/fuel-keluar")
-	if !strings.Contains(page, `id="hm_awal" name="hm_awal" type="number" value="30"`) {
+	opening := regexp.MustCompile(`<input id="hm_awal"[^>]*value="30"`)
+	if !opening.MatchString(page) {
 		t.Fatalf("the opening reading was not carried over from the last dispense: %s", page)
 	}
 }
@@ -211,5 +213,27 @@ func TestFuelKeluarPhotoIsServedByTransaction(t *testing.T) {
 	}
 	if status := statusOf(t, client, testServer.URL+"/a2b/fuel-keluar/foto?fuel_id=FUELOUT-20260807-9999"); status != http.StatusNotFound {
 		t.Fatalf("unknown transaction returned %d, want 404", status)
+	}
+}
+
+// The flow meter readings take a decimal comma too.
+func TestFuelKeluarAcceptsADecimalComma(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Logistik")
+	fields := fuelKeluarFields()
+	fields["hm_awal"] = "20,5"
+	fields["hm_akhir"] = "30,25"
+	fields["hm_alat_berat"] = "1024,75"
+
+	response := postFuelKeluar(t, client, testServer, fuelKeluarCSRF(t, client, testServer), fields, testJPEG(t))
+	requireFuelResponse(t, response, http.StatusOK, "9.75 liter")
+
+	stored := store.FuelKeluarList()[0]
+	if stored.HMAwalFlowMeter != 20.5 || stored.HMAkhirFlowMeter != 30.25 || stored.Liter != 9.75 {
+		t.Fatalf("readings were not parsed: %+v", stored)
+	}
+	if stored.HMAlatBerat == nil || *stored.HMAlatBerat != 1024.75 {
+		t.Fatalf("machine hour meter = %+v", stored.HMAlatBerat)
 	}
 }

@@ -13,6 +13,7 @@ MVP aplikasi absensi server-rendered menggunakan Go, HTML template, JavaScript v
 - Input Produksi, Unit, Nota, rekonsiliasi, export laporan, dan scan struk MiMo.
 - Fuel Masuk: catat kiriman fuel vendor dengan empat foto bukti bongkar, lalu approval oleh Logistik dan Management.
 - Fuel Keluar: catat pengisian tiap alat berat dari pembacaan flow meter; liter dihitung dari selisih dan unit diambil dari register Unit A2B.
+- Input HM: catat hour meter per shift per unit dalam jam; sisa waktu shift wajib dipecah ke Data Standby dan Input Breakdown dalam menit.
 - Data tersimpan di Google Sheets dengan schema yang dibuat dan diverifikasi saat startup.
 - Foto selfie dikompresi sebagai JPEG dan disimpan sebagai data URI base64 pada spreadsheet.
 
@@ -78,7 +79,7 @@ export APP_TIMEZONE=Asia/Jakarta
 go run ./cmd/web
 ```
 
-Saat startup aplikasi akan membuat seluruh sheet dan header yang diperlukan bila belum tersedia, termasuk sheet `Leave`, `Fuel Masuk`, dan `Fuel Keluar`. Header yang sudah ada tetapi tidak sesuai akan menyebabkan startup gagal tanpa menimpa data.
+Saat startup aplikasi akan membuat seluruh sheet dan header yang diperlukan bila belum tersedia, termasuk sheet `Leave`, `Fuel Masuk`, `Fuel Keluar`, dan `Input HM`. Header yang sudah ada tetapi tidak sesuai akan menyebabkan startup gagal tanpa menimpa data.
 
 Contoh environment variable minimum:
 
@@ -105,6 +106,29 @@ ATTENDANCE_LATE_TOLERANCE_MINUTES=15
 - Format 24 jam `HH:MM`. Jam pulang harus setelah jam masuk, kalau tidak startup gagal alih-alih menilai absensi dengan jadwal yang mustahil.
 - Toleransi adalah menit setelah jam masuk yang belum dihitung terlambat, dan nol adalah nilai yang sah.
 - Nilai default di atas dipakai bila variabelnya tidak diisi.
+
+## Panjang shift alat berat
+
+Input HM menilai tiap pembacaan terhadap satu shift:
+
+```dotenv
+A2B_WORK_MINUTES=480
+```
+
+- HM awal, HM akhir, dan Total HM dalam **jam**; standby dan breakdown dalam **menit**.
+- Total HM yang sudah menutup seluruh shift membuat kedua section itu hilang dan nilainya nol.
+- Kurang dari itu, sisanya wajib dipecah ke standby dan breakdown sampai pas ke menit.
+- Nilai harus lebih dari 0, kalau tidak startup gagal.
+
+Tiap pembacaan ditutup dengan tiga angka, dengan `W` = `A2B_WORK_MINUTES`, `Work` = Total HM × 60, `BD` = total breakdown:
+
+```text
+PA  = (W − BD) / W      × 100     hijau bila ≥ 80%
+BD% = BD / W            × 100     hijau bila ≤ 20%   (= 100 − PA)
+UA  = Work / (W − BD)   × 100     hijau bila ≥ 80%, maksimal 100%
+```
+
+Alat yang rusak sepanjang shift tidak pernah tersedia, jadi UA-nya nol. Alat yang jalan melewati jam shift tetap terbaca 100%, bukan lebih.
 
 ## Konfigurasi scan struk MiMo
 

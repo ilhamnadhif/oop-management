@@ -101,3 +101,33 @@ func TestLabelIconsAreMuted(t *testing.T) {
 		t.Fatal("label icons would compete with the labels themselves")
 	}
 }
+
+// A field that accepts a new value while suggesting the old ones is drawn by
+// combobox.js: a list that filters as you type and offers to create what is not
+// in it yet. A page carrying such a field without the script falls back to the
+// browser's bare datalist, which neither filters the same way nor offers to
+// create anything.
+func TestCreatableFieldsLoadTheCombobox(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Management")
+
+	pages := map[string][]string{
+		"/nota":            {`list="picList"`},
+		"/unit-dt":         {`list="driverList"`},
+		"/a2b/fuel-masuk":  {`list="vendorList"`, `list="fuelDriverList"`},
+		"/a2b/fuel-keluar": {`list="operatorList"`},
+		"/a2b/hm":          {`list="shiftList"`, `list="hmOperatorList"`},
+	}
+	for path, fields := range pages {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, `src="/static/js/combobox.js"`) {
+			t.Fatalf("%s has creatable fields but does not load the combobox", path)
+		}
+		for _, field := range fields {
+			if !strings.Contains(page, field) {
+				t.Fatalf("%s lost its creatable field %s", path, field)
+			}
+		}
+	}
+}

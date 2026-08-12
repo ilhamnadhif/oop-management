@@ -89,18 +89,6 @@ func TestA2BOverviewCountsTheMachines(t *testing.T) {
 	}
 }
 
-// The page whose form is still to be built exists behind the menu, so the shape
-// of the app is agreed before the form is written.
-func TestA2BPlaceholderPagesAreReachable(t *testing.T) {
-	testServer := newTestServer(t)
-	client := loggedInClient(t, testServer)
-
-	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/hm")
-	if !strings.Contains(page, "SEGERA HADIR") || !strings.Contains(page, "Input HM sedang disiapkan") {
-		t.Fatal("/a2b/hm does not say it is still being built")
-	}
-}
-
 // A truck with nobody assigned cannot be dispatched, so the page names them and
 // points at the register that fixes it.
 func TestUnitOverviewFlagsTrucksWithoutADriver(t *testing.T) {

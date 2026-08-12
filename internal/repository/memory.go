@@ -26,6 +26,7 @@ type TestRepository struct {
 	leaves     []*model.Leave
 	fuelMasuk  []*model.FuelMasuk
 	fuelKeluar []*model.FuelKeluar
+	hourMeters []*model.HourMeter
 }
 
 func NewTestRepository() *TestRepository {
@@ -847,6 +848,49 @@ func cloneFuelKeluar(fuel *model.FuelKeluar) *model.FuelKeluar {
 	copy := *fuel
 	copy.HMAlatBerat = cloneFloat(fuel.HMAlatBerat)
 	return &copy
+}
+
+func (r *TestRepository) MaxHourMeterSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, reading := range r.hourMeters {
+		trimmed := strings.TrimSpace(reading.HMID)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateHourMeter(_ context.Context, reading *model.HourMeter) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := *reading
+	stored.Standby = append([]model.HourMeterStandby(nil), reading.Standby...)
+	r.hourMeters = append(r.hourMeters, &stored)
+	return nil
+}
+
+func (r *TestRepository) ListHourMeter(context.Context) ([]model.HourMeter, error) {
+	return r.HourMeterList(), nil
+}
+
+// HourMeterList exposes the stored readings to tests, standby lines included.
+func (r *TestRepository) HourMeterList() []model.HourMeter {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rows := make([]model.HourMeter, 0, len(r.hourMeters))
+	for _, reading := range r.hourMeters {
+		stored := *reading
+		stored.Standby = append([]model.HourMeterStandby(nil), reading.Standby...)
+		rows = append(rows, stored)
+	}
+	return rows
 }
 
 func (r *TestRepository) Activities() []*model.LoginActivity {

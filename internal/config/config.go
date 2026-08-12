@@ -33,6 +33,10 @@ type Config struct {
 	WorkStart            string
 	WorkEnd              string
 	LateToleranceMinutes int
+	// A2BWorkMinutes is one shift's worth of minutes for an A2B machine. Hour
+	// meter readings are judged against it: whatever the machine did not spend
+	// working has to be accounted for as standby or breakdown.
+	A2BWorkMinutes int
 }
 
 func Load() (Config, error) {
@@ -75,6 +79,14 @@ func Load() (Config, error) {
 		miMoModel = "mimo-v2.5"
 	}
 
+	a2bWorkMinutes, err := parseInt("A2B_WORK_MINUTES", getenv("A2B_WORK_MINUTES", "480"))
+	if err != nil {
+		return Config{}, err
+	}
+	if a2bWorkMinutes <= 0 {
+		return Config{}, fmt.Errorf("A2B_WORK_MINUTES harus lebih dari 0")
+	}
+
 	lateTolerance, err := parseInt("ATTENDANCE_LATE_TOLERANCE_MINUTES", getenv("ATTENDANCE_LATE_TOLERANCE_MINUTES", "15"))
 	if err != nil || lateTolerance < 0 {
 		return Config{}, fmt.Errorf("ATTENDANCE_LATE_TOLERANCE_MINUTES must be a non-negative integer")
@@ -101,6 +113,7 @@ func Load() (Config, error) {
 		WorkStart:             getenv("ATTENDANCE_START", "07:00"),
 		WorkEnd:               getenv("ATTENDANCE_END", "17:00"),
 		LateToleranceMinutes:  lateTolerance,
+		A2BWorkMinutes:        a2bWorkMinutes,
 	}
 
 	if cfg.GoogleSpreadsheetID == "" {

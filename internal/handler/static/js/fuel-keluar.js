@@ -18,10 +18,14 @@
     namaUnit.value = (selected && selected.dataset.namaUnit) || "";
   };
 
+  // An Indonesian keyboard produces a decimal comma. The server accepts either,
+  // and so does this preview.
+  const decimal = (value) => Number.parseFloat(String(value || "").replace(",", "."));
+
   const syncLiter = () => {
     if (!awal || !akhir || !liter) return;
-    const from = Number.parseFloat(awal.value);
-    const to = Number.parseFloat(akhir.value);
+    const from = decimal(awal.value);
+    const to = decimal(akhir.value);
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
       liter.value = "";
       return;

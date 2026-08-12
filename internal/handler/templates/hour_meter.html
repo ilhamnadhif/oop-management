@@ -1,0 +1,270 @@
+{{define "hour_meter"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "clock"}}INFORMASI UMUM</p>
+        <h2>Catat hour meter alat berat</h2>
+      </div>
+    </div>
+
+    {{if .Units}}
+    <form method="post" action="/a2b/hm" class="stack-form" data-loading-form data-hm-form data-work-minutes="{{.WorkMinutes}}" data-pa-target="{{.PATarget}}" data-bd-target="{{.BDTarget}}" data-ua-target="{{.UATarget}}">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="no_transaksi">{{template "icon" "hash"}}No transaksi</label>
+          <input id="no_transaksi" type="text" value="{{.NextHMID}}" disabled>
+        </div>
+        <div>
+          <label for="tanggal">{{template "icon" "calendar"}}Tanggal</label>
+          <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
+        </div>
+        <div>
+          <label for="shift">{{template "icon" "layers"}}Shift</label>
+          {{/* Open list: a shift pattern nobody has used yet must be typeable. */}}
+          <input id="shift" name="shift" type="text" list="shiftList" value="{{.Form.Shift}}" placeholder="Pilih atau ketik shift…" autocomplete="off" required>
+          <datalist id="shiftList">
+            {{range .Options.Shifts}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div>
+          <label for="id_unit">{{template "icon" "cube"}}ID unit</label>
+          {{/* Closed list: an hour meter booked against a machine nobody
+               registered belongs to nothing. data-hm-awal carries where this
+               machine's meter finished last time. */}}
+          <select id="id_unit" name="id_unit" data-hm-unit required>
+            <option value="">Pilih ID unit…</option>
+            {{range .Units}}
+            <option value="{{.IDUnit}}" data-nama-unit="{{.NamaUnit}}"{{if .HasRecord}} data-hm-awal="{{.HMAwal}}"{{end}}{{if eq .IDUnit $.Form.IDUnit}} selected{{end}}>{{.IDUnit}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div>
+          <label for="nama_unit">{{template "icon" "truck"}}Nama unit</label>
+          {{/* Filled in from the register, never posted: the server looks the
+               name up again from the id it was given. */}}
+          <input id="nama_unit" type="text" value="" placeholder="Terisi otomatis dari ID unit" data-hm-nama-unit disabled>
+        </div>
+      </div>
+
+      <label for="operator">{{template "icon" "user"}}Operator</label>
+      <input id="operator" name="operator" type="text" list="hmOperatorList" value="{{.Form.Operator}}" placeholder="Pilih atau ketik nama operator…" autocomplete="off" required>
+      <datalist id="hmOperatorList">
+        {{range .Options.Operators}}<option value="{{.}}"></option>{{end}}
+      </datalist>
+
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="hm_awal">{{template "icon" "clock"}}HM awal (jam)</label>
+          <input id="hm_awal" name="hm_awal" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMAwal}}" data-hm-awal-field required>
+        </div>
+        <div>
+          <label for="hm_akhir">{{template "icon" "clock"}}HM akhir (jam)</label>
+          <input id="hm_akhir" name="hm_akhir" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMAkhir}}" data-hm-akhir-field required>
+        </div>
+        <div>
+          <label for="total_hm">{{template "icon" "calculator"}}Total HM (jam)</label>
+          {{/* The distance between the two readings. The server computes it
+               either way, so this field is never posted. */}}
+          <input id="total_hm" type="text" value="" placeholder="Selisih HM" data-hm-total disabled>
+        </div>
+      </div>
+      <p class="hint">HM awal terisi dari pembacaan terakhir unit tersebut. Ubah bila angka di alat berbeda. Satu shift dihitung {{.WorkMinutes}} menit.</p>
+
+      <label for="fuel_liter">{{template "icon" "fuel"}}Fuel (liter)</label>
+      <input id="fuel_liter" name="fuel_liter" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.FuelLiter}}" placeholder="0" required>
+
+      <div data-idle-sections{{if eq .IdleMinutes 0.0}} hidden{{end}}>
+      {{/* Two states of the same sentence, so the running total can be read
+           without JavaScript having to rewrite prose. */}}
+      <p class="alert info idle-note" data-idle-short>Sisa <strong data-idle-remaining>{{.IdleMinutes}}</strong> menit dari {{.WorkMinutes}} menit kerja harus terisi di standby atau breakdown.</p>
+      <p class="alert success idle-note" data-idle-filled hidden>Semua {{.WorkMinutes}} menit kerja sudah terisi.</p>
+
+      <div class="panel-heading standby-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "clock"}}DATA STANDBY</p>
+          <h2>Waktu alat tidak bekerja</h2>
+        </div>
+      </div>
+      <p class="hint">Kosongkan bila alat tidak pernah berhenti. Satu variable hanya boleh dipakai sekali; bila terjadi dua kali dalam satu shift, jumlahkan menitnya jadi satu baris.</p>
+
+      <div class="standby-list" data-standby-list>
+        {{range $index, $row := .Form.Standby}}
+        <div class="standby-row" data-standby-row>
+          <p class="standby-index">Baris <span data-standby-number>{{add1 $index}}</span></p>
+          <label class="standby-field standby-field-variable">
+            <span class="field-label">{{template "icon" "tag"}}Variable</span>
+            <select name="standby_variable" aria-label="Variable standby">
+              <option value="">— Pilih variable —</option>
+              {{range $.StandbyVariables}}
+              <option value="{{.Nama}}"{{if eq .Nama $row.Variable}} selected{{end}}>{{.Nama}} ({{.Kode}})</option>
+              {{end}}
+            </select>
+          </label>
+          <label class="standby-field standby-field-menit">
+            <span class="field-label">{{template "icon" "clock"}}Menit</span>
+            <input name="standby_menit" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 30,5" value="{{$row.Menit}}" placeholder="0" autocomplete="off" aria-label="Menit standby">
+          </label>
+          <button class="icon-button danger standby-remove" type="button" data-remove-standby aria-label="Hapus baris standby">{{template "icon" "trash"}}</button>
+        </div>
+        {{end}}
+      </div>
+
+      {{/* Below the list: after filling the last row the next thing wanted is
+           another row, and a button above means scrolling back up for it. */}}
+      <button class="button subtle standby-add" type="button" data-add-standby>{{template "icon" "plus"}}Tambah baris</button>
+
+      <p class="standby-total"><span>Total standby</span><strong data-standby-total>0 menit</strong></p>
+
+      <div class="panel-heading standby-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "info"}}INPUT BREAKDOWN</p>
+          <h2>Waktu alat tidak bisa bekerja</h2>
+        </div>
+      </div>
+      <p class="hint">Kosongkan bila alat tidak pernah rusak. Satu variable hanya boleh dipakai sekali; bila terjadi dua kali dalam satu shift, jumlahkan menitnya jadi satu baris.</p>
+
+      <div class="breakdown-list" data-breakdown-list>
+        {{range $index, $row := .Form.Breakdown}}
+        <div class="breakdown-row" data-breakdown-row>
+          <p class="breakdown-index">Baris <span data-breakdown-number>{{add1 $index}}</span></p>
+          <label class="breakdown-field">
+            <span class="field-label">{{template "icon" "tag"}}Variable</span>
+            <select name="breakdown_variable" aria-label="Variable breakdown">
+              <option value="">— Pilih variable —</option>
+              {{range $.BreakdownVariables}}
+              <option value="{{.}}"{{if eq . $row.Variable}} selected{{end}}>{{.}}</option>
+              {{end}}
+            </select>
+          </label>
+          <label class="breakdown-field">
+            <span class="field-label">{{template "icon" "clock"}}Menit</span>
+            <input name="breakdown_menit" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 30,5" value="{{$row.Menit}}" placeholder="0" autocomplete="off" aria-label="Menit breakdown">
+          </label>
+          <button class="icon-button danger breakdown-remove" type="button" data-remove-breakdown aria-label="Hapus baris breakdown">{{template "icon" "trash"}}</button>
+        </div>
+        {{end}}
+      </div>
+
+      <button class="button subtle breakdown-add" type="button" data-add-breakdown>{{template "icon" "plus"}}Tambah baris</button>
+
+      <p class="breakdown-total"><span>Total breakdown</span><strong data-breakdown-total>0 menit</strong></p>
+      </div>
+
+      {{/* Shown in place of the two sections when the machine worked the whole
+           shift: there is nothing left to account for. */}}
+      <p class="alert info idle-note" data-idle-done{{if ne .IdleMinutes 0.0}} hidden{{end}}>HM sudah memenuhi {{.WorkMinutes}} menit kerja, standby dan breakdown tidak perlu diisi.</p>
+
+      <div class="panel-heading standby-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "percent"}}PERSENTASE</p>
+          <h2>Bacaan shift</h2>
+        </div>
+      </div>
+
+      {{/* Worked out from the readings above, so the figures move as the form is
+           filled in. The server computes them again before storing. */}}
+      <div class="figure-grid" data-figure-grid>
+        <div class="figure-tile" data-figure="pa">
+          <p class="figure-name">PA<span>Physical availability</span></p>
+          <strong class="figure-value" data-figure-value>—</strong>
+          <p class="figure-target">Target ≥ {{.PATarget}}%</p>
+        </div>
+        <div class="figure-tile" data-figure="bd">
+          <p class="figure-name">BD<span>Share lost to breakdown</span></p>
+          <strong class="figure-value" data-figure-value>—</strong>
+          <p class="figure-target">Target ≤ {{.BDTarget}}%</p>
+        </div>
+        <div class="figure-tile" data-figure="ua">
+          <p class="figure-name">UA<span>Use of availability</span></p>
+          <strong class="figure-value" data-figure-value>—</strong>
+          <p class="figure-target">Target ≥ {{.UATarget}}%</p>
+        </div>
+      </div>
+
+      <label for="remark">{{template "icon" "tag"}}Remark <span class="hint">(opsional)</span></label>
+      <textarea id="remark" name="remark" rows="3" maxlength="{{.RemarkMaxLength}}" placeholder="Keterangan tambahan untuk shift ini">{{.Form.Remark}}</textarea>
+
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "save"}}<span data-submit-label>Simpan hour meter</span>
+      </button>
+    </form>
+    {{else}}
+    <p class="panel-empty">Belum ada unit A2B terdaftar. Daftarkan alat berat lebih dulu di <a href="/unit-a2b">Unit A2B</a>, karena hour meter dicatat per unit.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}RIWAYAT</p>
+        <h2>{{len .Rows}} pembacaan tercatat</h2>
+      </div>
+      <a class="button subtle" href="/a2b/fuel-keluar">{{template "icon" "fuel"}}Fuel keluar</a>
+    </div>
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">No transaksi</th>
+            <th scope="col">Tanggal</th>
+            <th scope="col">Shift</th>
+            <th scope="col">ID unit</th>
+            <th scope="col">Nama unit</th>
+            <th scope="col">Operator</th>
+            <th scope="col" class="numeric">HM awal</th>
+            <th scope="col" class="numeric">HM akhir</th>
+            <th scope="col" class="numeric">Total HM</th>
+            <th scope="col" class="numeric">Standby (menit)</th>
+            <th scope="col" class="numeric">Breakdown (menit)</th>
+            <th scope="col" class="numeric">Fuel (L)</th>
+            <th scope="col" class="numeric">PA</th>
+            <th scope="col" class="numeric">BD</th>
+            <th scope="col" class="numeric">UA</th>
+            <th scope="col">Remark</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <td>{{.HMID}}</td>
+            <td>{{.TanggalLabel}}</td>
+            <td>{{.Shift}}</td>
+            <td>{{.IDUnit}}</td>
+            <td class="wrap">{{.NamaUnit}}</td>
+            <td class="wrap">{{.Operator}}</td>
+            <td class="numeric">{{.AwalLabel}}</td>
+            <td class="numeric">{{.AkhirLabel}}</td>
+            <td class="numeric">{{.TotalLabel}}</td>
+            <td class="numeric">{{.StandbyLabel}}</td>
+            <td class="numeric">{{.BreakdownLabel}}</td>
+            <td class="numeric">{{.FuelLabel}}</td>
+            <td class="numeric"><span class="figure-chip {{.PAClass}}">{{.PALabel}}%</span></td>
+            <td class="numeric"><span class="figure-chip {{.BDClass}}">{{.BDLabel}}%</span></td>
+            <td class="numeric"><span class="figure-chip {{.UAClass}}">{{.UALabel}}%</span></td>
+            <td class="wrap">{{if .Remark}}{{.Remark}}{{else}}-{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada pembacaan hour meter yang tercatat.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+<script src="/static/js/combobox.js" defer></script>
+<script src="/static/js/hour-meter.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

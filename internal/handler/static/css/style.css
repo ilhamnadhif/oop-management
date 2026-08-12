@@ -283,6 +283,44 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .nota-total { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 0.9rem 1.1rem; border-left: 4px solid var(--navy); border-radius: 12px; background: #eef3f7; font-size: 0.9rem; }
 .nota-total strong { font-size: 1.15rem; color: var(--navy); font-variant-numeric: tabular-nums; }
 
+/* Standby is a list of reasons the machine stood still. Same shape as the nota
+   lines: a two-column row on a wide screen, a labelled card on a phone. */
+.standby-heading { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px solid var(--line); }
+.standby-list,
+.breakdown-list { display: grid; gap: 0.6rem; }
+.standby-row,
+.breakdown-row { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.standby-row input, .standby-row select,
+.breakdown-row input, .breakdown-row select { width: 100%; background: var(--white); }
+.standby-field,
+.breakdown-field { display: grid; gap: 0.3rem; min-width: 0; }
+.standby-field .field-label,
+.breakdown-field .field-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.74rem; font-weight: 600; }
+.standby-index,
+.breakdown-index { display: none; }
+.standby-add,
+.breakdown-add { margin-top: 0.7rem; }
+.standby-total,
+.breakdown-total { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 0.9rem 1.1rem; border-left: 4px solid var(--navy); border-radius: 12px; background: #eef3f7; font-size: 0.9rem; }
+.standby-total strong,
+.breakdown-total strong { font-size: 1.15rem; color: var(--navy); font-variant-numeric: tabular-nums; }
+
+/* The three figures a shift is read by. Green is the only state worth spotting
+   from across the room, so it is the only one given a colour of its own. */
+.figure-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; margin: 0.4rem 0 0.2rem; }
+.figure-tile { padding: 0.9rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.figure-tile.good { border-color: #b6ddd0; background: #edf8f3; }
+.figure-tile.short { border-color: #f2bac1; background: var(--red-50); }
+.figure-name { display: grid; gap: 0.1rem; margin: 0; color: var(--navy); font-size: 0.9rem; font-weight: 700; }
+.figure-name span { color: var(--muted); font-size: 0.7rem; font-weight: 500; }
+.figure-value { display: block; margin: 0.35rem 0 0.1rem; font-size: 1.5rem; color: var(--navy); font-variant-numeric: tabular-nums; }
+.figure-tile.good .figure-value { color: var(--success); }
+.figure-tile.short .figure-value { color: var(--danger); }
+.figure-target { margin: 0; color: var(--muted); font-size: 0.72rem; }
+.figure-chip { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.figure-chip.good { color: var(--success); background: #edf8f3; }
+.figure-chip.short { color: var(--danger); background: var(--red-50); }
+
 .icon-button { display: grid; place-items: center; padding: 0.5rem; border: 1px solid var(--line); border-radius: 10px; background: var(--white); color: var(--muted); cursor: pointer; }
 .icon-button.danger:hover { border-color: var(--danger); color: var(--danger); background: #fff0f0; }
 .icon-button:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
@@ -437,6 +475,12 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
   .nota-item-total .field-label { color: var(--muted); }
   /* Thumb-width on a phone, where it is the button pressed most on this page. */
   .nota-add { width: 100%; justify-content: center; }
+  .standby-row { grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; padding: 0.9rem; }
+  .standby-index { display: block; margin-bottom: 0; color: var(--navy); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .standby-remove,
+.breakdown-remove { justify-self: end; grid-row: 1; grid-column: 2; }
+  .standby-field { grid-column: 1 / -1; }
+  .standby-add { width: 100%; justify-content: center; }
   .calc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { flex-direction: row; align-items: center; }
   .video-frame, .video-frame video { min-height: 220px; }
@@ -851,6 +895,10 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .alert { border: 1px solid transparent; border-left-width: 4px; border-radius: 12px; }
 .alert.error { border-color: #f2bac1; color: var(--danger); background: var(--red-50); }
 .alert.success { border-color: #b6ddd0; color: var(--success); background: #edf8f3; }
+.alert.info { border-color: #b9cbe4; color: var(--navy); background: #eef3f9; }
+.idle-note { margin: 1rem 0; }
+.idle-note.short { border-color: #f2bac1; color: var(--danger); background: var(--red-50); }
+.idle-note + .idle-note { margin-top: -0.4rem; }
 .panel { border-color: var(--line); border-radius: 16px; background: rgba(255, 255, 255, 0.98); box-shadow: var(--shadow-card); }
 .panel + .panel,
 .clock-hero + .panel { margin-top: 1.25rem; }

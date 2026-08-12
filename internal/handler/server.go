@@ -52,6 +52,7 @@ type Server struct {
 	unitOverview   *service.UnitOverviewService
 	fuelMasuk      *service.FuelMasukService
 	fuelKeluar     *service.FuelKeluarService
+	hourMeter      *service.HourMeterService
 	company        string
 	signatory      export.Signatory
 	sessions       *session.Manager
@@ -220,7 +221,7 @@ type Branding struct {
 	Signatory export.Signatory
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, leave *service.LeaveService, unitOverview *service.UnitOverviewService, fuelMasuk *service.FuelMasukService, fuelKeluar *service.FuelKeluarService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
+func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, leave *service.LeaveService, unitOverview *service.UnitOverviewService, fuelMasuk *service.FuelMasukService, fuelKeluar *service.FuelKeluarService, hourMeter *service.HourMeterService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
 	if strings.TrimSpace(branding.Company) == "" {
 		branding.Company = "PT Orecon Putra Perkasa"
 	}
@@ -266,6 +267,7 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		unitOverview:   unitOverview,
 		fuelMasuk:      fuelMasuk,
 		fuelKeluar:     fuelKeluar,
+		hourMeter:      hourMeter,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -1170,29 +1172,6 @@ func (s *Server) handleA2BOverview(w http.ResponseWriter, r *http.Request) {
 	data.Overview = overview
 	data.LokasiChart = BuildValueChart(labels, counts, 0)
 	s.render(w, "a2b_overview", data, http.StatusOK)
-}
-
-// ComingSoonPageData carries the one sentence a placeholder page needs.
-type ComingSoonPageData struct {
-	ShellPageData
-	Note string
-}
-
-func (s *Server) handleA2BHourMeter(w http.ResponseWriter, r *http.Request) {
-	s.renderComingSoon(w, r, "a2b-hm",
-		"Formulir pencatatan hour meter sedang dikerjakan. Sampai selesai, HM awal "+
-			"tiap alat tetap tersimpan lewat form pendaftaran Unit A2B.")
-}
-
-func (s *Server) renderComingSoon(w http.ResponseWriter, r *http.Request, navKey, note string) {
-	user, sessionValue, ok := s.requireAccess(w, r, navKey)
-	if !ok {
-		return
-	}
-	s.render(w, "coming_soon", ComingSoonPageData{
-		ShellPageData: s.shellData(user, sessionValue, navKey),
-		Note:          note,
-	}, http.StatusOK)
 }
 
 // RegisterExportPageData drives one register's download page. Each register has

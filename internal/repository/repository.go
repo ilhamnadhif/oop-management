@@ -67,6 +67,9 @@ type Store interface {
 	ListFuelKeluar(ctx context.Context) ([]model.FuelKeluar, error)
 	FindFuelKeluarRow(ctx context.Context, fuelOutID string) (*model.FuelKeluar, int, error)
 	ReadFuelKeluarPhoto(ctx context.Context, rowNumber int) (string, error)
+	MaxHourMeterSequence(ctx context.Context, prefix string) (int, error)
+	CreateHourMeter(ctx context.Context, reading *model.HourMeter) error
+	ListHourMeter(ctx context.Context) ([]model.HourMeter, error)
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	ListAttendanceByUser(ctx context.Context, userID string) ([]model.Attendance, error)
 	ListAttendanceBetween(ctx context.Context, from, to string) ([]model.Attendance, error)

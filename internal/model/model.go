@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 const (
 	StatusAktif      = "AKTIF"
@@ -306,6 +309,122 @@ type FuelKeluar struct {
 	CreatedByID string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+// HourMeter is one shift's hour meter reading for one machine. The three HM
+// figures are hours, which is what the meter on the machine counts; standby and
+// breakdown are minutes, which is how the timesheet records them.
+type HourMeter struct {
+	HMID    string
+	Tanggal string
+	Shift   string
+	// IDUnit and NamaUnit are a snapshot of the A2B register at the time of
+	// reading, so a machine later renamed does not rewrite history.
+	IDUnit    string
+	NamaUnit  string
+	Operator  string
+	HMAwal    float64
+	HMAkhir   float64
+	TotalHM   float64
+	FuelLiter float64
+
+	// Standby is the shift broken down into the reasons the machine was not
+	// working, holding only the reasons actually given. Each has a column of its
+	// own on the sheet, left empty when it did not happen, and TotalStandby is
+	// their sum.
+	TotalStandby float64
+	Standby      []HourMeterStandby
+
+	// Breakdown is the same shape for time the machine was not merely idle but
+	// unable to work.
+	TotalBreakdown float64
+	Breakdown      []HourMeterBreakdown
+
+	// The shift's three figures, stored beside the reading so a reader of the
+	// sheet does not have to recompute them. PA is how much of the shift the
+	// machine was fit to work, BDPersen the share lost to breakdown, and UA how
+	// much of the time it was fit for it actually worked.
+	PA       float64
+	BDPersen float64
+	UA       float64
+
+	// Remark is whatever the shift needs saying about it that the figures do
+	// not carry.
+	Remark string
+
+	CreatedBy   string
+	CreatedByID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// StandbyVariable is one reason a machine stood still. The code is the site's
+// own, and the two travel together: the code is what the paper timesheet is
+// filed under, the name is what an operator recognises.
+type StandbyVariable struct {
+	Kode string
+	Nama string
+}
+
+// StandbyVariables is the closed set, in the order the timesheet lists them.
+// The spellings are the site's own and are stored as written. Each one has a
+// column of its own on the sheet, which is why a reason may be given only once
+// per reading.
+var StandbyVariables = []StandbyVariable{
+	{Kode: "D01", Nama: "P2H"},
+	{Kode: "D02", Nama: "ISI BBM"},
+	{Kode: "D03", Nama: "PEMERIKSAAN UNIT"},
+	{Kode: "D04", Nama: "TRAVELING"},
+	{Kode: "D05", Nama: "TUNGGU ALAT"},
+	{Kode: "D06", Nama: "TUNGGU PENGUKURAN SURVEY"},
+	{Kode: "D07", Nama: "TUNGGU BLASTING"},
+	{Kode: "D08", Nama: "CUCI UNIT"},
+	{Kode: "D09", Nama: "ISTIRAHAT"},
+	{Kode: "D10", Nama: "TUNGGU PEMERIKSAAN SAFTY"},
+	{Kode: "D11", Nama: "STANDBY PERMINTAAN"},
+	{Kode: "D12", Nama: "TUNGGU OPERATOR"},
+	{Kode: "D13", Nama: "CHANGE SHIFT"},
+	{Kode: "D14", Nama: "DEBU"},
+	{Kode: "D15", Nama: "SHOLAT"},
+	{Kode: "D16", Nama: "PIT STOP"},
+	{Kode: "D17", Nama: "TIDAK ADA THIMESHET"},
+	{Kode: "I15", Nama: "HUJAN"},
+	{Kode: "I16", Nama: "FORCE MAJEURE"},
+	{Kode: "I17", Nama: "LICIN"},
+	{Kode: "I18", Nama: "DEMO"},
+	{Kode: "I19", Nama: "COSTUMER PROBLEM"},
+	{Kode: "I20", Nama: "KABUT"},
+}
+
+// StandbyColumn is the sheet header for one reason, "d01_p2h" and so on. It is
+// derived rather than written out so a reason cannot end up with a column whose
+// name disagrees with its code.
+func (v StandbyVariable) StandbyColumn() string {
+	name := strings.ToLower(strings.Join(strings.Fields(v.Nama), "_"))
+	return strings.ToLower(v.Kode) + "_" + name
+}
+
+// BreakdownVariables is the closed set of breakdown reasons. Unlike standby
+// these carry no timesheet code, so the name is the whole identifier. Each has
+// a column of its own on the sheet for the same reason standby does.
+var BreakdownVariables = []string{"SCM", "USM", "TRM", "ICM", "NO OPR"}
+
+// BreakdownColumn is the sheet header for one breakdown reason, "bd_scm" and so
+// on. The prefix keeps them apart from every other column in the row.
+func BreakdownColumn(variable string) string {
+	return "bd_" + strings.ToLower(strings.Join(strings.Fields(variable), "_"))
+}
+
+// HourMeterStandby is one standby reason and the minutes spent on it.
+type HourMeterStandby struct {
+	Variable string
+	Menit    float64
+}
+
+// HourMeterBreakdown is one breakdown reason and the minutes lost to it.
+type HourMeterBreakdown struct {
+	Variable string
+	Menit    float64
 }
 
 // NotaItem is one line of a nota. It lives in its own sheet: keeping the lines

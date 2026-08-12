@@ -25,6 +25,7 @@ const (
 	leaveSheet      = "Leave"
 	fuelMasukSheet  = "Fuel Masuk"
 	fuelKeluarSheet = "Fuel Keluar"
+	hourMeterSheet  = "Input HM"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -138,6 +139,55 @@ var fuelMasukHeaders = []string{
 	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
 }
 
+// The hour meter log carries no photo, so it is read in one range. Every
+// standby reason has a column of its own, left empty when it did not happen:
+// that is the shape the site already keeps its timesheet in, and it is why a
+// reason may be given only once per reading.
+var hourMeterHeaders = buildHourMeterHeaders()
+
+func buildHourMeterHeaders() []string {
+	headers := []string{
+		"no_transaksi", "tanggal", "shift", "id_unit", "nama_unit", "operator",
+		"hm_awal_jam", "hm_akhir_jam", "total_hm_jam", "fuel_liter",
+		"total_standby_menit",
+	}
+	for _, variable := range model.StandbyVariables {
+		headers = append(headers, variable.StandbyColumn())
+	}
+	headers = append(headers, "total_bd_menit")
+	for _, variable := range model.BreakdownVariables {
+		headers = append(headers, model.BreakdownColumn(variable))
+	}
+	headers = append(headers, "pa_persen", "bd_persen", "ua_persen", "remark")
+	return append(headers, "dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at")
+}
+
+// Where the standby block starts, and the last column of the row. Both are
+// derived so adding a reason cannot leave the reader looking at the wrong cell.
+var (
+	hourMeterStandbyOffset = 11
+	// The breakdown total sits between the two blocks, so its own column is one
+	// past the standby block and its reasons start after that.
+	hourMeterBreakdownTotalOffset = hourMeterStandbyOffset + len(model.StandbyVariables)
+	hourMeterBreakdownOffset      = hourMeterBreakdownTotalOffset + 1
+	// The three figures and the remark sit between the breakdown block and the
+	// audit trail.
+	hourMeterSummaryOffset = hourMeterBreakdownOffset + len(model.BreakdownVariables)
+	hourMeterAuditOffset   = hourMeterSummaryOffset + 4
+	hourMeterLastColumn    = columnName(len(hourMeterHeaders))
+)
+
+// columnName turns a 1-based column number into its spreadsheet letters.
+func columnName(number int) string {
+	name := ""
+	for number > 0 {
+		number--
+		name = string(rune('A'+number%26)) + name
+		number /= 26
+	}
+	return name
+}
+
 // The first ten columns are the dispensing log as the site keeps it; the audit
 // trail this app adds follows them.
 var fuelKeluarHeaders = []string{
@@ -186,7 +236,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet, fuelMasukSheet, fuelKeluarSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet, fuelMasukSheet, fuelKeluarSheet, hourMeterSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -218,6 +268,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: leaveSheet, headers: leaveHeaders},
 		{name: fuelMasukSheet, headers: fuelMasukHeaders},
 		{name: fuelKeluarSheet, headers: fuelKeluarHeaders},
+		{name: hourMeterSheet, headers: hourMeterHeaders},
 	} {
 		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
 			return err
@@ -1507,6 +1558,148 @@ func parseOptionalFloatCell(cell interface{}) (*float64, error) {
 		return nil, fmt.Errorf("unsupported number %q", raw)
 	}
 	return &value, nil
+}
+
+func (r *GoogleSheetsRepository) MaxHourMeterSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, hourMeterSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateHourMeter(ctx context.Context, reading *model.HourMeter) error {
+	return r.appendRow(ctx, hourMeterSheet, hourMeterToRow(reading))
+}
+
+func (r *GoogleSheetsRepository) ListHourMeter(ctx context.Context) ([]model.HourMeter, error) {
+	rows, err := r.readRows(ctx, hourMeterSheet, hourMeterLastColumn)
+	if err != nil {
+		return nil, err
+	}
+	readings := make([]model.HourMeter, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		reading, err := rowToHourMeter(row, r.location)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(reading.HMID) == "" {
+			continue
+		}
+		readings = append(readings, *reading)
+	}
+	return readings, nil
+}
+
+func hourMeterToRow(reading *model.HourMeter) []interface{} {
+	row := []interface{}{
+		reading.HMID, reading.Tanggal, reading.Shift, reading.IDUnit, reading.NamaUnit,
+		reading.Operator, formatFloat(reading.HMAwal), formatFloat(reading.HMAkhir),
+		formatFloat(reading.TotalHM), formatFloat(reading.FuelLiter),
+		formatFloat(reading.TotalStandby),
+	}
+	// A reason that did not happen leaves its cell empty rather than writing a
+	// zero, so the sheet distinguishes "no rain" from "rain, nought minutes".
+	minutes := make(map[string]float64, len(reading.Standby))
+	for _, standby := range reading.Standby {
+		minutes[strings.ToUpper(strings.TrimSpace(standby.Variable))] = standby.Menit
+	}
+	for _, variable := range model.StandbyVariables {
+		value, found := minutes[variable.Nama]
+		if !found {
+			row = append(row, "")
+			continue
+		}
+		row = append(row, formatFloat(value))
+	}
+
+	row = append(row, formatFloat(reading.TotalBreakdown))
+	lost := make(map[string]float64, len(reading.Breakdown))
+	for _, breakdown := range reading.Breakdown {
+		lost[strings.ToUpper(strings.TrimSpace(breakdown.Variable))] = breakdown.Menit
+	}
+	for _, variable := range model.BreakdownVariables {
+		value, found := lost[variable]
+		if !found {
+			row = append(row, "")
+			continue
+		}
+		row = append(row, formatFloat(value))
+	}
+	row = append(row,
+		formatFloat(reading.PA), formatFloat(reading.BDPersen), formatFloat(reading.UA),
+		reading.Remark,
+	)
+	return append(row,
+		reading.CreatedBy, reading.CreatedByID,
+		formatDateTime(reading.CreatedAt), formatDateTime(reading.UpdatedAt),
+	)
+}
+
+func rowToHourMeter(row []interface{}, location *time.Location) (*model.HourMeter, error) {
+	row = padRow(row, len(hourMeterHeaders))
+	createdAt, err := parseDateTime(cellString(row[hourMeterAuditOffset+2]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse hour meter created_at: %w", err)
+	}
+	updatedAt, err := parseDateTime(cellString(row[hourMeterAuditOffset+3]), location)
+	if err != nil {
+		return nil, fmt.Errorf("parse hour meter updated_at: %w", err)
+	}
+	reading := &model.HourMeter{
+		HMID:           cellString(row[0]),
+		Tanggal:        cellString(row[1]),
+		Shift:          cellString(row[2]),
+		IDUnit:         cellString(row[3]),
+		NamaUnit:       cellString(row[4]),
+		Operator:       cellString(row[5]),
+		HMAwal:         parseFloatCell(row[6]),
+		HMAkhir:        parseFloatCell(row[7]),
+		TotalHM:        parseFloatCell(row[8]),
+		FuelLiter:      parseFloatCell(row[9]),
+		TotalStandby:   parseFloatCell(row[10]),
+		TotalBreakdown: parseFloatCell(row[hourMeterBreakdownTotalOffset]),
+		PA:             parseFloatCell(row[hourMeterSummaryOffset]),
+		BDPersen:       parseFloatCell(row[hourMeterSummaryOffset+1]),
+		UA:             parseFloatCell(row[hourMeterSummaryOffset+2]),
+		Remark:         cellString(row[hourMeterSummaryOffset+3]),
+		CreatedBy:      cellString(row[hourMeterAuditOffset]),
+		CreatedByID:    cellString(row[hourMeterAuditOffset+1]),
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
+	}
+	// An empty cell is a reason that did not happen, so it produces no entry
+	// rather than one reading zero minutes.
+	for index, variable := range model.StandbyVariables {
+		cell := row[hourMeterStandbyOffset+index]
+		if strings.TrimSpace(cellString(cell)) == "" {
+			continue
+		}
+		reading.Standby = append(reading.Standby, model.HourMeterStandby{
+			Variable: variable.Nama,
+			Menit:    parseFloatCell(cell),
+		})
+	}
+	for index, variable := range model.BreakdownVariables {
+		cell := row[hourMeterBreakdownOffset+index]
+		if strings.TrimSpace(cellString(cell)) == "" {
+			continue
+		}
+		reading.Breakdown = append(reading.Breakdown, model.HourMeterBreakdown{
+			Variable: variable,
+			Menit:    parseFloatCell(cell),
+		})
+	}
+	return reading, nil
 }
 
 func (r *GoogleSheetsRepository) AppendActivity(ctx context.Context, activity *model.LoginActivity) error {

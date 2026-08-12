@@ -49,11 +49,11 @@
       <div class="form-grid form-grid-3">
         <div>
           <label for="hm_awal">{{template "icon" "clock"}}HM awal flow meter</label>
-          <input id="hm_awal" name="hm_awal" type="number" value="{{.Form.HMAwalFlowMeter}}" step="0.01" min="0" data-fuel-awal required>
+          <input id="hm_awal" name="hm_awal" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMAwalFlowMeter}}" data-fuel-awal required>
         </div>
         <div>
           <label for="hm_akhir">{{template "icon" "clock"}}HM akhir flow meter</label>
-          <input id="hm_akhir" name="hm_akhir" type="number" value="{{.Form.HMAkhirFlowMeter}}" step="0.01" min="0" data-fuel-akhir required>
+          <input id="hm_akhir" name="hm_akhir" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMAkhirFlowMeter}}" data-fuel-akhir required>
         </div>
         <div>
           <label for="fuel_liter">{{template "icon" "fuel"}}Fuel (liter)</label>
@@ -67,7 +67,7 @@
       <div class="form-grid">
         <div>
           <label for="hm_alat_berat">{{template "icon" "clock"}}HM alat berat pengisian <span class="hint">(opsional)</span></label>
-          <input id="hm_alat_berat" name="hm_alat_berat" type="number" value="{{.Form.HMAlatBerat}}" step="0.01" min="0" placeholder="Pembacaan HM alat saat diisi">
+          <input id="hm_alat_berat" name="hm_alat_berat" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMAlatBerat}}" placeholder="Pembacaan HM alat saat diisi">
         </div>
         <div>
           <label for="operator">{{template "icon" "user"}}Operator</label>
@@ -143,6 +143,7 @@
   </section>
 {{template "appShellClose" .}}
 <script src="/static/js/auth.js" defer></script>
+<script src="/static/js/combobox.js" defer></script>
 <script src="/static/js/fuel-keluar.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}

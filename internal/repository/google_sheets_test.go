@@ -1,8 +1,11 @@
 package repository
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"opp-management/internal/model"
 )
 
 func testLocation(t *testing.T) *time.Location {
@@ -155,5 +158,147 @@ func TestDataRowsSkipsBlankRows(t *testing.T) {
 	}
 	if indexed[1].rowNumber != 5 {
 		t.Fatalf("second row number = %d, want 5", indexed[1].rowNumber)
+	}
+}
+
+// The sheet is written with a decimal point whatever the operator typed. A
+// comma reaches Sheets as text, and a column of text does not add up.
+func TestNumericRowsAreWrittenWithADecimalPoint(t *testing.T) {
+	hm := hourMeterToRow(&model.HourMeter{
+		HMID: "HM-20260807-0001", HMAwal: 5064.3, HMAkhir: 5100.75, TotalHM: 36.45, FuelLiter: 245.5,
+	})
+	fuelOut := fuelKeluarToRow(&model.FuelKeluar{
+		FuelOutID: "FUELOUT-20260807-0001", HMAwalFlowMeter: 20.5, HMAkhirFlowMeter: 30.25, Liter: 9.75,
+	})
+	fuelIn := fuelMasukToRow(&model.FuelMasuk{
+		FuelID: "FUEL-20260807-0001", JumlahLiter: 8010.4, LiterTidakSesuai: 150.25,
+	})
+
+	for name, row := range map[string][]interface{}{
+		"hour meter": hm, "fuel keluar": fuelOut, "fuel masuk": fuelIn,
+	} {
+		for index, cell := range row {
+			value, ok := cell.(string)
+			if !ok {
+				t.Fatalf("%s column %d is not written as a string: %T", name, index, cell)
+			}
+			if strings.Contains(value, ",") {
+				t.Fatalf("%s column %d was written with a decimal comma: %q", name, index, value)
+			}
+		}
+	}
+	if hm[6] != "5064.300000" {
+		t.Fatalf("hm awal = %q", hm[6])
+	}
+}
+
+// Every standby reason has a column of its own. A reason that did not happen
+// leaves its cell empty rather than writing a zero, so the sheet distinguishes
+// "no rain" from "rain, nought minutes".
+func TestHourMeterRowWritesOneColumnPerStandbyReason(t *testing.T) {
+	reading := &model.HourMeter{
+		HMID: "HM-20260807-0001", Tanggal: "2026-08-07", TotalStandby: 45,
+		Standby: []model.HourMeterStandby{
+			{Variable: "P2H", Menit: 15},
+			{Variable: "HUJAN", Menit: 30},
+		},
+		TotalBreakdown: 60,
+		Breakdown: []model.HourMeterBreakdown{
+			{Variable: "SCM", Menit: 40},
+			{Variable: "NO OPR", Menit: 20},
+		},
+		PA: 93.75, BDPersen: 6.25, UA: 86.67, Remark: "Ganti hose hidrolik",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	row := hourMeterToRow(reading)
+	if len(row) != len(hourMeterHeaders) {
+		t.Fatalf("row has %d cells for %d headers", len(row), len(hourMeterHeaders))
+	}
+
+	byHeader := make(map[string]string, len(row))
+	for index, header := range hourMeterHeaders {
+		byHeader[header] = cellString(row[index])
+	}
+	if byHeader["d01_p2h"] != "15.000000" {
+		t.Fatalf("d01_p2h = %q", byHeader["d01_p2h"])
+	}
+	if byHeader["i15_hujan"] != "30.000000" {
+		t.Fatalf("i15_hujan = %q", byHeader["i15_hujan"])
+	}
+	if byHeader["d09_istirahat"] != "" {
+		t.Fatalf("a reason that did not happen was written as %q", byHeader["d09_istirahat"])
+	}
+	if byHeader["total_standby_menit"] != "45.000000" {
+		t.Fatalf("total = %q", byHeader["total_standby_menit"])
+	}
+	if byHeader["bd_scm"] != "40.000000" || byHeader["bd_no_opr"] != "20.000000" {
+		t.Fatalf("breakdown columns = %q, %q", byHeader["bd_scm"], byHeader["bd_no_opr"])
+	}
+	if byHeader["bd_usm"] != "" {
+		t.Fatalf("a breakdown that did not happen was written as %q", byHeader["bd_usm"])
+	}
+	if byHeader["total_bd_menit"] != "60.000000" {
+		t.Fatalf("total breakdown = %q", byHeader["total_bd_menit"])
+	}
+	if byHeader["pa_persen"] != "93.750000" || byHeader["bd_persen"] != "6.250000" || byHeader["ua_persen"] != "86.670000" {
+		t.Fatalf("figures = %q / %q / %q", byHeader["pa_persen"], byHeader["bd_persen"], byHeader["ua_persen"])
+	}
+	if byHeader["remark"] != "Ganti hose hidrolik" {
+		t.Fatalf("remark = %q", byHeader["remark"])
+	}
+
+	// What was written comes back as the same two reasons and nothing else.
+	back, err := rowToHourMeter(row, testLocation(t))
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if len(back.Standby) != 2 {
+		t.Fatalf("read back %d reasons: %+v", len(back.Standby), back.Standby)
+	}
+	if back.Standby[0].Variable != "P2H" || back.Standby[1].Variable != "HUJAN" {
+		t.Fatalf("read back the wrong reasons: %+v", back.Standby)
+	}
+	if back.TotalStandby != 45 {
+		t.Fatalf("read back total = %v", back.TotalStandby)
+	}
+	if len(back.Breakdown) != 2 || back.Breakdown[0].Variable != "SCM" || back.Breakdown[1].Variable != "NO OPR" {
+		t.Fatalf("read back the wrong breakdown: %+v", back.Breakdown)
+	}
+	if back.TotalBreakdown != 60 {
+		t.Fatalf("read back breakdown total = %v", back.TotalBreakdown)
+	}
+	if back.PA != 93.75 || back.BDPersen != 6.25 || back.UA != 86.67 {
+		t.Fatalf("read back figures = %v / %v / %v", back.PA, back.BDPersen, back.UA)
+	}
+	if back.Remark != "Ganti hose hidrolik" {
+		t.Fatalf("read back remark = %q", back.Remark)
+	}
+}
+
+// The audit trail sits after the standby block, so the reader has to find it by
+// offset rather than by a hard-coded column.
+func TestHourMeterHeaderLayoutMatchesItsOffsets(t *testing.T) {
+	if hourMeterHeaders[hourMeterStandbyOffset] != "d01_p2h" {
+		t.Fatalf("the standby block starts at %q", hourMeterHeaders[hourMeterStandbyOffset])
+	}
+	if hourMeterHeaders[hourMeterBreakdownTotalOffset] != "total_bd_menit" {
+		t.Fatalf("the breakdown total sits at %q", hourMeterHeaders[hourMeterBreakdownTotalOffset])
+	}
+	if hourMeterHeaders[hourMeterBreakdownOffset] != "bd_scm" {
+		t.Fatalf("the breakdown block starts at %q", hourMeterHeaders[hourMeterBreakdownOffset])
+	}
+	if hourMeterHeaders[hourMeterSummaryOffset] != "pa_persen" {
+		t.Fatalf("the figures start at %q", hourMeterHeaders[hourMeterSummaryOffset])
+	}
+	if hourMeterHeaders[hourMeterAuditOffset] != "dibuat_oleh" {
+		t.Fatalf("the audit trail starts at %q", hourMeterHeaders[hourMeterAuditOffset])
+	}
+	if got := columnName(len(hourMeterHeaders)); got != hourMeterLastColumn {
+		t.Fatalf("last column = %q, want %q", hourMeterLastColumn, got)
+	}
+	for number, want := range map[int]string{1: "A", 26: "Z", 27: "AA", 48: "AV"} {
+		if got := columnName(number); got != want {
+			t.Fatalf("columnName(%d) = %q, want %q", number, got, want)
+		}
 	}
 }
