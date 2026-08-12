@@ -52,7 +52,7 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("SESSION_TTL must be a positive duration")
 	}
 
-	maxUploadBytes, err := parseInt64("MAX_UPLOAD_BYTES", getenv("MAX_UPLOAD_BYTES", "2097152"))
+	maxUploadBytes, err := parseInt64("MAX_UPLOAD_BYTES", getenv("MAX_UPLOAD_BYTES", "10485760"))
 	if err != nil || maxUploadBytes <= 0 {
 		return Config{}, fmt.Errorf("MAX_UPLOAD_BYTES must be a positive integer")
 	}

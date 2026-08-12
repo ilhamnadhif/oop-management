@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	MaxInputBytes      int64 = 2 * 1024 * 1024
+	MaxInputBytes      int64 = 10 * 1024 * 1024
 	MaxOutputChars           = 45000
 	DataURLPrefix            = "data:image/jpeg;base64,"
 	maxDecodeDimension       = 4096
