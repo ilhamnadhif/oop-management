@@ -2,42 +2,63 @@
 {{template "appShellOpen" .}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
-  {{with .Overview}}
   <section class="panel filter-panel">
-    <div>
-      <p class="eyebrow">{{template "icon" "info"}}DATA TERAKHIR DIMUAT</p>
-      <h2>{{.LastUpdated}}</h2>
-    </div>
-    <p class="hint filter-note">
-      Halaman ini menghitung isi daftar Unit A2B. Untuk dump truck, lihat
-      <a href="/unit/overview">Overview Unit</a>.
-    </p>
+    <form class="filter-form" method="get" action="/a2b/overview">
+      <div>
+        <label for="from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <input id="from" name="from" type="date" value="{{.From}}">
+      </div>
+      <div>
+        <label for="to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <input id="to" name="to" type="date" value="{{.To}}">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/a2b/overview">Reset</a>
+      <p class="hint filter-note">Untuk daftar alat yang terdaftar, lihat <a href="/unit-a2b">Unit A2B</a>. Stock fuel dihitung sampai tanggal akhir, bukan hanya dalam rentang.</p>
+    </form>
   </section>
 
-  <section class="kpi-grid">
+  {{with .Overview}}
+  <section class="kpi-grid a2b-kpi-grid">
     <article class="panel kpi-card">
       <div>
-        <p class="eyebrow">TOTAL UNIT A2B</p>
-        <p class="kpi-value">{{.TotalA2B}}</p>
+        <p class="eyebrow">TOTAL UNIT</p>
+        <p class="kpi-value">{{.TotalUnit}}</p>
         <p class="kpi-note">Alat berat terdaftar</p>
       </div>
-      <span class="kpi-icon green">{{template "icon" "cube"}}</span>
+      <span class="kpi-icon blue">{{template "icon" "cube"}}</span>
     </article>
     <article class="panel kpi-card">
       <div>
-        <p class="eyebrow">LOKASI TERPAKAI</p>
-        <p class="kpi-value">{{len .LokasiShares}}</p>
-        <p class="kpi-note">Tempat alat berat tercatat berada</p>
+        <p class="eyebrow">UNIT ACTIVE</p>
+        <p class="kpi-value">{{.UnitActive}}</p>
+        <p class="kpi-note">Bekerja pada rentang ini</p>
       </div>
-      <span class="kpi-icon blue">{{template "icon" "pin"}}</span>
+      <span class="kpi-icon green">{{template "icon" "activity"}}</span>
     </article>
     <article class="panel kpi-card">
       <div>
-        <p class="eyebrow">MEREK BERBEDA</p>
-        <p class="kpi-value">{{len .TopMerek}}</p>
-        <p class="kpi-note">Lima merek terbanyak ditampilkan di bawah</p>
+        <p class="eyebrow">UNIT STANDBY</p>
+        <p class="kpi-value">{{.UnitStandby}}</p>
+        <p class="kpi-note">Terdaftar tapi tidak dipakai</p>
       </div>
-      <span class="kpi-icon purple">{{template "icon" "tag"}}</span>
+      <span class="kpi-icon amber">{{template "icon" "clock"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">UNIT BREAKDOWN</p>
+        <p class="kpi-value">{{.UnitBreakdown}}</p>
+        <p class="kpi-note">Sempat tidak bisa bekerja</p>
+      </div>
+      <span class="kpi-icon red">{{template "icon" "info"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">STOCK FUEL</p>
+        <p class="kpi-value">{{.StockFuel}}</p>
+        <p class="kpi-note">Liter, masuk {{.FuelMasuk}} − keluar {{.FuelKeluar}}</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "fuel"}}</span>
     </article>
   </section>
 
@@ -45,39 +66,100 @@
     <article class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">{{template "icon" "pin"}}UNIT A2B PER LOKASI</p>
-          <h2>Sebaran alat berat</h2>
+          <p class="eyebrow">{{template "icon" "cube"}}UNIT PER TANGGAL</p>
+          <h2>Yang bekerja dan yang rusak</h2>
         </div>
+        <p class="chart-legend"><span class="swatch aktif"></span>Unit active <span class="swatch rusak"></span>Unit breakdown</p>
       </div>
-      {{template "chartFigure" $.LokasiChart}}
+      {{template "chartFigure" $.UnitChart}}
     </article>
 
     <article class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">{{template "icon" "trophy"}}TOP 5 MEREK A2B</p>
-          <h2>Berdasarkan jumlah unit</h2>
+          <p class="eyebrow">{{template "icon" "fuel"}}FUEL PER TANGGAL</p>
+          <h2>Masuk dan keluar tangki</h2>
         </div>
+        <p class="chart-legend"><span class="swatch masuk"></span>Fuel masuk <span class="swatch keluar"></span>Fuel keluar</p>
       </div>
-      {{if .TopMerek}}
-      <table class="rank-table">
+      {{template "chartFigure" $.FuelChart}}
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "chart"}}PERFORMANCE PER UNIT</p>
+        <h2>{{len .Units}} unit tercatat {{$.From}} – {{$.To}}</h2>
+      </div>
+    </div>
+    {{if .Units}}
+    <div class="table-scroll">
+      <table class="data-table">
         <thead>
-          <tr><th>Merek / type</th><th class="numeric">Unit</th><th class="numeric">Tangki (L)</th></tr>
+          <tr>
+            <th scope="col">No</th>
+            <th scope="col">Unit ID</th>
+            <th scope="col">Nama unit</th>
+            <th scope="col" class="numeric">Shift</th>
+            <th scope="col" class="numeric">Total HM (jam)</th>
+            <th scope="col" class="numeric">Fuel (L)</th>
+            <th scope="col" class="numeric">Fuel ratio (L/jam)</th>
+            <th scope="col" class="numeric">PA</th>
+            <th scope="col" class="numeric">UA</th>
+          </tr>
         </thead>
         <tbody>
-          {{range .TopMerek}}
+          {{range $index, $unit := .Units}}
           <tr>
-            <td>{{.Merek}}</td>
-            <td class="numeric">{{.Jumlah}}</td>
-            <td class="numeric">{{printf "%.0f" .FuelStorage}}</td>
+            <td class="numeric">{{add1 $index}}</td>
+            <td>{{$unit.IDUnit}}</td>
+            <td class="wrap">{{$unit.NamaUnit}}</td>
+            <td class="numeric">{{$unit.Shifts}}</td>
+            <td class="numeric">{{$unit.TotalHM}}</td>
+            <td class="numeric">{{$unit.Fuel}}</td>
+            <td class="numeric">{{$unit.FuelRatio}}</td>
+            <td class="numeric">{{$unit.PA}}%</td>
+            <td class="numeric">{{$unit.UA}}%</td>
           </tr>
           {{end}}
         </tbody>
       </table>
-      {{else}}
-      <p class="panel-empty">Belum ada unit A2B terdaftar.</p>
-      {{end}}
-    </article>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada pembacaan hour meter pada rentang ini. Catat lewat <a href="/a2b/hm">Input HM</a>.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "clock"}}TOP 5 DELAY</p>
+        <h2>{{.TotalDelayJam}} jam standby</h2>
+      </div>
+    </div>
+    {{if $.DelaySlices}}
+    <div class="role-distribution">
+      <svg class="role-donut" viewBox="0 0 100 100" role="img" aria-label="Sebaran {{.TotalDelayJam}} jam standby menurut variable">
+        <circle class="track" cx="50" cy="50" r="40" pathLength="100"></circle>
+        {{range $.DelaySlices}}
+        <circle class="slice {{.ClassName}}" cx="50" cy="50" r="40" pathLength="100" stroke-dasharray="{{.Dash}}" stroke-dashoffset="{{.Offset}}"></circle>
+        {{end}}
+        <text class="role-donut-number" x="50" y="47">{{.TotalDelayJam}}</text>
+        <text class="role-donut-caption" x="50" y="61">Jam</text>
+      </svg>
+      <ul class="role-list">
+        {{range $.DelaySlices}}
+        <li>
+          <span class="role-name"><i class="role-swatch {{.ClassName}}"></i><span class="role-label">{{.Variable}}</span></span>
+          <span><strong>{{.Jam}} jam</strong> · {{printf "%.1f" .Percent}}%</span>
+        </li>
+        {{end}}
+      </ul>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada standby yang tercatat pada rentang ini.</p>
+    {{end}}
   </section>
   {{end}}
 {{template "appShellClose" .}}

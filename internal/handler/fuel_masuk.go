@@ -41,7 +41,6 @@ type FuelMasukView struct {
 	SelisihLabel   string
 	TidakSesuai    bool
 	Photos         []FuelPhotoLink
-	Selected       bool
 }
 
 type FuelMasukPageData struct {
@@ -54,17 +53,6 @@ type FuelMasukPageData struct {
 	Rows              []FuelMasukView
 	Error             string
 	Success           string
-}
-
-type FuelApprovalPageData struct {
-	ShellPageData
-	Filters      service.FuelMasukFilters
-	StatusFilter string
-	Statuses     []string
-	Rows         []FuelMasukView
-	SelectedFuel string
-	Error        string
-	Success      string
 }
 
 func (s *Server) handleFuelMasuk(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +154,7 @@ func (s *Server) handleFuelMasukCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderFuelMasuk(w, r, user, sessionValue, FuelMasukFormData{}, "",
-		fmt.Sprintf("Fuel masuk %s tersimpan dan menunggu approval.", fuel.FuelID), http.StatusOK)
+		fmt.Sprintf("Fuel masuk %s tersimpan.", fuel.FuelID), http.StatusOK)
 }
 
 func (s *Server) renderFuelMasuk(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form FuelMasukFormData, errMessage, success string, status int) {
@@ -204,111 +192,9 @@ func (s *Server) renderFuelMasuk(w http.ResponseWriter, r *http.Request, user *m
 			data.Error = "Gagal memuat riwayat fuel masuk"
 		}
 	} else {
-		data.Rows = fuelViews(rows, "")
+		data.Rows = fuelViews(rows)
 	}
 	s.render(w, "fuel_masuk", data, status)
-}
-
-func (s *Server) handleFuelMasukApproval(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.handleFuelMasukApprovalPage(w, r)
-	case http.MethodPost:
-		s.handleFuelMasukApprovalPost(w, r)
-	default:
-		w.Header().Set("Allow", "GET, POST")
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
-}
-
-func (s *Server) handleFuelMasukApprovalPage(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "a2b-fuel-approval")
-	if !ok {
-		return
-	}
-	filters, statusFilter := fuelFiltersFromRequest(r)
-	s.renderFuelApproval(w, r, user, sessionValue, filters, statusFilter,
-		strings.TrimSpace(r.URL.Query().Get("fuel")), "", "", http.StatusOK)
-}
-
-func (s *Server) handleFuelMasukApprovalPost(w http.ResponseWriter, r *http.Request) {
-	sessionValue, ok := s.currentSession(r)
-	if !ok {
-		redirect(w, r, "/login")
-		return
-	}
-	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
-	if err != nil || user.StatusPengguna != model.StatusAktif {
-		s.sessions.Delete(r, w)
-		redirect(w, r, "/login")
-		return
-	}
-	if !s.allowed(w, user, sessionValue, "a2b-fuel-approval") {
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 96*1024)
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Form tidak valid", http.StatusBadRequest)
-		return
-	}
-	if !s.sessions.ValidCSRF(r, sessionValue) {
-		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
-		return
-	}
-	filters, statusFilter := fuelFiltersFromRequest(r)
-	fuelID := strings.TrimSpace(r.FormValue("fuel_id"))
-	decision := service.FuelDecision(strings.ToUpper(strings.TrimSpace(r.FormValue("decision"))))
-	fuel, err := s.fuelMasuk.Decide(r.Context(), user, fuelID, decision, r.FormValue("catatan_approval"))
-	if err != nil {
-		message := "Keputusan fuel masuk tidak dapat disimpan"
-		status := http.StatusUnprocessableEntity
-		switch {
-		case errors.Is(err, service.ErrForbidden):
-			message = "Anda tidak berhak memutuskan fuel masuk"
-			status = http.StatusForbidden
-		case errors.Is(err, service.ErrConflict):
-			message = "Fuel masuk ini sudah diproses"
-			status = http.StatusConflict
-		case errors.Is(err, repository.ErrNotFound):
-			message = "Fuel masuk tidak ditemukan"
-			status = http.StatusNotFound
-		case errors.Is(err, service.ErrValidation):
-			message = strings.TrimPrefix(err.Error(), "validation error: ")
-		default:
-			log.Printf("decide fuel masuk: %v", err)
-			status = http.StatusInternalServerError
-		}
-		s.renderFuelApproval(w, r, user, sessionValue, filters, statusFilter, fuelID, message, "", status)
-		return
-	}
-	s.renderFuelApproval(w, r, user, sessionValue, filters, statusFilter, "", "",
-		fmt.Sprintf("Fuel masuk %s berhasil ditandai %s.", fuel.FuelID, strings.ToLower(fuel.StatusApproval)), http.StatusOK)
-}
-
-func (s *Server) renderFuelApproval(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, filters service.FuelMasukFilters, statusFilter, selected, errMessage, success string, status int) {
-	data := FuelApprovalPageData{
-		ShellPageData: s.shellData(user, sessionValue, "a2b-fuel-approval"),
-		Filters:       filters,
-		StatusFilter:  statusFilter,
-		Statuses:      service.FuelStatusOptions(),
-		SelectedFuel:  strings.ToUpper(strings.TrimSpace(selected)),
-		Error:         errMessage,
-		Success:       success,
-	}
-	rows, err := s.fuelMasuk.ApprovalRows(r.Context(), filters)
-	if err != nil {
-		log.Printf("list fuel masuk approvals: %v", err)
-		if data.Error == "" {
-			if errors.Is(err, service.ErrValidation) {
-				data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
-			} else {
-				data.Error = "Gagal memuat data fuel masuk"
-			}
-		}
-	} else {
-		data.Rows = fuelViews(rows, data.SelectedFuel)
-	}
-	s.render(w, "fuel_masuk_approval", data, status)
 }
 
 // handleFuelMasukPhoto serves one evidence photo. Anyone who may see the
@@ -344,24 +230,7 @@ func (s *Server) handleFuelMasukPhoto(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(payload)
 }
 
-func fuelFiltersFromRequest(r *http.Request) (service.FuelMasukFilters, string) {
-	status := strings.TrimSpace(r.FormValue("status"))
-	if status == "" && r.URL.Query().Get("status") == "" {
-		status = model.FuelStatusMenunggu
-	}
-	filterStatus := status
-	if strings.EqualFold(status, "SEMUA") {
-		filterStatus = ""
-	}
-	return service.FuelMasukFilters{
-		Q:      strings.TrimSpace(r.FormValue("q")),
-		Status: filterStatus,
-		From:   strings.TrimSpace(r.FormValue("from")),
-		To:     strings.TrimSpace(r.FormValue("to")),
-	}, status
-}
-
-func fuelViews(rows []model.FuelMasuk, selected string) []FuelMasukView {
+func fuelViews(rows []model.FuelMasuk) []FuelMasukView {
 	views := make([]FuelMasukView, 0, len(rows))
 	for _, row := range rows {
 		view := FuelMasukView{
@@ -371,7 +240,6 @@ func fuelViews(rows []model.FuelMasuk, selected string) []FuelMasukView {
 			JumlahLabel:  formatLiter(row.JumlahLiter),
 			SelisihLabel: formatLiter(row.LiterTidakSesuai),
 			TidakSesuai:  row.Keterangan == model.FuelKeteranganTidakSesuai,
-			Selected:     selected != "" && strings.EqualFold(selected, row.FuelID),
 		}
 		for _, kind := range service.FuelPhotoKinds {
 			view.Photos = append(view.Photos, FuelPhotoLink{

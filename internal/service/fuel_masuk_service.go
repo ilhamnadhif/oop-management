@@ -7,16 +7,11 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"opp-management/internal/model"
 	"opp-management/internal/photo"
 	"opp-management/internal/repository"
 )
-
-// FuelTextMaxLength bounds the approval note, which is the only free text on a
-// delivery row.
-const FuelTextMaxLength = 1000
 
 // FuelInputLayout is what the datetime-local control in the form submits.
 const FuelInputLayout = "2006-01-02T15:04"
@@ -54,23 +49,9 @@ func fuelPhotoKindBySlug(slug string) (FuelPhotoKind, bool) {
 // enforces, so a direct POST cannot store a third word.
 var FuelKeteranganOptions = []string{model.FuelKeteranganSesuai, model.FuelKeteranganTidakSesuai}
 
-var fuelStatuses = []string{model.FuelStatusMenunggu, model.FuelStatusDisetujui, model.FuelStatusDitolak}
-
-// FuelStatusOptions lists the approval states for the filter control.
-func FuelStatusOptions() []string {
-	return append([]string(nil), fuelStatuses...)
-}
-
-type FuelDecision string
-
-const (
-	FuelDecisionApprove FuelDecision = "APPROVE"
-	FuelDecisionReject  FuelDecision = "REJECT"
-)
-
 // FuelMasukInput is the part of a delivery the person recording it supplies.
-// The transaction number, the approval status and the audit trail are absent:
-// the service derives those rather than trusting a form post.
+// The transaction number, the status and the audit trail are absent: the
+// service derives those rather than trusting a form post.
 type FuelMasukInput struct {
 	TanggalInput     string
 	Vendor           string
@@ -86,10 +67,9 @@ type FuelMasukInput struct {
 // FuelMasukFilters narrow the delivery list. The date range is matched against
 // the recorded input time.
 type FuelMasukFilters struct {
-	Q      string
-	Status string
-	From   string
-	To     string
+	Q    string
+	From string
+	To   string
 }
 
 // FuelMasukOptions are the suggestions the form offers. Both are open lists: a
@@ -100,8 +80,7 @@ type FuelMasukOptions struct {
 }
 
 // FuelMasukService owns the delivery lifecycle. The mutex makes sequential ID
-// allocation and the read-check-write of an approval atomic within a process,
-// which is what stops two approvals from both winning.
+// allocation atomic within a process.
 type FuelMasukService struct {
 	store    repository.Store
 	location *time.Location
@@ -231,15 +210,17 @@ func (s *FuelMasukService) Create(ctx context.Context, user *model.User, input F
 		return nil, fmt.Errorf("read fuel masuk sequence: %w", err)
 	}
 	fuel := &model.FuelMasuk{
-		FuelID:            fmt.Sprintf("%s%04d", prefix, sequence+1),
-		TanggalInput:      tanggalInput,
-		Vendor:            vendor,
-		Driver:            driver,
-		Nopol:             nopol,
-		JumlahLiter:       round2(jumlah),
-		Keterangan:        keterangan,
-		LiterTidakSesuai:  round2(selisih),
-		StatusApproval:    model.FuelStatusMenunggu,
+		FuelID:           fmt.Sprintf("%s%04d", prefix, sequence+1),
+		TanggalInput:     tanggalInput,
+		Vendor:           vendor,
+		Driver:           driver,
+		Nopol:            nopol,
+		JumlahLiter:      round2(jumlah),
+		Keterangan:       keterangan,
+		LiterTidakSesuai: round2(selisih),
+		// Nobody signs a delivery off any more: the four photos are the check,
+		// and a status that only ever had one value is not a decision.
+		StatusApproval:    model.FuelStatusDisetujui,
 		FotoTruckDepan:    input.Photos[0],
 		FotoTangkiSebelum: input.Photos[1],
 		FotoFlowmeter:     input.Photos[2],
@@ -255,55 +236,6 @@ func (s *FuelMasukService) Create(ctx context.Context, user *model.User, input F
 	// A vendor or driver typed just now must be offered to the next delivery, or
 	// the same name gets stored again under a different spelling.
 	s.invalidateOptions()
-	return fuel, nil
-}
-
-func (s *FuelMasukService) Decide(ctx context.Context, actor *model.User, fuelID string, decision FuelDecision, note string) (*model.FuelMasuk, error) {
-	if err := validateUser(actor); err != nil {
-		return nil, err
-	}
-	if !CanApproveFuel(actor) {
-		return nil, ErrForbidden
-	}
-	fuelID = strings.TrimSpace(fuelID)
-	if fuelID == "" {
-		return nil, fmt.Errorf("%w: nomor transaksi wajib diisi", ErrValidation)
-	}
-	decision = FuelDecision(strings.ToUpper(strings.TrimSpace(string(decision))))
-	note = strings.TrimSpace(note)
-	if decision != FuelDecisionApprove && decision != FuelDecisionReject {
-		return nil, fmt.Errorf("%w: keputusan tidak valid", ErrValidation)
-	}
-	if decision == FuelDecisionReject && note == "" {
-		return nil, fmt.Errorf("%w: catatan wajib diisi saat menolak", ErrValidation)
-	}
-	if utf8.RuneCountInString(note) > FuelTextMaxLength {
-		return nil, fmt.Errorf("%w: catatan maksimal %d karakter", ErrValidation, FuelTextMaxLength)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	fuel, rowNumber, err := s.store.FindFuelMasukRow(ctx, fuelID)
-	if err != nil {
-		return nil, fmt.Errorf("find fuel masuk: %w", err)
-	}
-	if fuel.StatusApproval != model.FuelStatusMenunggu {
-		return nil, fmt.Errorf("%w: fuel masuk sudah diproses", ErrConflict)
-	}
-	now := s.now().In(s.location)
-	if decision == FuelDecisionApprove {
-		fuel.StatusApproval = model.FuelStatusDisetujui
-	} else {
-		fuel.StatusApproval = model.FuelStatusDitolak
-	}
-	fuel.CatatanApproval = note
-	fuel.DiprosesOleh = strings.TrimSpace(actor.NamaLengkap)
-	fuel.DiprosesOlehUserID = actor.UserID
-	fuel.DiprosesPada = &now
-	fuel.UpdatedAt = now
-	if err := s.store.UpdateFuelMasukDecision(ctx, rowNumber, fuel); err != nil {
-		return nil, fmt.Errorf("update fuel masuk decision: %w", err)
-	}
 	return fuel, nil
 }
 
@@ -323,33 +255,6 @@ func (s *FuelMasukService) List(ctx context.Context, filters FuelMasukFilters) (
 	return rows, nil
 }
 
-// ApprovalRows puts what is still waiting at the top, oldest first, so the
-// queue is worked in the order the deliveries arrived.
-func (s *FuelMasukService) ApprovalRows(ctx context.Context, filters FuelMasukFilters) ([]model.FuelMasuk, error) {
-	rows, err := s.filteredRows(ctx, filters)
-	if err != nil {
-		return nil, err
-	}
-	sort.SliceStable(rows, func(i, j int) bool {
-		iPending := rows[i].StatusApproval == model.FuelStatusMenunggu
-		jPending := rows[j].StatusApproval == model.FuelStatusMenunggu
-		if iPending != jPending {
-			return iPending
-		}
-		if iPending {
-			if !rows[i].TanggalInput.Equal(rows[j].TanggalInput) {
-				return rows[i].TanggalInput.Before(rows[j].TanggalInput)
-			}
-			return rows[i].FuelID < rows[j].FuelID
-		}
-		if !rows[i].UpdatedAt.Equal(rows[j].UpdatedAt) {
-			return rows[i].UpdatedAt.After(rows[j].UpdatedAt)
-		}
-		return rows[i].FuelID > rows[j].FuelID
-	})
-	return rows, nil
-}
-
 func (s *FuelMasukService) filteredRows(ctx context.Context, filters FuelMasukFilters) ([]model.FuelMasuk, error) {
 	filters, err := normalizeFuelFilters(filters)
 	if err != nil {
@@ -362,9 +267,6 @@ func (s *FuelMasukService) filteredRows(ctx context.Context, filters FuelMasukFi
 	result := make([]model.FuelMasuk, 0, len(rows))
 	for _, row := range rows {
 		date := row.TanggalInput.In(s.location).Format("2006-01-02")
-		if filters.Status != "" && row.StatusApproval != filters.Status {
-			continue
-		}
 		if filters.From != "" && date < filters.From {
 			continue
 		}
@@ -405,17 +307,6 @@ func (s *FuelMasukService) Photo(ctx context.Context, fuelID, slug string) (stri
 		return "", fmt.Errorf("stored fuel masuk photo: %w", ErrInvalidPhoto)
 	}
 	return value, nil
-}
-
-// CanApproveFuel reports whether a position may decide a delivery. Recording a
-// delivery and signing it off are different jobs, so the input page is open to
-// everyone in the A2B menu while this is not.
-func CanApproveFuel(user *model.User) bool {
-	if user == nil {
-		return false
-	}
-	jabatan := strings.TrimSpace(user.Jabatan)
-	return strings.EqualFold(jabatan, "Logistik") || strings.EqualFold(jabatan, "Management")
 }
 
 func (s *FuelMasukService) parseInputTime(value string) (time.Time, error) {
@@ -461,21 +352,8 @@ func parseFuelSelisih(keterangan, value string, jumlah float64) (float64, error)
 
 func normalizeFuelFilters(filters FuelMasukFilters) (FuelMasukFilters, error) {
 	filters.Q = strings.ToLower(strings.TrimSpace(filters.Q))
-	filters.Status = strings.ToUpper(strings.TrimSpace(filters.Status))
 	filters.From = strings.TrimSpace(filters.From)
 	filters.To = strings.TrimSpace(filters.To)
-	if filters.Status != "" {
-		valid := false
-		for _, status := range fuelStatuses {
-			if filters.Status == status {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return FuelMasukFilters{}, fmt.Errorf("%w: status approval tidak valid", ErrValidation)
-		}
-	}
 	if filters.From != "" {
 		if _, err := time.Parse("2006-01-02", filters.From); err != nil {
 			return FuelMasukFilters{}, fmt.Errorf("%w: tanggal awal tidak valid", ErrValidation)

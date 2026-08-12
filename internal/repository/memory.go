@@ -701,22 +701,6 @@ func (r *TestRepository) FindFuelMasukRow(_ context.Context, fuelID string) (*mo
 	return nil, 0, ErrNotFound
 }
 
-func (r *TestRepository) UpdateFuelMasukDecision(_ context.Context, rowNumber int, fuel *model.FuelMasuk) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	stored, err := r.fuelMasukAtRow(rowNumber)
-	if err != nil {
-		return err
-	}
-	stored.StatusApproval = fuel.StatusApproval
-	stored.CatatanApproval = fuel.CatatanApproval
-	stored.DiprosesOleh = fuel.DiprosesOleh
-	stored.DiprosesOlehUserID = fuel.DiprosesOlehUserID
-	stored.DiprosesPada = cloneTime(fuel.DiprosesPada)
-	stored.UpdatedAt = fuel.UpdatedAt
-	return nil
-}
-
 func (r *TestRepository) ReadFuelMasukPhoto(_ context.Context, rowNumber, photoIndex int) (string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

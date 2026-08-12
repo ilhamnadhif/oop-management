@@ -1289,40 +1289,6 @@ func (r *GoogleSheetsRepository) readFuelMasukRows(ctx context.Context) ([]index
 	return rows, nil
 }
 
-// UpdateFuelMasukDecision writes the status and its audit stamp. The delivery
-// itself and the four photos are never rewritten, so an approval cannot damage
-// the evidence it was granted on.
-func (r *GoogleSheetsRepository) UpdateFuelMasukDecision(ctx context.Context, rowNumber int, fuel *model.FuelMasuk) error {
-	if rowNumber < 2 {
-		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, fuelMasukSheet)
-	}
-	sheet := quoteSheet(fuelMasukSheet)
-	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
-		ValueInputOption: "RAW",
-		Data: []*sheets.ValueRange{
-			{
-				Range:  fmt.Sprintf("%s!%s%d", sheet, fuelStatusColumn, rowNumber),
-				Values: [][]interface{}{{fuel.StatusApproval}},
-			},
-			{
-				Range: fmt.Sprintf("%s!N%d:Q%d", sheet, rowNumber, rowNumber),
-				Values: [][]interface{}{{
-					fuel.CatatanApproval, fuel.DiprosesOleh, fuel.DiprosesOlehUserID,
-					formatNullableDateTime(fuel.DiprosesPada),
-				}},
-			},
-			{
-				Range:  fmt.Sprintf("%s!%s%d", sheet, fuelUpdatedColumn, rowNumber),
-				Values: [][]interface{}{{formatDateTime(fuel.UpdatedAt)}},
-			},
-		},
-	}).Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("update fuel masuk decision row %d: %w", rowNumber, err)
-	}
-	return nil
-}
-
 func (r *GoogleSheetsRepository) ReadFuelMasukPhoto(ctx context.Context, rowNumber, photoIndex int) (string, error) {
 	if rowNumber < 2 {
 		return "", fmt.Errorf("invalid row number %d for sheet %q", rowNumber, fuelMasukSheet)

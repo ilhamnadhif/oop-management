@@ -507,6 +507,12 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .filter-form select { width: auto; min-width: 185px; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.6rem; }
+/* Three across, then two: five equal columns squeezed "UNIT BREAKDOWN" onto
+   three lines and split the stock figure mid-number. */
+.a2b-kpi-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.a2b-kpi-grid > * { grid-column: span 2; }
+.a2b-kpi-grid > *:nth-child(4),
+.a2b-kpi-grid > *:nth-child(5) { grid-column: span 3; }
 /* Grid rows stretch, so the panels already match; it is the content inside
    that has to fill the card or one note wrapping to two lines leaves a gap. */
 .kpi-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; min-height: 132px; }
@@ -521,6 +527,7 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .kpi-icon.blue { color: #2563eb; background: #e8effd; }
 .kpi-icon.purple { color: #6d3fd4; background: #efe9fc; }
 .kpi-icon.amber { color: #b8791f; background: #fdf1de; }
+.kpi-icon.red { color: var(--danger); background: var(--red-50); }
 
 .chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
 .chart-frame { width: 100%; }
@@ -548,6 +555,18 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .swatch.besar { background: var(--success); }
 .swatch.real { background: #2563eb; }
 .swatch.opp { background: var(--orange); }
+.chart-bar.series-aktif { fill: var(--success); }
+.chart-bar.series-rusak { fill: var(--danger); }
+.chart-bar.series-masuk { fill: #2563eb; }
+.chart-bar.series-keluar { fill: var(--orange); }
+.chart-badge.series-aktif { fill: var(--success); }
+.chart-badge.series-rusak { fill: var(--danger); }
+.chart-badge.series-masuk { fill: #2563eb; }
+.chart-badge.series-keluar { fill: var(--orange); }
+.swatch.aktif { background: var(--success); }
+.swatch.rusak { background: var(--danger); }
+.swatch.masuk { background: #2563eb; }
+.swatch.keluar { background: var(--orange); }
 .chart-bar.series-real { fill: #2563eb; }
 .chart-bar.series-opp { fill: var(--orange); }
 .filter-note { flex-basis: 100%; margin: 0.4rem 0 0; }
@@ -567,11 +586,13 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .rank-table .accent { color: var(--success); font-weight: 600; }
 
 @media (max-width: 1100px) {
-  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi-grid, .a2b-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .a2b-kpi-grid > *, .a2b-kpi-grid > *:nth-child(4), .a2b-kpi-grid > *:nth-child(5) { grid-column: auto; }
   .chart-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
-  .kpi-grid { grid-template-columns: 1fr; }
+  .kpi-grid, .a2b-kpi-grid { grid-template-columns: 1fr; }
+  .a2b-kpi-grid > *, .a2b-kpi-grid > *:nth-child(4), .a2b-kpi-grid > *:nth-child(5) { grid-column: auto; }
   .filter-form input,
   .filter-form select { min-width: 0; width: 100%; }
   .filter-form > div { flex: 1 1 100%; }
@@ -976,6 +997,7 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .kpi-icon.blue { color: #285e98; background: #e8f0fa; }
 .kpi-icon.purple { color: #6d4aa7; background: #f0ebf8; }
 .kpi-icon.amber { color: #9b6115; background: #fff1dd; }
+.kpi-icon.red { color: var(--danger); background: var(--red-50); }
 .kpi-icon .icon { width: 22px; height: 22px; }
 .chart-grid { gap: 1rem; }
 .chart-grid > .panel { min-width: 0; }
@@ -1210,8 +1232,6 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .fuel-photo-links { display: flex; gap: 0.4rem; }
 .fuel-photo-links a { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
 .fuel-photo-links a:hover { border-color: var(--teal); color: var(--teal); }
-.fuel-proof-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
-.fuel-proof-links .button { width: 100%; }
 
 /* Responsive -------------------------------------------------------------- */
 
@@ -1352,7 +1372,6 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
   .approval-actions,
   .approval-filter-form,
   .leave-decision-audit,
-  .fuel-proof-links,
   .role-distribution { grid-template-columns: 1fr; }
   .approval-search-field,
   .leave-decision-audit > div:last-child { grid-column: auto; }
@@ -1561,6 +1580,12 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 /* KPI cards --------------------------------------------------------------- */
 
 .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+/* Three across, then two: five equal columns squeezed "UNIT BREAKDOWN" onto
+   three lines and split the stock figure mid-number. */
+.a2b-kpi-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.a2b-kpi-grid > * { grid-column: span 2; }
+.a2b-kpi-grid > *:nth-child(4),
+.a2b-kpi-grid > *:nth-child(5) { grid-column: span 3; }
 /* Four cards, so four columns: three would leave the last one alone on a
    second row, reading as a card of a different kind. */
 .hr-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
@@ -1690,7 +1715,9 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
   .app-shell::after { height: 230px; }
   .page-lede { margin-bottom: 4.6rem; }
   .kpi-grid,
+  .a2b-kpi-grid,
   .hr-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .a2b-kpi-grid > *, .a2b-kpi-grid > *:nth-child(4), .a2b-kpi-grid > *:nth-child(5) { grid-column: auto; }
   .filter-panel > div { min-width: 220px; }
 }
 

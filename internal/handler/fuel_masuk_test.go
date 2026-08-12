@@ -93,15 +93,15 @@ func requireFuelResponse(t *testing.T, response *http.Response, status int, cont
 	return body
 }
 
-// A delivery is stored with the four photos it was witnessed by, waiting for
-// somebody to sign it off.
-func TestFuelMasukIsStoredWaitingForApproval(t *testing.T) {
+// A delivery is stored with the four photos it was witnessed by, and approved
+// on the spot: the photos are the check, so there is nobody left to ask.
+func TestFuelMasukIsStoredApproved(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	client := loggedInClientAs(t, testServer, "Logistik")
 	image := testJPEG(t)
 
 	response := postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fuelFields(), image)
-	requireFuelResponse(t, response, http.StatusOK, "FUEL-20260807-0001", "menunggu approval")
+	requireFuelResponse(t, response, http.StatusOK, "FUEL-20260807-0001", "tersimpan")
 
 	rows := store.FuelMasukList()
 	if len(rows) != 1 {
@@ -111,8 +111,11 @@ func TestFuelMasukIsStoredWaitingForApproval(t *testing.T) {
 	if stored.FuelID != "FUEL-20260807-0001" {
 		t.Fatalf("transaction number = %q", stored.FuelID)
 	}
-	if stored.StatusApproval != model.FuelStatusMenunggu {
-		t.Fatalf("status = %q, want %q", stored.StatusApproval, model.FuelStatusMenunggu)
+	if stored.StatusApproval != model.FuelStatusDisetujui {
+		t.Fatalf("status = %q, want %q", stored.StatusApproval, model.FuelStatusDisetujui)
+	}
+	if stored.DiprosesOleh != "" || stored.DiprosesPada != nil {
+		t.Fatalf("an automatic status carries a decision trail: %+v", stored)
 	}
 	if stored.TanggalInput.Format("2006-01-02 15:04") != "2026-08-07 09:30" {
 		t.Fatalf("input time = %s", stored.TanggalInput)
@@ -177,7 +180,7 @@ func TestFuelMasukKeepsKeteranganAndShortfallInStep(t *testing.T) {
 		fields["liter_tidak_sesuai"] = "150"
 
 		response := postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fields, testJPEG(t))
-		requireFuelResponse(t, response, http.StatusOK, "menunggu approval")
+		requireFuelResponse(t, response, http.StatusOK, "tersimpan")
 		rows := store.FuelMasukList()
 		if len(rows) != 1 || rows[0].LiterTidakSesuai != 150 {
 			t.Fatalf("shortfall was not stored: %+v", rows)
@@ -191,124 +194,12 @@ func TestFuelMasukKeepsKeteranganAndShortfallInStep(t *testing.T) {
 		fields["liter_tidak_sesuai"] = "150"
 
 		response := postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fields, testJPEG(t))
-		requireFuelResponse(t, response, http.StatusOK, "menunggu approval")
+		requireFuelResponse(t, response, http.StatusOK, "tersimpan")
 		rows := store.FuelMasukList()
 		if len(rows) != 1 || rows[0].LiterTidakSesuai != 0 {
 			t.Fatalf("a matching delivery kept a shortfall: %+v", rows)
 		}
 	})
-}
-
-// Recording a delivery and signing it off are different jobs: everyone in the
-// A2B menu records, only Logistik and Management decide.
-func TestFuelMasukApprovalIsNarrowerThanInput(t *testing.T) {
-	cases := map[string]bool{
-		"Surveyor":   false,
-		"Produksi":   false,
-		"SPV":        false,
-		"Logistik":   true,
-		"Management": true,
-	}
-	for jabatan, mayApprove := range cases {
-		t.Run(jabatan, func(t *testing.T) {
-			testServer := newTestServer(t)
-			client := loggedInClientAs(t, testServer, jabatan)
-
-			if status := statusOf(t, client, testServer.URL+"/a2b/fuel-masuk"); status != http.StatusOK {
-				t.Fatalf("%s cannot open the input page: %d", jabatan, status)
-			}
-			status := statusOf(t, client, testServer.URL+"/a2b/fuel-masuk/approval")
-			nav := navSection(t, fetchAuthedPage(t, client, testServer.URL+"/a2b/fuel-masuk"))
-			shown := strings.Contains(nav, `href="/a2b/fuel-masuk/approval"`)
-			if mayApprove {
-				if status != http.StatusOK {
-					t.Fatalf("%s should reach the approval page, got %d", jabatan, status)
-				}
-				if !shown {
-					t.Fatalf("%s cannot see the approval menu", jabatan)
-				}
-				return
-			}
-			if status != http.StatusForbidden {
-				t.Fatalf("%s should be refused the approval page, got %d", jabatan, status)
-			}
-			if shown {
-				t.Fatalf("%s is invited into a page that will turn them away", jabatan)
-			}
-		})
-	}
-}
-
-// A decision is recorded once, with the deciding person's name against it.
-func TestFuelMasukApprovalRecordsOneDecision(t *testing.T) {
-	testServer, store := newTestServerWithStore(t)
-	client := loggedInClientAs(t, testServer, "Logistik")
-	postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fuelFields(), testJPEG(t)).Body.Close()
-
-	approvalPage := fetchAuthedPage(t, client, testServer.URL+"/a2b/fuel-masuk/approval")
-	if !strings.Contains(approvalPage, "FUEL-20260807-0001") {
-		t.Fatalf("the waiting delivery is missing from the queue: %s", approvalPage)
-	}
-	csrf := csrfFromForm(t, approvalPage)
-
-	response, err := client.PostForm(testServer.URL+"/a2b/fuel-masuk/approval", urlValues(map[string]string{
-		"csrf_token":       csrf,
-		"fuel_id":          "FUEL-20260807-0001",
-		"decision":         "approve",
-		"catatan_approval": "Segel utuh",
-	}))
-	if err != nil {
-		t.Fatalf("approve: %v", err)
-	}
-	requireFuelResponse(t, response, http.StatusOK, "berhasil ditandai disetujui")
-
-	stored := store.FuelMasukList()[0]
-	if stored.StatusApproval != model.FuelStatusDisetujui {
-		t.Fatalf("status = %q", stored.StatusApproval)
-	}
-	if stored.DiprosesOleh == "" || stored.DiprosesPada == nil {
-		t.Fatalf("the decision has nobody's name or time against it: %+v", stored)
-	}
-	if stored.CatatanApproval != "Segel utuh" {
-		t.Fatalf("note = %q", stored.CatatanApproval)
-	}
-
-	// A second decision on the same delivery is refused rather than silently
-	// overwriting the first.
-	second, err := client.PostForm(testServer.URL+"/a2b/fuel-masuk/approval", urlValues(map[string]string{
-		"csrf_token":       csrf,
-		"fuel_id":          "FUEL-20260807-0001",
-		"decision":         "reject",
-		"catatan_approval": "Berubah pikiran",
-	}))
-	if err != nil {
-		t.Fatalf("second decision: %v", err)
-	}
-	requireFuelResponse(t, second, http.StatusConflict, "sudah diproses")
-	if store.FuelMasukList()[0].StatusApproval != model.FuelStatusDisetujui {
-		t.Fatal("the second decision overwrote the first")
-	}
-}
-
-// A rejection without a reason is not a decision anyone can act on.
-func TestFuelMasukRejectionNeedsANote(t *testing.T) {
-	testServer, store := newTestServerWithStore(t)
-	client := loggedInClientAs(t, testServer, "Logistik")
-	postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fuelFields(), testJPEG(t)).Body.Close()
-	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/a2b/fuel-masuk/approval"))
-
-	response, err := client.PostForm(testServer.URL+"/a2b/fuel-masuk/approval", urlValues(map[string]string{
-		"csrf_token": csrf,
-		"fuel_id":    "FUEL-20260807-0001",
-		"decision":   "reject",
-	}))
-	if err != nil {
-		t.Fatalf("reject: %v", err)
-	}
-	requireFuelResponse(t, response, http.StatusUnprocessableEntity, "catatan wajib diisi saat menolak")
-	if store.FuelMasukList()[0].StatusApproval != model.FuelStatusMenunggu {
-		t.Fatal("a rejection with no reason was recorded")
-	}
 }
 
 // The evidence is served as an image to anyone who may see the delivery, and
@@ -347,7 +238,7 @@ func TestFuelMasukPhotoIsServedByTransactionAndKind(t *testing.T) {
 func TestFuelMasukPagesRedirectAnonymousUsersToLogin(t *testing.T) {
 	testServer := newTestServer(t)
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	for _, path := range []string{"/a2b/fuel-masuk", "/a2b/fuel-masuk/approval", "/a2b/fuel-masuk/foto"} {
+	for _, path := range []string{"/a2b/fuel-masuk", "/a2b/fuel-masuk/foto"} {
 		response, err := client.Get(testServer.URL + path)
 		if err != nil {
 			t.Fatalf("get %s: %v", path, err)
@@ -369,10 +260,24 @@ func TestFuelMasukAcceptsADecimalComma(t *testing.T) {
 	fields["liter_tidak_sesuai"] = "150,25"
 
 	response := postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fields, testJPEG(t))
-	requireFuelResponse(t, response, http.StatusOK, "menunggu approval")
+	requireFuelResponse(t, response, http.StatusOK, "tersimpan")
 
 	stored := store.FuelMasukList()[0]
 	if stored.JumlahLiter != 8010.4 || stored.LiterTidakSesuai != 150.25 {
 		t.Fatalf("litres were not parsed: %+v", stored)
+	}
+}
+
+// The approval page is gone, and with it the menu entry that led to it.
+func TestFuelMasukHasNoApprovalPage(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClientAs(t, testServer, "Management")
+
+	if status := statusOf(t, client, testServer.URL+"/a2b/fuel-masuk/approval"); status != http.StatusNotFound {
+		t.Fatalf("the approval route still answers with %d", status)
+	}
+	nav := navSection(t, fetchAuthedPage(t, client, testServer.URL+"/a2b/fuel-masuk"))
+	if strings.Contains(nav, "/a2b/fuel-masuk/approval") {
+		t.Fatalf("the approval menu entry is still shown: %s", nav)
 	}
 }

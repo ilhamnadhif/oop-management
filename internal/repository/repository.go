@@ -56,7 +56,6 @@ type Store interface {
 	// them rather than dragging four base64 images per row into every page.
 	ListFuelMasuk(ctx context.Context) ([]model.FuelMasuk, error)
 	FindFuelMasukRow(ctx context.Context, fuelID string) (*model.FuelMasuk, int, error)
-	UpdateFuelMasukDecision(ctx context.Context, rowNumber int, fuel *model.FuelMasuk) error
 	// ReadFuelMasukPhoto fetches one photo. photoIndex is 0-3 in the order the
 	// sheet holds them: truck, tank before, flowmeter, tank after.
 	ReadFuelMasukPhoto(ctx context.Context, rowNumber, photoIndex int) (string, error)

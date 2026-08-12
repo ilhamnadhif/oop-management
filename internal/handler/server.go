@@ -314,7 +314,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/a2b/fuel-keluar", s.handleFuelKeluar)
 	mux.HandleFunc("/a2b/fuel-keluar/foto", s.handleFuelKeluarPhoto)
 	mux.HandleFunc("/a2b/fuel-masuk", s.handleFuelMasuk)
-	mux.HandleFunc("/a2b/fuel-masuk/approval", s.handleFuelMasukApproval)
 	mux.HandleFunc("/a2b/fuel-masuk/foto", s.handleFuelMasukPhoto)
 	mux.HandleFunc("/unit/export", s.handleUnitExport)
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
@@ -1115,9 +1114,8 @@ func exportPeriodSlug(from, to string) string {
 
 type UnitOverviewPageData struct {
 	ShellPageData
-	Overview    *service.UnitOverview
-	LokasiChart *Chart
-	Error       string
+	Overview *service.UnitOverview
+	Error    string
 }
 
 func (s *Server) handleUnitOverview(w http.ResponseWriter, r *http.Request) {
@@ -1135,43 +1133,108 @@ func (s *Server) handleUnitOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	labels := make([]string, 0, len(overview.LokasiShares))
-	counts := make([]float64, 0, len(overview.LokasiShares))
-	for _, share := range overview.LokasiShares {
-		labels = append(labels, share.Label)
-		counts = append(counts, float64(share.Jumlah))
-	}
 	data.Overview = overview
-	// Whole machines only; half a bulldozer is not a reading.
-	data.LokasiChart = BuildValueChart(labels, counts, 0)
 	s.render(w, "unit_overview", data, http.StatusOK)
 }
 
-// handleA2BOverview reads the same registers as the unit overview and shows the
-// machines' side of them.
+// A2BOverviewPageData drives the machine dashboard: what the fleet did over a
+// range, rather than what the register holds.
+type A2BOverviewPageData struct {
+	ShellPageData
+	Overview    *service.A2BOverview
+	From        string
+	To          string
+	UnitChart   *Chart
+	FuelChart   *Chart
+	DelaySlices []DelaySlice
+	Error       string
+}
+
+// DelaySlice is one wedge of the delay donut, ready to draw.
+type DelaySlice struct {
+	service.A2BDelayShare
+	Dash      string
+	Offset    string
+	ClassName string
+}
+
 func (s *Server) handleA2BOverview(w http.ResponseWriter, r *http.Request) {
 	user, sessionValue, ok := s.requireAccess(w, r, "a2b-overview")
 	if !ok {
 		return
 	}
-	data := UnitOverviewPageData{ShellPageData: s.shellData(user, sessionValue, "a2b-overview")}
+	from := strings.TrimSpace(r.URL.Query().Get("from"))
+	to := strings.TrimSpace(r.URL.Query().Get("to"))
+	if from == "" && to == "" {
+		from, to = s.unitOverview.DefaultA2BRange()
+	}
+	data := A2BOverviewPageData{
+		ShellPageData: s.shellData(user, sessionValue, "a2b-overview"),
+		From:          from,
+		To:            to,
+	}
 
-	overview, err := s.unitOverview.Build(r.Context())
+	overview, err := s.unitOverview.BuildA2B(r.Context(), from, to, s.hourMeter.WorkMinutes())
 	if err != nil {
-		log.Printf("build a2b overview: %v", err)
-		data.Error = "Gagal memuat data unit"
+		if errors.Is(err, service.ErrValidation) {
+			data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
+		} else {
+			log.Printf("build a2b overview: %v", err)
+			data.Error = "Gagal memuat data alat berat"
+		}
 		s.render(w, "a2b_overview", data, http.StatusOK)
 		return
 	}
-	labels := make([]string, 0, len(overview.LokasiShares))
-	counts := make([]float64, 0, len(overview.LokasiShares))
-	for _, share := range overview.LokasiShares {
-		labels = append(labels, share.Label)
-		counts = append(counts, float64(share.Jumlah))
-	}
 	data.Overview = overview
-	data.LokasiChart = BuildValueChart(labels, counts, 0)
+	data.From = overview.From
+	data.To = overview.To
+	data.DelaySlices = buildDelaySlices(overview.TopDelay)
+
+	labels := make([]string, 0, len(overview.Series))
+	active := make([]float64, 0, len(overview.Series))
+	broken := make([]float64, 0, len(overview.Series))
+	masuk := make([]float64, 0, len(overview.Series))
+	keluar := make([]float64, 0, len(overview.Series))
+	for _, point := range overview.Series {
+		labels = append(labels, point.Label)
+		active = append(active, float64(point.UnitActive))
+		broken = append(broken, float64(point.UnitBreakdown))
+		masuk = append(masuk, point.FuelMasuk)
+		keluar = append(keluar, point.FuelKeluar)
+	}
+	// Whole machines only; half a bulldozer is not a reading.
+	data.UnitChart = BuildGroupedChart(labels, active, broken,
+		GroupedSeries{Name: "aktif", Label: "Unit active"},
+		GroupedSeries{Name: "rusak", Label: "Unit breakdown"})
+	data.FuelChart = BuildGroupedChart(labels, masuk, keluar,
+		GroupedSeries{Name: "masuk", Label: "Fuel masuk", Decimals: 2},
+		GroupedSeries{Name: "keluar", Label: "Fuel keluar", Decimals: 2})
 	s.render(w, "a2b_overview", data, http.StatusOK)
+}
+
+// buildDelaySlices lays the reasons round the donut in the order they were
+// ranked, so the same reason keeps the same colour as long as it keeps its
+// place.
+func buildDelaySlices(shares []service.A2BDelayShare) []DelaySlice {
+	slices := make([]DelaySlice, 0, len(shares))
+	offset := 0.0
+	for index, share := range shares {
+		percent := share.Percent
+		if percent < 0 {
+			percent = 0
+		}
+		if percent > 100 {
+			percent = 100
+		}
+		slices = append(slices, DelaySlice{
+			A2BDelayShare: share,
+			Dash:          fmt.Sprintf("%.2f %.2f", percent, 100-percent),
+			Offset:        fmt.Sprintf("%.2f", -offset),
+			ClassName:     fmt.Sprintf("role-slice-%d", index%8),
+		})
+		offset += percent
+	}
+	return slices
 }
 
 // RegisterExportPageData drives one register's download page. Each register has

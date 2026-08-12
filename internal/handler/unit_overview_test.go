@@ -63,8 +63,9 @@ func TestUnitOverviewCountsBothRegisters(t *testing.T) {
 	}
 }
 
-// The machines are counted on their own page, under their own menu.
-func TestA2BOverviewCountsTheMachines(t *testing.T) {
+// The machine dashboard reads what the fleet did over a range, not what the
+// register holds.
+func TestA2BOverviewReadsTheFleet(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	seedTruck(t, store, "UNT-2026-0001", "B 1 A", "Slamet", "DT KECIL")
 	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 300, 19.3)
@@ -73,19 +74,20 @@ func TestA2BOverviewCountsTheMachines(t *testing.T) {
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/overview")
 	for _, fragment := range []string{
-		"TOTAL UNIT A2B", "LOKASI TERPAKAI", "MEREK BERBEDA",
-		"UNIT A2B PER LOKASI", "TOP 5 MEREK A2B",
-		"Komatsu", "Tangki (L)",
-		// Two machines across two locations, one make between them.
-		`<p class="kpi-value">2</p>`, `<p class="kpi-value">1</p>`,
+		"TOTAL UNIT", "UNIT ACTIVE", "UNIT STANDBY", "UNIT BREAKDOWN", "STOCK FUEL",
+		"PERFORMANCE PER UNIT", "TOP 5 DELAY",
+		// Two machines registered, neither of them worked yet.
+		`<p class="kpi-value">2</p>`, `<p class="kpi-value">0</p>`,
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the a2b overview is missing %q", fragment)
 		}
 	}
-	// The trucks belong to the other page.
-	if strings.Contains(page, "TOTAL UNIT DT") {
-		t.Fatal("the a2b overview counts dump trucks")
+	// The trucks belong to the other page, and the register breakdown to Unit A2B.
+	for _, gone := range []string{"TOTAL UNIT DT", "TOP 5 MEREK A2B"} {
+		if strings.Contains(page, gone) {
+			t.Fatalf("the a2b overview still shows %q", gone)
+		}
 	}
 }
 
@@ -131,5 +133,38 @@ func TestUnitOverviewRequiresASession(t *testing.T) {
 	response.Body.Close()
 	if location := response.Header.Get("Location"); location != "/login" {
 		t.Fatalf("anonymous request went to %q, want /login", location)
+	}
+}
+
+// The dashboard reads the range it was asked for: what worked, what stood
+// still, what broke, and what is left in the tank.
+func TestA2BOverviewReportsTheRangeItWasAsked(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	seedNamedMachine(t, store, 2, "bul02", "Bulldozer D6 CAT (Rent)")
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	// One machine worked seven hours and rested the eighth; the other never ran.
+	postHourMeterWithStandby(t, client, testServer, hourMeterFieldsWorking("1207"),
+		[]string{"HUJAN"}, []string{"60"}).Body.Close()
+	postFuelMasuk(t, client, testServer, fuelFormCSRF(t, client, testServer), fuelFields(), testJPEG(t)).Body.Close()
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/overview?from=2026-08-01&to=2026-08-10")
+	for _, fragment := range []string{
+		// Two registered, one of them active, so one is standby and none broke.
+		"TOTAL UNIT", "UNIT ACTIVE", "UNIT STANDBY",
+		"exc01", "Excavator PC200 Kobelco (Rent)",
+		// Seven hours worked and the delivery still in the tank.
+		">7<", ">8010<",
+		// The hour it rested, ranked as the fleet's only delay.
+		"HUJAN", "1 jam standby",
+	} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("the a2b overview is missing %q: %s", fragment, page)
+		}
+	}
+	// A machine that never ran is not in the performance table.
+	if strings.Contains(page, "bul02") {
+		t.Fatalf("a machine with no readings was listed: %s", page)
 	}
 }

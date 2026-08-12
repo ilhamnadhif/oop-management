@@ -90,7 +90,6 @@
         <p class="eyebrow">{{template "icon" "list"}}RIWAYAT</p>
         <h2>{{len .Rows}} kiriman tercatat</h2>
       </div>
-      <a class="button subtle" href="/a2b/fuel-masuk/approval">{{template "icon" "check"}}Buka approval</a>
     </div>
     {{if .Rows}}
     <div class="table-scroll">
@@ -105,7 +104,7 @@
             <th scope="col" class="numeric">Fuel masuk (L)</th>
             <th scope="col">Keterangan</th>
             <th scope="col" class="numeric">Tidak sesuai (L)</th>
-            <th scope="col">Status approval</th>
+            <th scope="col">Status</th>
             <th scope="col">Foto</th>
           </tr>
         </thead>
