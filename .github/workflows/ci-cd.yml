@@ -191,6 +191,7 @@ jobs:
             MIMO_BASE_URL=$MIMO_BASE_URL
             MIMO_MODEL=$MIMO_MODEL
             MIMO_TIMEOUT=$MIMO_TIMEOUT
+            A2B_WORK_MINUTES=720
             EOF
 
             printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_B64" | base64 --decode > "$APP_DIR/runtime/google-application-credentials.json"
