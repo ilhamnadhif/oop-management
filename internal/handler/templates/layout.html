@@ -149,6 +149,8 @@
 {{/* The profile dialog rides in the shell, so its script does too. Pages that
      carry dialogs of their own no longer load it themselves. */}}
 <script src="/static/js/dialog.js" defer></script>
+{{/* Every page with an upload gets the same camera-or-file sheet on a phone. */}}
+<script src="/static/js/upload.js" defer></script>
 {{end}}
 
 {{define "brandLogo"}}

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +67,29 @@ func TestStaticETagsDifferPerFile(t *testing.T) {
 			t.Fatalf("%s and %s share the ETag %s", other, path, etag)
 		}
 		seen[etag] = path
+	}
+}
+
+// Every page that takes an upload ships the sheet that asks camera or file, and
+// none of them forces the camera on their own any more: the sheet decides.
+func TestUploadPagesOfferBothSources(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Management")
+
+	for _, path := range []string{
+		"/a2b/fuel-masuk", "/a2b/fuel-keluar", "/nota", "/leave/request",
+		"/unit-dt", "/unit-a2b",
+	} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, `type="file"`) {
+			t.Fatalf("%s has no upload to speak of", path)
+		}
+		if !strings.Contains(page, `src="/static/js/upload.js"`) {
+			t.Fatalf("%s takes an upload but does not load the source sheet", path)
+		}
+		if strings.Contains(page, "capture=") {
+			t.Fatalf("%s still forces the camera, hiding the gallery: %s", path, page)
+		}
 	}
 }

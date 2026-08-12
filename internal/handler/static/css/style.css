@@ -321,6 +321,14 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .figure-chip.good { color: var(--success); background: #edf8f3; }
 .figure-chip.short { color: var(--danger); background: var(--red-50); }
 
+/* The upload sheet sits at the bottom of a phone screen, where a thumb is. */
+dialog.upload-sheet { width: min(420px, calc(100vw - 1.5rem)); margin-top: auto; margin-bottom: 0.75rem; padding: 1.1rem; }
+.upload-sheet .modal-head { margin-bottom: 0.9rem; }
+.upload-sheet-title { margin: 0; font-size: 1.05rem; }
+.upload-sheet-actions { display: grid; gap: 0.6rem; }
+.upload-sheet-actions .button { width: 100%; justify-content: center; }
+.upload-sheet-cancel { border-color: transparent; }
+
 .icon-button { display: grid; place-items: center; padding: 0.5rem; border: 1px solid var(--line); border-radius: 10px; background: var(--white); color: var(--muted); cursor: pointer; }
 .icon-button.danger:hover { border-color: var(--danger); color: var(--danger); background: #fff0f0; }
 .icon-button:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }

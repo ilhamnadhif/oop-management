@@ -117,7 +117,7 @@
         </div>
         <div class="receipt-scan-controls">
           <label for="foto_kwitansi" class="required-label">{{template "icon" "camera"}}Foto kwitansi / struk *</label>
-          <input id="foto_kwitansi" name="foto_kwitansi" type="file" accept="image/*" capture="environment" required data-receipt-file>
+          <input id="foto_kwitansi" name="foto_kwitansi" type="file" accept="image/*" required data-receipt-file>
           <button class="button receipt-scan-button" type="button" data-receipt-scan-button{{if not .ReceiptScanEnabled}} disabled{{end}}>
             <span class="spinner" aria-hidden="true" hidden data-receipt-scan-spinner></span>
             {{template "icon" "search"}}<span data-receipt-scan-label>Scan struk dengan AI</span>

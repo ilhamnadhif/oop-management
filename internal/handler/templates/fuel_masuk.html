@@ -72,7 +72,7 @@
         {{range .PhotoKinds}}
         <div>
           <label for="{{.Field}}">{{template "icon" "camera"}}{{.Label}}</label>
-          <input id="{{.Field}}" name="{{.Field}}" type="file" accept="image/*" capture="environment" required>
+          <input id="{{.Field}}" name="{{.Field}}" type="file" accept="image/*" required>
         </div>
         {{end}}
       </div>
