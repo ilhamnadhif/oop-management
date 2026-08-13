@@ -321,6 +321,20 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .figure-chip.good { color: var(--success); background: #edf8f3; }
 .figure-chip.short { color: var(--danger); background: var(--red-50); }
 
+/* The avatar cropper: a square canvas with everything outside the circle
+   dimmed, so what will be kept is the only part in full colour. */
+dialog.avatar-crop { width: min(360px, calc(100vw - 1.5rem)); padding: 1.1rem; }
+.avatar-crop-title { margin: 0; font-size: 1.05rem; }
+.avatar-crop-stage { position: relative; width: 288px; max-width: 100%; margin: 0.9rem auto; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: #0e1a22; }
+.avatar-crop-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.avatar-crop-canvas:active { cursor: grabbing; }
+/* One ring of shadow rather than four panels: the hole is the circle. */
+.avatar-crop-stage::after { content: ""; position: absolute; inset: 0; margin: auto; width: 100%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 999px rgba(8, 27, 39, 0.55); pointer-events: none; }
+.avatar-crop-zoom { display: grid; gap: 0.35rem; margin-bottom: 0.9rem; }
+.avatar-crop-zoom input { width: 100%; }
+.avatar-crop-actions { display: grid; gap: 0.6rem; }
+.avatar-crop-actions .button { width: 100%; justify-content: center; }
+
 /* The upload sheet sits at the bottom of a phone screen, where a thumb is. */
 dialog.upload-sheet { width: min(420px, calc(100vw - 1.5rem)); margin-top: auto; margin-bottom: 0.75rem; padding: 1.1rem; }
 .upload-sheet .modal-head { margin-bottom: 0.9rem; }

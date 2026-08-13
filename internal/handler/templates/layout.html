@@ -151,6 +151,9 @@
 <script src="/static/js/dialog.js" defer></script>
 {{/* Every page with an upload gets the same camera-or-file sheet on a phone. */}}
 <script src="/static/js/upload.js" defer></script>
+{{/* The avatar is shown in a circle everywhere, so the profile form crops to
+     one. The form rides in the shell, and so does its cropper. */}}
+<script src="/static/js/avatar-crop.js" defer></script>
 {{end}}
 
 {{define "brandLogo"}}

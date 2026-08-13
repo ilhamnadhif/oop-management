@@ -93,3 +93,38 @@ func TestUploadPagesOfferBothSources(t *testing.T) {
 		}
 	}
 }
+
+// The avatar is shown in a circle everywhere, so the profile form crops to one
+// wherever it is drawn: in the shell dialog and on the standalone page.
+func TestProfileFormLoadsTheAvatarCropper(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	for _, path := range []string{"/profile", "/dashboard"} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, `name="foto_profil"`) {
+			t.Fatalf("%s does not carry the profile form", path)
+		}
+		if !strings.Contains(page, `src="/static/js/avatar-crop.js"`) {
+			t.Fatalf("%s carries the avatar field without its cropper", path)
+		}
+	}
+}
+
+// img-src allows data: but not blob:, so a script that hands a blob URL to an
+// <img> gets it blocked and fails silently. The cropper reads files as data
+// URLs for that reason, and this keeps the pair honest.
+func TestScriptsDoNotFeedBlobURLsToImages(t *testing.T) {
+	if strings.Contains(contentSecurityPolicy, "img-src 'self' data: blob:") {
+		t.Skip("img-src now allows blob:, so the restriction below no longer applies")
+	}
+	for _, name := range []string{"static/js/avatar-crop.js", "static/js/upload.js", "static/js/attendance.js"} {
+		source, err := assetFiles.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if strings.Contains(string(source), "createObjectURL") {
+			t.Fatalf("%s builds a blob URL, which img-src refuses", name)
+		}
+	}
+}
