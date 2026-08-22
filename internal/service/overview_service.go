@@ -65,9 +65,15 @@ type Overview struct {
 	HasLokasi    bool
 	// HasRencana says whether any location in view has a plan to measure
 	// against, which is what decides between the two readings of the panel.
-	HasRencana  bool
-	LastUpdated string
-	RowsTotal   int
+	HasRencana bool
+	// TotalRencana is every plan summed, which TotalVolume is measured against
+	// in the total row of the per-location panel. The numerator there is the
+	// whole period's volume, unplanned locations included: the question that row
+	// answers is whether the job is behind, and volume booked to a location
+	// nobody planned still moved dirt.
+	TotalRencana float64
+	LastUpdated  string
+	RowsTotal    int
 }
 
 // overviewCacheTTL keeps a dashboard reload from re-reading thousands of rows.
@@ -318,6 +324,10 @@ func (s *OverviewService) Build(ctx context.Context, from, to string) (*Overview
 
 	overview.TotalVolume = round2(overview.TotalVolume)
 	overview.TotalOPP = round2(overview.TotalOPP)
+	for _, rencana := range perRencana {
+		overview.TotalRencana += rencana
+	}
+	overview.TotalRencana = round2(overview.TotalRencana)
 	return overview, nil
 }
 

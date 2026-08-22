@@ -29,7 +29,15 @@ const (
 	lokasiRowHeight   = 58.0
 	lokasiBarHeight   = 9.0
 	lokasiTopPadding  = 4.0
+	// The total is set off from the locations rather than stacked flush against
+	// them: it is a different reading of the same track, and a row that looks
+	// like the ones above it gets counted as another location.
+	lokasiTotalGap = 22.0
 )
+
+// lokasiTotalLabel names the row that measures the whole period rather than one
+// segment. It is capitalised because the row is a summary, not a place.
+const lokasiTotalLabel = "SEMUA LOKASI"
 
 type LokasiPlanBar struct {
 	Lokasi string
@@ -56,11 +64,17 @@ type LokasiPlanChart struct {
 	// out of the chart on purpose: their bar would measure a share of the
 	// period, and two different meanings on one axis is how a chart lies.
 	Unplanned []service.LokasiShare
+	// Total is the whole period against the whole plan, drawn under a rule at
+	// the foot of the chart. It is nil when nothing has been planned, because
+	// then there is no target to measure against.
+	Total *LokasiPlanBar
+	// DividerY is where the rule above the total row is drawn.
+	DividerY float64
 }
 
 func (c *LokasiPlanChart) HasBars() bool { return c != nil && len(c.Bars) > 0 }
 
-func buildLokasiPlanChart(shares []service.LokasiShare) *LokasiPlanChart {
+func buildLokasiPlanChart(shares []service.LokasiShare, totalVolume, totalRencana float64) *LokasiPlanChart {
 	chart := &LokasiPlanChart{Width: lokasiChartWidth}
 	trackWidth := lokasiChartWidth - lokasiChartGutter
 
@@ -70,32 +84,53 @@ func buildLokasiPlanChart(shares []service.LokasiShare) *LokasiPlanChart {
 			continue
 		}
 		top := lokasiTopPadding + float64(len(chart.Bars))*lokasiRowHeight
-
-		// The bar stops at the end of its track; the figure beside it keeps
-		// counting past 100, which is where the overshoot is actually read.
-		ratio := share.Capaian / 100
-		if ratio > 1 {
-			ratio = 1
-		}
-		if ratio < 0 {
-			ratio = 0
-		}
-		actualWidth := trackWidth * ratio
-
-		chart.Bars = append(chart.Bars, LokasiPlanBar{
-			Lokasi:  share.Lokasi,
-			Detail:  formatVolume(share.Volume) + " / " + formatVolume(share.Rencana) + " m³",
-			Value:   formatPercent(share.Capaian),
-			Full:    share.Capaian >= 100,
-			NameY:   top + 11,
-			ActualY: top + 19,
-			PlanY:   top + 32,
-			ActualW: actualWidth,
-			PlanW:   trackWidth,
-			ValueX:  actualWidth + 8,
-			ValueY:  top + 30,
-		})
+		chart.Bars = append(chart.Bars, lokasiPlanRow(
+			share.Lokasi, share.Volume, share.Rencana, share.Capaian, top, trackWidth))
 	}
 	chart.Height = lokasiTopPadding*2 + float64(len(chart.Bars))*lokasiRowHeight
+
+	// The total is drawn whenever anything was planned, even for a single
+	// location, so the row keeps its place as the date filter narrows what is
+	// above it. Its volume is the whole period rather than the sum of the bars:
+	// production booked to an unplanned location still counts against the plan.
+	if totalRencana > 0 {
+		capaian := totalVolume / totalRencana * 100
+		top := chart.Height - lokasiTopPadding + lokasiTotalGap
+		chart.DividerY = top - lokasiTotalGap/2
+		total := lokasiPlanRow(
+			lokasiTotalLabel, totalVolume, totalRencana, capaian, top, trackWidth)
+		chart.Total = &total
+		chart.Height = top + lokasiRowHeight
+	}
 	return chart
+}
+
+// lokasiPlanRow lays out one row of the chart. The total shares it with the
+// locations on purpose: the two are read against each other, so a difference in
+// geometry between them would be read as a difference in meaning.
+func lokasiPlanRow(lokasi string, volume, rencana, capaian, top, trackWidth float64) LokasiPlanBar {
+	// The bar stops at the end of its track; the figure beside it keeps
+	// counting past 100, which is where the overshoot is actually read.
+	ratio := capaian / 100
+	if ratio > 1 {
+		ratio = 1
+	}
+	if ratio < 0 {
+		ratio = 0
+	}
+	actualWidth := trackWidth * ratio
+
+	return LokasiPlanBar{
+		Lokasi:  lokasi,
+		Detail:  formatVolume(volume) + " / " + formatVolume(rencana) + " m³",
+		Value:   formatPercent(capaian),
+		Full:    capaian >= 100,
+		NameY:   top + 11,
+		ActualY: top + 19,
+		PlanY:   top + 32,
+		ActualW: actualWidth,
+		PlanW:   trackWidth,
+		ValueX:  actualWidth + 8,
+		ValueY:  top + 30,
+	}
 }

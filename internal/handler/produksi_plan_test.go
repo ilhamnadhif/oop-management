@@ -174,7 +174,9 @@ func TestProduksiOverviewClampsTheBarButNotTheFigure(t *testing.T) {
 	if !strings.Contains(page, `class="lokasi-chart-actual lokasi-chart-full"`) {
 		t.Fatalf("a met plan is not marked: %s", page)
 	}
-	if strings.Count(page, `width="458.0"`) != 2 {
+	// Four full-width bars: the location's plan and its overshooting
+	// realisation, then the same pair again in the total row below it.
+	if strings.Count(page, `width="458.0"`) != 4 {
 		t.Fatalf("the overshooting bar does not stop at its track: %s", page)
 	}
 }
@@ -229,5 +231,63 @@ func TestProduksiPlanNeedsASessionAndPermission(t *testing.T) {
 	readBody(t, forged)
 	if forged.StatusCode != http.StatusForbidden {
 		t.Fatalf("a forged token was accepted: %d", forged.StatusCode)
+	}
+}
+
+// Per-location bars answer "which segment is behind"; the total row answers
+// "is the job as a whole behind", which is a different question and the one
+// asked first. Everything produced counts against the plan, including volume
+// booked to a location nobody planned.
+func TestProduksiOverviewTotalsAllProduksiAgainstAllPlan(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	plans := []struct {
+		id, lokasi string
+		volume     float64
+	}{
+		{"PLN-20260701-0001", "Segmen 1a", 15000},
+		{"PLN-20260701-0002", "Segmen 1b", 10000},
+	}
+	for _, plan := range plans {
+		if err := store.CreateProduksiPlan(t.Context(), &model.ProduksiPlan{
+			PlanID: plan.id, Tanggal: "2026-07-01",
+			Project: "PCPM", Supplier: "HPP", Lokasi: plan.lokasi, Volume: plan.volume,
+		}); err != nil {
+			t.Fatalf("seed plan: %v", err)
+		}
+	}
+	rows := []struct {
+		id, lokasi string
+		volume     float64
+	}{
+		{"PRD-1", "Segmen 1a", 12300},
+		{"PRD-2", "Segmen 1b", 8000},
+		{"PRD-3", "Segmen tanpa rencana", 5000},
+	}
+	for _, row := range rows {
+		if err := store.CreateProduksi(t.Context(), &model.Produksi{
+			ProduksiID: row.id, Tanggal: "2026-07-02", Nopol: "B 1234 ABC",
+			JenisDT: "DT KECIL", Volume: row.volume, VolumeOPP: 10, Lokasi: row.lokasi,
+		}); err != nil {
+			t.Fatalf("seed produksi: %v", err)
+		}
+	}
+
+	client := loggedInClient(t, testServer)
+	page := fetchAuthedPage(t, client, testServer.URL+"/produksi/overview")
+
+	for _, fragment := range []string{
+		"SEMUA LOKASI",
+		// 25.300 produced against 25.000 planned: the unplanned 5.000 counts.
+		"101.20%",
+		"25.300 / 25.000 m³",
+	} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("the total row is missing %q: %s", fragment, page)
+		}
+	}
+	// Past the plan the total bar fills its track and takes the met-plan
+	// colour, the same way a location's bar does.
+	if !strings.Contains(page, `class="lokasi-chart-actual lokasi-chart-full"`) {
+		t.Fatalf("a passed total is not marked: %s", page)
 	}
 }

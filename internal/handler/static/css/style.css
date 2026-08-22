@@ -1681,6 +1681,11 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .lokasi-chart-actual { fill: var(--blue-dark); }
 .lokasi-chart-full { fill: #2f9c63; }
 .lokasi-chart-value { fill: var(--navy-dark); font-size: 11px; font-weight: 700; }
+/* The total row is ruled off from the locations so it reads as a summary of
+   them rather than as one more place that was worked. */
+.lokasi-chart-rule { stroke: #d9e2f0; stroke-width: 1; }
+.lokasi-chart-total-name { fill: var(--navy-dark); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.lokasi-chart-total-value { font-size: 12px; }
 .lokasi-unplanned-head { margin: 1.1rem 0 0.4rem; color: var(--muted); font-size: 0.73rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .lokasi-unplanned { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
 .lokasi-unplanned li { display: flex; gap: 0.8rem; justify-content: space-between; color: var(--muted); font-size: 0.78rem; }

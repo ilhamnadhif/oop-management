@@ -1533,7 +1533,7 @@ func (s *Server) handleProduksiOverview(w http.ResponseWriter, r *http.Request) 
 	// range shows the corrected order rather than what was typed.
 	data.From = overview.From
 	data.To = overview.To
-	data.LokasiChart = buildLokasiPlanChart(overview.LokasiShares)
+	data.LokasiChart = buildLokasiPlanChart(overview.LokasiShares, overview.TotalVolume, overview.TotalRencana)
 	data.VolumeChart = BuildLineChart(seriesLabels(overview.Series), seriesVolumes(overview.Series), 0)
 	// Side by side rather than stacked: stacked, the DT Besar count was a sliver
 	// on top of the DT Kecil bar and the badge carried only the total, so the

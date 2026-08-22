@@ -182,6 +182,23 @@
         </rect>
         <text class="lokasi-chart-value" x="{{printf "%.1f" .ValueX}}" y="{{printf "%.1f" .ValueY}}">{{.Value}}</text>
         {{end}}
+        {{with $.LokasiChart.Total}}
+        {{/* The whole period against the whole plan, ruled off from the
+             locations because it is a different reading of the same track. */}}
+        <line class="lokasi-chart-rule" x1="0" y1="{{printf "%.1f" $.LokasiChart.DividerY}}"
+          x2="{{printf "%.1f" .PlanW}}" y2="{{printf "%.1f" $.LokasiChart.DividerY}}"></line>
+        <text class="lokasi-chart-name lokasi-chart-total-name" x="0" y="{{printf "%.1f" .NameY}}">{{.Lokasi}}</text>
+        <text class="lokasi-chart-detail" x="{{printf "%.1f" .PlanW}}" y="{{printf "%.1f" .NameY}}" text-anchor="end">{{.Detail}}</text>
+        <rect class="lokasi-chart-actual{{if .Full}} lokasi-chart-full{{end}}" x="0" y="{{printf "%.1f" .ActualY}}"
+          width="{{printf "%.1f" .ActualW}}" height="9" rx="4.5">
+          <title>Semua lokasi: {{.Value}} ({{.Detail}})</title>
+        </rect>
+        <rect class="lokasi-chart-plan" x="0" y="{{printf "%.1f" .PlanY}}"
+          width="{{printf "%.1f" .PlanW}}" height="9" rx="4.5">
+          <title>Semua lokasi: plan {{.Detail}}</title>
+        </rect>
+        <text class="lokasi-chart-value lokasi-chart-total-value" x="{{printf "%.1f" .ValueX}}" y="{{printf "%.1f" .ValueY}}">{{.Value}}</text>
+        {{end}}
       </svg>
       {{else if .HasLokasi}}
       {{/* Nothing has been planned yet, so the panel falls back to the share of
