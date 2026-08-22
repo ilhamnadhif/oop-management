@@ -88,11 +88,13 @@ func TestA2BOverviewRecomputesPerUnitFigures(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 	unit := overview.Units[0]
-	if unit.Shifts != 3 || unit.TotalHM != 23.5 || unit.Fuel != 625 {
+	if unit.Shifts != 3 || unit.TotalHM != 23.5 {
 		t.Fatalf("totals = %+v", unit)
 	}
-	if unit.FuelRatio != 26.6 {
-		t.Fatalf("fuel ratio = %v, want 26.6", unit.FuelRatio)
+	// The readings carry a fuel figure of their own, and the column no longer
+	// reads it: fuel is what the tank dispensed, and none was dispensed here.
+	if unit.Fuel != 0 || unit.FuelRatio != 0 {
+		t.Fatalf("fuel = %v ratio = %v, want the dispensing sheet to be the source", unit.Fuel, unit.FuelRatio)
 	}
 	// 2160 shift minutes, 240 of them breakdown.
 	if unit.PA != 88.89 {
@@ -271,5 +273,125 @@ func TestA2BOverviewBuildsADailySeries(t *testing.T) {
 	sixth := overview.Series[2]
 	if sixth.UnitActive != 1 || sixth.FuelKeluar != 240 {
 		t.Fatalf("the last day = %+v", sixth)
+	}
+}
+
+func seedDispense(t *testing.T, store *repository.TestRepository, id, tanggal string, liter float64, hm *float64) {
+	t.Helper()
+	row := &model.FuelKeluar{
+		FuelOutID: "FUELOUT-" + id + "-" + tanggal, Tanggal: tanggal,
+		IDUnit: id, NamaUnit: "Excavator " + id, Liter: liter, HMAlatBerat: hm,
+	}
+	if err := store.CreateFuelKeluar(context.Background(), row); err != nil {
+		t.Fatalf("seed fuel keluar: %v", err)
+	}
+}
+
+func hmAt(value float64) *float64 { return &value }
+
+// The litres a machine burned are what came out of the tank into it, and the
+// hours they bought are the distance its own meter moved between fills. The
+// last fill before the range is the mark the first fill in range is measured
+// from: the fuel in view was burned over those hours, not over the ones between
+// the fills that happen to fall inside the dates.
+func TestA2BOverviewReadsFuelFromWhatWasDispensed(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200")
+	service := newA2BOverviewService(store, time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC))
+
+	seedReading(t, store, "exc01", "2026-08-06", 8, 0, nil, 0)
+	seedDispense(t, store, "exc01", "2026-08-03", 90, hmAt(1195))
+	seedDispense(t, store, "exc01", "2026-08-06", 70, hmAt(1201))
+	seedDispense(t, store, "exc01", "2026-08-08", 50, hmAt(1205))
+	seedDispense(t, store, "exc01", "2026-08-10", 60, hmAt(1210.4))
+
+	overview, err := service.BuildA2B(context.Background(), "2026-08-05", "2026-08-10", 720)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	unit := overview.Units[0]
+	// The 90 litres from before the range are not in view; the meter reading
+	// they were taken at is.
+	if unit.Fuel != 180 {
+		t.Fatalf("fuel = %v, want 180", unit.Fuel)
+	}
+	// 180 litres over 1210.4 - 1195 = 15.4 hours.
+	if unit.FuelRatio != 11.69 {
+		t.Fatalf("fuel ratio = %v, want 11.69", unit.FuelRatio)
+	}
+}
+
+// Nothing before the range means nothing to measure the first fill from, so it
+// becomes the mark itself rather than being thrown away.
+func TestA2BOverviewMeasuresFromTheFirstFillWithoutAnEarlierOne(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200")
+	service := newA2BOverviewService(store, time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC))
+
+	seedReading(t, store, "exc01", "2026-08-06", 8, 0, nil, 0)
+	seedDispense(t, store, "exc01", "2026-08-06", 70, hmAt(1201))
+	seedDispense(t, store, "exc01", "2026-08-10", 60, hmAt(1210.4))
+
+	overview, err := service.BuildA2B(context.Background(), "2026-08-05", "2026-08-10", 720)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	unit := overview.Units[0]
+	if unit.Fuel != 130 {
+		t.Fatalf("fuel = %v, want 130", unit.Fuel)
+	}
+	// 130 litres over 1210.4 - 1201 = 9.4 hours.
+	if unit.FuelRatio != 13.83 {
+		t.Fatalf("fuel ratio = %v, want 13.83", unit.FuelRatio)
+	}
+}
+
+// The meter reading is optional on the dispensing form. A fill nobody read the
+// machine's meter at still emptied litres into it, so it counts toward the fuel
+// while the hours are measured across the fills that do carry a reading.
+func TestA2BOverviewCountsFuelDispensedWithoutAMeterReading(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200")
+	service := newA2BOverviewService(store, time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC))
+
+	seedReading(t, store, "exc01", "2026-08-06", 8, 0, nil, 0)
+	seedDispense(t, store, "exc01", "2026-08-06", 40, nil)
+	seedDispense(t, store, "exc01", "2026-08-07", 70, hmAt(1201))
+	seedDispense(t, store, "exc01", "2026-08-10", 60, hmAt(1210.4))
+
+	overview, err := service.BuildA2B(context.Background(), "2026-08-05", "2026-08-10", 720)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	unit := overview.Units[0]
+	if unit.Fuel != 170 {
+		t.Fatalf("fuel = %v, want 170", unit.Fuel)
+	}
+	// 170 litres over 1210.4 - 1201 = 9.4 hours.
+	if unit.FuelRatio != 18.09 {
+		t.Fatalf("fuel ratio = %v, want 18.09", unit.FuelRatio)
+	}
+}
+
+// One fill and nothing to measure it from leaves no hours to divide by. The
+// litres are still reported; the ratio waits for the next fill.
+func TestA2BOverviewLeavesTheRatioAtZeroWithoutTwoMeterReadings(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200")
+	service := newA2BOverviewService(store, time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC))
+
+	seedReading(t, store, "exc01", "2026-08-06", 8, 0, nil, 0)
+	seedDispense(t, store, "exc01", "2026-08-06", 70, hmAt(1201))
+
+	overview, err := service.BuildA2B(context.Background(), "2026-08-05", "2026-08-10", 720)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	unit := overview.Units[0]
+	if unit.Fuel != 70 {
+		t.Fatalf("fuel = %v, want 70", unit.Fuel)
+	}
+	if unit.FuelRatio != 0 {
+		t.Fatalf("fuel ratio = %v, want 0", unit.FuelRatio)
 	}
 }

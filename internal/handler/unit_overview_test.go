@@ -168,3 +168,36 @@ func TestA2BOverviewReportsTheRangeItWasAsked(t *testing.T) {
 		t.Fatalf("a machine with no readings was listed: %s", page)
 	}
 }
+
+// The performance table reads fuel off the dispensing sheet, and the hours it
+// bought off the machine's own meter between fills.
+func TestA2BOverviewReportsFuelAgainstTheMeterBetweenFills(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	postHourMeter(t, client, testServer, hourMeterFields()).Body.Close()
+	// The first fill is before the range: its litres are out of view, but the
+	// meter reading it was taken at is the mark the rest are measured from.
+	fills := []struct{ tanggal, awal, akhir, hm string }{
+		{"2026-08-03", "20", "30", "1195"},
+		{"2026-08-07", "30", "120", "1201"},
+		{"2026-08-10", "120", "210", "1210.4"},
+	}
+	for _, fill := range fills {
+		fields := fuelKeluarFields()
+		fields["tanggal"] = fill.tanggal
+		fields["hm_awal"] = fill.awal
+		fields["hm_akhir"] = fill.akhir
+		fields["hm_alat_berat"] = fill.hm
+		postFuelKeluar(t, client, testServer, fuelKeluarCSRF(t, client, testServer), fields, testJPEG(t)).Body.Close()
+	}
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/overview?from=2026-08-05&to=2026-08-10")
+	// 180 litres over 1210.4 - 1195 = 15.4 hours.
+	for _, fragment := range []string{">180<", ">11.69<"} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("the performance table is missing %q: %s", fragment, page)
+		}
+	}
+}

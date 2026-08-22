@@ -166,7 +166,6 @@ func (s *UnitOverviewService) BuildA2B(ctx context.Context, from, to string, wor
 		}
 		unit.Shifts++
 		unit.TotalHM += reading.TotalHM
-		unit.Fuel += reading.FuelLiter
 		unit.StandbyMinutes += reading.TotalStandby
 		unit.BreakdownMinutes += reading.TotalBreakdown
 
@@ -187,14 +186,18 @@ func (s *UnitOverviewService) BuildA2B(ctx context.Context, from, to string, wor
 		}
 	}
 
+	burn := fuelBurnedPerUnit(dispenses, from, to)
+
 	for _, key := range order {
 		unit := perUnit[key]
 		unit.TotalHM = round2(unit.TotalHM)
-		unit.Fuel = round2(unit.Fuel)
 		unit.StandbyMinutes = round2(unit.StandbyMinutes)
 		unit.BreakdownMinutes = round2(unit.BreakdownMinutes)
-		if unit.TotalHM > 0 {
-			unit.FuelRatio = round2(unit.Fuel / unit.TotalHM)
+		if tally := burn[key]; tally != nil {
+			unit.Fuel = round2(tally.liters)
+			if hours := tally.hours(); hours > 0 {
+				unit.FuelRatio = round2(tally.liters / hours)
+			}
 		}
 
 		shift := float64(unit.Shifts * workMinutes)
@@ -351,4 +354,101 @@ func markUnitDay(days map[string]map[string]bool, day, unit string) {
 		days[day] = make(map[string]bool)
 	}
 	days[day][unit] = true
+}
+
+// unitFuelBurn is one machine's fuel over a range: the litres dispensed into it
+// while the range was open, and the two meter readings the hours between them
+// are measured from.
+//
+// The litres a machine burned are what came out of the tank into it, and the
+// hours they bought are the distance its own meter moved. That distance is not
+// the hour meter timesheet: fuel is dispensed between fills, so the hours the
+// fuel paid for run from one fill to the next, which is what the operator reads
+// off the machine when he fills it.
+type unitFuelBurn struct {
+	liters float64
+	// firstHM is the reading the range is measured from and lastHM the reading
+	// it is measured to. The mark is the last fill before the range where there
+	// is one: the fuel in view was burned over those hours, not over the ones
+	// between the fills that happen to fall inside the dates.
+	firstHM float64
+	lastHM  float64
+	hasMark bool
+	hasLast bool
+}
+
+// hours is the distance the meter moved, or zero when there is not yet a second
+// reading to measure against. A meter that went backwards is a typo rather than
+// a machine that un-worked, and reports no hours instead of negative ones.
+func (b *unitFuelBurn) hours() float64 {
+	if !b.hasMark || !b.hasLast {
+		return 0
+	}
+	return b.lastHM - b.firstHM
+}
+
+// fuelBurnedPerUnit tallies the dispensing sheet by machine. Readings are
+// optional on the dispensing form, so a fill nobody read the meter at counts
+// toward the litres while the hours are measured across the fills that do carry
+// one.
+func fuelBurnedPerUnit(dispenses []model.FuelKeluar, from, to string) map[string]*unitFuelBurn {
+	ordered := make([]model.FuelKeluar, len(dispenses))
+	copy(ordered, dispenses)
+	// Oldest first, so one pass can keep the last fill before the range as the
+	// mark and then walk forward through the range. The id breaks a tie between
+	// two fills written up at the same moment, so the same sheet always reads
+	// the same way.
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].Tanggal != ordered[j].Tanggal {
+			return ordered[i].Tanggal < ordered[j].Tanggal
+		}
+		if !ordered[i].CreatedAt.Equal(ordered[j].CreatedAt) {
+			return ordered[i].CreatedAt.Before(ordered[j].CreatedAt)
+		}
+		return ordered[i].FuelOutID < ordered[j].FuelOutID
+	})
+
+	burn := make(map[string]*unitFuelBurn)
+	for _, dispense := range ordered {
+		if dispense.Tanggal > to {
+			continue
+		}
+		id := strings.TrimSpace(dispense.IDUnit)
+		if id == "" {
+			continue
+		}
+		key := strings.ToUpper(id)
+		tally, seen := burn[key]
+		if !seen {
+			tally = &unitFuelBurn{}
+			burn[key] = tally
+		}
+
+		inRange := dispense.Tanggal >= from
+		if inRange {
+			tally.liters += dispense.Liter
+		}
+		if dispense.HMAlatBerat == nil {
+			continue
+		}
+		reading := *dispense.HMAlatBerat
+		if !inRange {
+			// Before the range every reading replaces the last, leaving the
+			// nearest one to it as the mark.
+			tally.firstHM = reading
+			tally.hasMark = true
+			tally.hasLast = false
+			continue
+		}
+		if !tally.hasMark {
+			// Nothing before the range means nothing to measure the first fill
+			// from, so it becomes the mark itself rather than being thrown away.
+			tally.firstHM = reading
+			tally.hasMark = true
+			continue
+		}
+		tally.lastHM = reading
+		tally.hasLast = true
+	}
+	return burn
 }
