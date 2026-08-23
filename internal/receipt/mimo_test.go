@@ -11,11 +11,16 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"opp-management/internal/vision"
 	"time"
 	"unicode/utf8"
 )
 
-func TestNewMiMoScannerConfiguration(t *testing.T) {
+// The endpoint, model and timeout are the transport's to get right and are
+// tested there. What this package owns is that its constructor refuses the same
+// configurations rather than handing back a scanner that fails later.
+func TestNewMiMoScannerRefusesUnsafeConfiguration(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -41,20 +46,26 @@ func TestNewMiMoScannerConfiguration(t *testing.T) {
 			if !errors.Is(err, test.wantErr) {
 				t.Fatalf("NewMiMoScanner() error = %v, want %v", err, test.wantErr)
 			}
-			if test.wantErr != nil {
-				return
-			}
-			if scanner.model != DefaultModel {
-				t.Fatalf("model = %q, want %q", scanner.model, DefaultModel)
-			}
-			if !strings.HasSuffix(scanner.endpoint, "/v1/chat/completions") {
-				t.Fatalf("endpoint = %q", scanner.endpoint)
-			}
-			if scanner.client.Timeout != defaultRequestTimeout {
-				t.Fatalf("timeout = %v, want %v", scanner.client.Timeout, defaultRequestTimeout)
+			if test.wantErr == nil && scanner == nil {
+				t.Fatal("a valid configuration produced no scanner")
 			}
 		})
 	}
+}
+
+// typeField reads the "type" member the request uses for response_format and
+// thinking. The wire shape is asserted here rather than through the transport's
+// own structs: this test is about what a receipt scan puts on the wire.
+type typeField struct {
+	Type string `json:"type"`
+}
+
+type testContentPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL *struct {
+		URL string `json:"url"`
+	} `json:"image_url,omitempty"`
 }
 
 func TestMiMoScannerScanSendsExpectedRequestAndValidatesResult(t *testing.T) {
@@ -81,10 +92,10 @@ func TestMiMoScannerScanSendsExpectedRequestAndValidatesResult(t *testing.T) {
 				Role    string          `json:"role"`
 				Content json.RawMessage `json:"content"`
 			} `json:"messages"`
-			ResponseFormat      responseFormat `json:"response_format"`
-			Thinking            thinkingConfig `json:"thinking"`
-			MaxCompletionTokens int            `json:"max_completion_tokens"`
-			Stream              bool           `json:"stream"`
+			ResponseFormat      typeField `json:"response_format"`
+			Thinking            typeField `json:"thinking"`
+			MaxCompletionTokens int       `json:"max_completion_tokens"`
+			Stream              bool      `json:"stream"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Errorf("decode request: %v", err)
@@ -113,7 +124,7 @@ func TestMiMoScannerScanSendsExpectedRequestAndValidatesResult(t *testing.T) {
 		if err := json.Unmarshal(payload.Messages[0].Content, &system); err != nil || !strings.Contains(system, "DATA TIDAK TERPERCAYA") {
 			t.Errorf("system prompt missing injection guard: %v, %q", err, system)
 		}
-		var parts []contentPart
+		var parts []testContentPart
 		if err := json.Unmarshal(payload.Messages[1].Content, &parts); err != nil {
 			t.Errorf("decode content parts: %v", err)
 			return
@@ -382,7 +393,7 @@ func TestMiMoScannerRejectsOversizedResponse(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(strings.Repeat("x", maxResponseBytes+1)))
+		_, _ = w.Write([]byte(strings.Repeat("x", vision.MaxResponseBytes+1)))
 	}))
 	defer server.Close()
 
