@@ -33,6 +33,11 @@ type Store interface {
 	MaxProduksiPlanSequence(ctx context.Context, prefix string) (int, error)
 	CreateProduksiPlan(ctx context.Context, plan *model.ProduksiPlan) error
 	ListProduksiPlan(ctx context.Context) ([]model.ProduksiPlan, error)
+	MaxProduksiScanSequence(ctx context.Context, prefix string) (int, error)
+	CreateProduksiScan(ctx context.Context, scan *model.ProduksiScan) error
+	// FindProduksiScan answers whether this exact image has been filed before.
+	// It reads the metadata columns only, never the stored photos.
+	FindProduksiScan(ctx context.Context, sidik string) (*model.ProduksiScan, error)
 	UnitA2BExists(ctx context.Context, idUnit string) (bool, error)
 	MaxUnitA2BNumber(ctx context.Context) (int, error)
 	CreateUnitA2B(ctx context.Context, unit *model.UnitA2B) error

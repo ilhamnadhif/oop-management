@@ -3,6 +3,58 @@
   {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
+  {{/* The sheet is already filled in on paper: every column of every line. So
+       this panel does not prefill the form below - it reads the whole page and
+       files it, and the form stays for the loads that arrive one at a time. */}}
+  <form method="post" action="/produksi/scan/commit" enctype="multipart/form-data"
+    class="panel produksi-scan" data-produksi-scan data-scan-enabled="{{if .ScanEnabled}}true{{else}}false{{end}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="rows" data-scan-rows>
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "camera"}}ISI DARI FOTO LEMBAR</p>
+        <h2>Scan lembar tally</h2>
+      </div>
+    </div>
+    <p class="hint">Foto satu lembar tally yang sudah terisi. AI membaca seluruh barisnya, lalu Anda periksa sekali sebelum semuanya disimpan.</p>
+    <div class="produksi-scan-controls">
+      <label for="lembar">{{template "icon" "camera"}}Foto lembar</label>
+      <input id="lembar" name="lembar" type="file" accept="image/*" data-scan-file>
+      <button class="button produksi-scan-button" type="button" data-scan-button{{if not .ScanEnabled}} disabled{{end}}>
+        <span class="spinner" aria-hidden="true" hidden data-scan-spinner></span>
+        {{template "icon" "search"}}<span data-scan-label>Baca lembar dengan AI</span>
+      </button>
+    </div>
+    <p class="produksi-scan-status" role="status" aria-live="polite" data-scan-status>
+      {{if .ScanEnabled}}Foto dikirim ke layanan Xiaomi MiMo untuk dibaca. Periksa kembali hasilnya sebelum disimpan.{{else}}Scan AI belum dikonfigurasi. Isi form di bawah secara manual.{{end}}
+    </p>
+
+    <dialog class="modal produksi-scan-dialog" data-scan-dialog>
+      <h2 data-scan-summary>Hasil baca</h2>
+      <p class="hint" data-scan-note></p>
+      <div class="table-scroll produksi-scan-table">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">No</th>
+              <th scope="col">Tanggal</th>
+              <th scope="col">Nopol</th>
+              <th scope="col">Lokasi</th>
+              <th scope="col">Layer</th>
+              <th scope="col" class="numeric">TT</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody data-scan-rows-body></tbody>
+        </table>
+      </div>
+      <div class="dialog-actions">
+        <button class="button subtle" type="button" data-close-dialog>Batal</button>
+        <button class="button primary" type="submit" data-scan-save>Simpan</button>
+      </div>
+    </dialog>
+  </form>
+
   <form method="post" action="/produksi" class="stack-form" data-loading-form data-produksi-form>
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
@@ -148,5 +200,6 @@
 <script src="/static/js/auth.js" defer></script>
 <script src="/static/js/combobox.js" defer></script>
 <script src="/static/js/produksi.js" defer></script>
+<script src="/static/js/produksi-scan.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}

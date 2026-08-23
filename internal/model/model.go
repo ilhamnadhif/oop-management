@@ -130,6 +130,24 @@ type Produksi struct {
 	UpdatedAt   time.Time
 }
 
+// ProduksiScan is one tally sheet read by the scanner. It is a log rather than
+// a document: what it exists for is to recognise a photo that has already been
+// turned into production rows, so the same file cannot be filed twice.
+//
+// Sidik is the SHA-256 of the decoded image bytes, not of the data URL, so
+// rewrapping the same picture does not change its fingerprint. Foto is the
+// sheet itself, kept for when a stored figure is disputed.
+type ProduksiScan struct {
+	ScanID       string
+	Sidik        string
+	BarisMasuk   int
+	BarisDitolak int
+	DibuatOleh   string
+	DibuatOlehID string
+	CreatedAt    time.Time
+	Foto         string
+}
+
 // ProduksiPlan is the volume planned for one location. It is a standing target
 // rather than a daily one: the date records when the plan was set, and the
 // overview compares production in a chosen range against the whole plan.

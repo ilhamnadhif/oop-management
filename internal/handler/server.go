@@ -23,19 +23,20 @@ import (
 	"opp-management/internal/receipt"
 	"opp-management/internal/service"
 	"opp-management/internal/session"
+	"opp-management/internal/tally"
 )
 
 //go:embed templates/*.html static/css/* static/js/* static/img/* static/fonts/* static/vendor/leaflet/leaflet.js static/vendor/leaflet/leaflet.css static/vendor/leaflet/images/*
 var assetFiles embed.FS
 
 const (
-	receiptScanRateLimit       = 5
-	receiptScanRateWindow      = time.Minute
-	receiptScanRateMaxUsers    = 4096
-	receiptScanConcurrentLimit = 3
+	aiScanRateLimit       = 5
+	aiScanRateWindow      = time.Minute
+	aiScanRateMaxUsers    = 4096
+	aiScanConcurrentLimit = 3
 )
 
-type receiptScanRateEntry struct {
+type aiScanRateEntry struct {
 	windowStart time.Time
 	count       int
 }
@@ -61,9 +62,10 @@ type Server struct {
 	maxUploadBytes int64
 	maxPhotoChars  int
 	receiptScanner receipt.Scanner
-	receiptRateMu  sync.Mutex
-	receiptRates   map[string]receiptScanRateEntry
-	receiptSlots   chan struct{}
+	tallyScanner   tally.Scanner
+	scanRateMu     sync.Mutex
+	scanRates      map[string]aiScanRateEntry
+	scanSlots      chan struct{}
 	templates      *template.Template
 }
 
@@ -202,6 +204,10 @@ type ProduksiPageData struct {
 	Options service.ProduksiOptions
 	Error   string
 	Success string
+	// ScanEnabled drives the photo panel. Without a key the panel still renders,
+	// disabled and saying so, rather than vanishing and leaving the operator
+	// wondering where the feature went.
+	ScanEnabled bool
 }
 
 type DashboardPageData struct {
@@ -275,10 +281,18 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		maxPhotoChars:  maxPhotoChars,
 		company:        branding.Company,
 		signatory:      branding.Signatory,
-		receiptRates:   make(map[string]receiptScanRateEntry),
-		receiptSlots:   make(chan struct{}, receiptScanConcurrentLimit),
+		scanRates:      make(map[string]aiScanRateEntry),
+		scanSlots:      make(chan struct{}, aiScanConcurrentLimit),
 		templates:      templates,
 	}, nil
+}
+
+// WithTallyScanner enables the optional AI production tally scanner. Like the
+// receipt scanner it is optional: without a key the page still renders and says
+// the scan is not configured, and the form is filled in by hand.
+func (s *Server) WithTallyScanner(scanner tally.Scanner) *Server {
+	s.tallyScanner = scanner
+	return s
 }
 
 // WithReceiptScanner enables the optional AI receipt scanner. Keeping this as
@@ -304,6 +318,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
 	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
 	mux.HandleFunc("/produksi", s.handleProduksi)
+	mux.HandleFunc("/produksi/scan", s.handleProduksiScan)
+	mux.HandleFunc("/produksi/scan/commit", s.handleProduksiScanCommit)
 	mux.HandleFunc("/produksi/plan", s.handleProduksiPlan)
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
@@ -1702,6 +1718,7 @@ func (s *Server) renderProduksi(w http.ResponseWriter, r *http.Request, user *mo
 		Options:       options,
 		Error:         errMessage,
 		Success:       success,
+		ScanEnabled:   s.tallyScanner != nil,
 	}, status)
 }
 
@@ -1929,15 +1946,15 @@ func (s *Server) handleNotaReceiptScan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"ok": false, "error": "Scan struk belum dikonfigurasi. Anda tetap dapat mengisi item secara manual."})
 		return
 	}
-	if allowed, retryAfter := s.allowReceiptScan(sessionValue.UserID); !allowed {
-		writeReceiptScanLimit(w, retryAfter, "Batas scan struk tercapai. Silakan coba lagi sebentar.")
+	if allowed, retryAfter := s.allowAIScan(sessionValue.UserID); !allowed {
+		writeScanLimit(w, retryAfter, "Batas scan struk tercapai. Silakan coba lagi sebentar.")
 		return
 	}
 	select {
-	case s.receiptSlots <- struct{}{}:
-		defer func() { <-s.receiptSlots }()
+	case s.scanSlots <- struct{}{}:
+		defer func() { <-s.scanSlots }()
 	default:
-		writeReceiptScanLimit(w, time.Second, "Layanan scan struk sedang memproses permintaan lain. Silakan coba lagi.")
+		writeScanLimit(w, time.Second, "Layanan scan struk sedang memproses permintaan lain. Silakan coba lagi.")
 		return
 	}
 
@@ -2001,60 +2018,60 @@ func (s *Server) handleNotaReceiptScan(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// allowReceiptScan applies a small, per-user fixed window before any receipt
+// allowAIScan applies a small, per-user fixed window before any receipt
 // bytes are decoded or sent to the provider. The state map is capped so even a
 // long-running server cannot accumulate an unbounded number of user keys.
-func (s *Server) allowReceiptScan(userID string) (bool, time.Duration) {
+func (s *Server) allowAIScan(userID string) (bool, time.Duration) {
 	now := time.Now()
 	if s.now != nil {
 		now = s.now()
 	}
 
-	s.receiptRateMu.Lock()
-	defer s.receiptRateMu.Unlock()
-	if s.receiptRates == nil {
-		s.receiptRates = make(map[string]receiptScanRateEntry)
+	s.scanRateMu.Lock()
+	defer s.scanRateMu.Unlock()
+	if s.scanRates == nil {
+		s.scanRates = make(map[string]aiScanRateEntry)
 	}
 
-	entry, exists := s.receiptRates[userID]
-	if exists && (now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(receiptScanRateWindow))) {
-		entry = receiptScanRateEntry{windowStart: now}
+	entry, exists := s.scanRates[userID]
+	if exists && (now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(aiScanRateWindow))) {
+		entry = aiScanRateEntry{windowStart: now}
 	}
 	if !exists {
-		s.makeReceiptRateRoom(now)
-		entry = receiptScanRateEntry{windowStart: now}
+		s.makeScanRateRoom(now)
+		entry = aiScanRateEntry{windowStart: now}
 	}
-	if entry.count >= receiptScanRateLimit {
-		retryAfter := entry.windowStart.Add(receiptScanRateWindow).Sub(now)
+	if entry.count >= aiScanRateLimit {
+		retryAfter := entry.windowStart.Add(aiScanRateWindow).Sub(now)
 		if retryAfter < time.Second {
 			retryAfter = time.Second
 		}
 		return false, retryAfter
 	}
 	entry.count++
-	s.receiptRates[userID] = entry
+	s.scanRates[userID] = entry
 	return true, 0
 }
 
-// makeReceiptRateRoom is only called for a new user. It first removes expired
+// makeScanRateRoom is only called for a new user. It first removes expired
 // windows, then evicts the oldest remaining entry if the hard cap is full.
-func (s *Server) makeReceiptRateRoom(now time.Time) {
-	if len(s.receiptRates) < receiptScanRateMaxUsers {
+func (s *Server) makeScanRateRoom(now time.Time) {
+	if len(s.scanRates) < aiScanRateMaxUsers {
 		return
 	}
-	for userID, entry := range s.receiptRates {
-		if now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(receiptScanRateWindow)) {
-			delete(s.receiptRates, userID)
+	for userID, entry := range s.scanRates {
+		if now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(aiScanRateWindow)) {
+			delete(s.scanRates, userID)
 		}
 	}
-	if len(s.receiptRates) < receiptScanRateMaxUsers {
+	if len(s.scanRates) < aiScanRateMaxUsers {
 		return
 	}
 
 	oldestUserID := ""
 	var oldestWindow time.Time
 	oldestFound := false
-	for userID, entry := range s.receiptRates {
+	for userID, entry := range s.scanRates {
 		if !oldestFound || entry.windowStart.Before(oldestWindow) {
 			oldestUserID = userID
 			oldestWindow = entry.windowStart
@@ -2062,11 +2079,11 @@ func (s *Server) makeReceiptRateRoom(now time.Time) {
 		}
 	}
 	if oldestFound {
-		delete(s.receiptRates, oldestUserID)
+		delete(s.scanRates, oldestUserID)
 	}
 }
 
-func writeReceiptScanLimit(w http.ResponseWriter, retryAfter time.Duration, message string) {
+func writeScanLimit(w http.ResponseWriter, retryAfter time.Duration, message string) {
 	seconds := int(math.Ceil(retryAfter.Seconds()))
 	if seconds < 1 {
 		seconds = 1

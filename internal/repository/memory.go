@@ -21,6 +21,7 @@ type TestRepository struct {
 	unitDT     []*model.UnitDT
 	produksi   []*model.Produksi
 	plans      []*model.ProduksiPlan
+	scans      []*model.ProduksiScan
 	unitA2B    []*model.UnitA2B
 	nota       []*model.Nota
 	leaves     []*model.Leave
@@ -153,6 +154,53 @@ func (r *TestRepository) ProduksiPlanList() []model.ProduksiPlan {
 		plans = append(plans, *plan)
 	}
 	return plans
+}
+
+func (r *TestRepository) MaxProduksiScanSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	highest := 0
+	for _, scan := range r.scans {
+		if sequence, ok := unitSequence(scan.ScanID, prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) CreateProduksiScan(_ context.Context, scan *model.ProduksiScan) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	copied := *scan
+	r.scans = append(r.scans, &copied)
+	return nil
+}
+
+// ProduksiScanList exposes logged scans to tests.
+func (r *TestRepository) ProduksiScanList() []model.ProduksiScan {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	scans := make([]model.ProduksiScan, 0, len(r.scans))
+	for _, scan := range r.scans {
+		scans = append(scans, *scan)
+	}
+	return scans
+}
+
+func (r *TestRepository) FindProduksiScan(_ context.Context, sidik string) (*model.ProduksiScan, error) {
+	sidik = strings.TrimSpace(sidik)
+	if sidik == "" {
+		return nil, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, scan := range r.scans {
+		if strings.EqualFold(scan.Sidik, sidik) {
+			copied := *scan
+			return &copied, nil
+		}
+	}
+	return nil, nil
 }
 
 func (r *TestRepository) UnitA2BExists(_ context.Context, idUnit string) (bool, error) {

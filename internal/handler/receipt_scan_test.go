@@ -447,7 +447,7 @@ func TestNotaReceiptScanRateLimitsPerUserAfterAccessChecks(t *testing.T) {
 	image := testJPEG(t)
 
 	// Rejected requests must not consume the authenticated user's scan quota.
-	for i := 0; i < receiptScanRateLimit+1; i++ {
+	for i := 0; i < aiScanRateLimit+1; i++ {
 		response := postReceiptScan(t, client, testServer, "invalid-csrf", "receipt.jpg", image)
 		body := readBody(t, response)
 		if response.StatusCode != http.StatusForbidden {
@@ -455,7 +455,7 @@ func TestNotaReceiptScanRateLimitsPerUserAfterAccessChecks(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < receiptScanRateLimit; i++ {
+	for i := 0; i < aiScanRateLimit; i++ {
 		response := postReceiptScan(t, client, testServer, csrf, "receipt.jpg", image)
 		body := readBody(t, response)
 		if response.StatusCode != http.StatusOK {
@@ -474,13 +474,13 @@ func TestNotaReceiptScanRateLimitsPerUserAfterAccessChecks(t *testing.T) {
 	if !strings.Contains(response.Header.Get("Content-Type"), "application/json") || !strings.Contains(body, `"ok":false`) {
 		t.Fatalf("rate-limit response is not JSON: content-type=%q body=%s", response.Header.Get("Content-Type"), body)
 	}
-	if calls, _ := scanner.snapshot(); calls != receiptScanRateLimit {
-		t.Fatalf("scanner calls: %d, want %d", calls, receiptScanRateLimit)
+	if calls, _ := scanner.snapshot(); calls != aiScanRateLimit {
+		t.Fatalf("scanner calls: %d, want %d", calls, aiScanRateLimit)
 	}
 }
 
 func TestNotaReceiptScanRejectsWhenGlobalScannerSlotsAreFull(t *testing.T) {
-	entered := make(chan struct{}, receiptScanConcurrentLimit)
+	entered := make(chan struct{}, aiScanConcurrentLimit)
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
@@ -507,8 +507,8 @@ func TestNotaReceiptScanRejectsWhenGlobalScannerSlotsAreFull(t *testing.T) {
 		response *http.Response
 		err      error
 	}
-	results := make(chan requestResult, receiptScanConcurrentLimit)
-	for i := 0; i < receiptScanConcurrentLimit; i++ {
+	results := make(chan requestResult, aiScanConcurrentLimit)
+	for i := 0; i < aiScanConcurrentLimit; i++ {
 		request, err := newReceiptScanRequest(testServer.URL, csrf, "receipt.jpg", image)
 		if err != nil {
 			t.Fatalf("new concurrent request %d: %v", i+1, err)
@@ -521,11 +521,11 @@ func TestNotaReceiptScanRejectsWhenGlobalScannerSlotsAreFull(t *testing.T) {
 
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
-	for i := 0; i < receiptScanConcurrentLimit; i++ {
+	for i := 0; i < aiScanConcurrentLimit; i++ {
 		select {
 		case <-entered:
 		case <-deadline.C:
-			t.Fatalf("only %d of %d scans entered the blocking scanner", i, receiptScanConcurrentLimit)
+			t.Fatalf("only %d of %d scans entered the blocking scanner", i, aiScanConcurrentLimit)
 		}
 	}
 
@@ -546,7 +546,7 @@ func TestNotaReceiptScanRejectsWhenGlobalScannerSlotsAreFull(t *testing.T) {
 	}
 
 	releaseOnce.Do(func() { close(release) })
-	for i := 0; i < receiptScanConcurrentLimit; i++ {
+	for i := 0; i < aiScanConcurrentLimit; i++ {
 		select {
 		case result := <-results:
 			if result.err != nil {
@@ -560,31 +560,31 @@ func TestNotaReceiptScanRejectsWhenGlobalScannerSlotsAreFull(t *testing.T) {
 			t.Fatalf("concurrent scan %d did not finish after release", i+1)
 		}
 	}
-	if calls, _ := scanner.snapshot(); calls != receiptScanConcurrentLimit {
-		t.Fatalf("scanner calls: %d, want %d", calls, receiptScanConcurrentLimit)
+	if calls, _ := scanner.snapshot(); calls != aiScanConcurrentLimit {
+		t.Fatalf("scanner calls: %d, want %d", calls, aiScanConcurrentLimit)
 	}
 }
 
 func TestReceiptScanRateStateIsBoundedAndCleansExpiredWindows(t *testing.T) {
 	now := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
 	server := &Server{
-		now:          func() time.Time { return now },
-		receiptRates: make(map[string]receiptScanRateEntry),
+		now:       func() time.Time { return now },
+		scanRates: make(map[string]aiScanRateEntry),
 	}
-	for i := 0; i < receiptScanRateMaxUsers+100; i++ {
-		if allowed, _ := server.allowReceiptScan(fmt.Sprintf("user-%d", i)); !allowed {
+	for i := 0; i < aiScanRateMaxUsers+100; i++ {
+		if allowed, _ := server.allowAIScan(fmt.Sprintf("user-%d", i)); !allowed {
 			t.Fatalf("new user %d was unexpectedly rate limited", i)
 		}
 	}
-	if got := len(server.receiptRates); got != receiptScanRateMaxUsers {
-		t.Fatalf("rate state size: %d, want %d", got, receiptScanRateMaxUsers)
+	if got := len(server.scanRates); got != aiScanRateMaxUsers {
+		t.Fatalf("rate state size: %d, want %d", got, aiScanRateMaxUsers)
 	}
 
-	now = now.Add(2 * receiptScanRateWindow)
-	if allowed, _ := server.allowReceiptScan("fresh-user"); !allowed {
+	now = now.Add(2 * aiScanRateWindow)
+	if allowed, _ := server.allowAIScan("fresh-user"); !allowed {
 		t.Fatal("fresh user was unexpectedly rate limited")
 	}
-	if got := len(server.receiptRates); got != 1 {
+	if got := len(server.scanRates); got != 1 {
 		t.Fatalf("expired rate state was not cleaned: %d entries remain", got)
 	}
 }

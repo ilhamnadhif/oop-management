@@ -19,6 +19,7 @@ import (
 	"opp-management/internal/repository"
 	"opp-management/internal/service"
 	"opp-management/internal/session"
+	"opp-management/internal/tally"
 )
 
 func main() {
@@ -82,9 +83,23 @@ func main() {
 			log.Fatalf("konfigurasi scan struk MiMo tidak valid: %v", err)
 		}
 		webServer.WithReceiptScanner(scanner)
-		log.Printf("Scan struk MiMo aktif (model=%s)", cfg.MiMoModel)
+
+		// The tally sheet is read by the same provider and key, with its own
+		// prompt and its own token budget: a page of handwriting needs far more
+		// room than a receipt.
+		sheetScanner, err := tally.NewMiMoScanner(
+			cfg.MiMoAPIKey,
+			cfg.MiMoBaseURL,
+			cfg.MiMoModel,
+			&http.Client{Timeout: cfg.MiMoTimeout},
+		)
+		if err != nil {
+			log.Fatalf("konfigurasi scan lembar produksi MiMo tidak valid: %v", err)
+		}
+		webServer.WithTallyScanner(sheetScanner)
+		log.Printf("Scan struk dan lembar produksi MiMo aktif (model=%s)", cfg.MiMoModel)
 	} else {
-		log.Printf("Scan struk MiMo nonaktif: MIMO_API_KEY belum diatur")
+		log.Printf("Scan MiMo nonaktif: MIMO_API_KEY belum diatur")
 	}
 
 	httpServer := &http.Server{

@@ -13,19 +13,20 @@ import (
 )
 
 const (
-	userSheet       = "user"
-	activitySheet   = "activity login"
-	attendanceSheet = "absensi data"
-	unitDTSheet     = "Unit DT"
-	produksiSheet   = "Produksi"
-	planSheet       = "Produksi Plan"
-	unitA2BSheet    = "Unit A2B"
-	notaSheet       = "Nota"
-	notaItemSheet   = "Nota Item"
-	leaveSheet      = "Leave"
-	fuelMasukSheet  = "Fuel Masuk"
-	fuelKeluarSheet = "Fuel Keluar"
-	hourMeterSheet  = "Input HM"
+	userSheet         = "user"
+	activitySheet     = "activity login"
+	attendanceSheet   = "absensi data"
+	unitDTSheet       = "Unit DT"
+	produksiSheet     = "Produksi"
+	planSheet         = "Produksi Plan"
+	unitA2BSheet      = "Unit A2B"
+	notaSheet         = "Nota"
+	notaItemSheet     = "Nota Item"
+	leaveSheet        = "Leave"
+	fuelMasukSheet    = "Fuel Masuk"
+	fuelKeluarSheet   = "Fuel Keluar"
+	hourMeterSheet    = "Input HM"
+	produksiScanSheet = "Produksi Scan"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -76,6 +77,13 @@ var produksiHeaders = []string{
 var produksiPlanHeaders = []string{
 	"plan_id", "tanggal", "project", "supplier", "lokasi", "volume_m3",
 	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+}
+
+// The photo is last on purpose: the duplicate check reads up to created_at and
+// never pays for tens of thousands of base64 characters it does not need.
+var produksiScanHeaders = []string{
+	"scan_id", "sidik_sha256", "baris_masuk", "baris_ditolak",
+	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "foto_lembar",
 }
 
 var unitA2BHeaders = []string{
@@ -236,7 +244,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet, fuelMasukSheet, fuelKeluarSheet, hourMeterSheet}
+	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, produksiScanSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet, fuelMasukSheet, fuelKeluarSheet, hourMeterSheet}
 	requests := make([]*sheets.Request, 0, len(missing))
 	for _, name := range missing {
 		if existing[name] {
@@ -262,6 +270,7 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		{name: unitDTSheet, headers: unitDTHeaders},
 		{name: produksiSheet, headers: produksiHeaders},
 		{name: planSheet, headers: produksiPlanHeaders},
+		{name: produksiScanSheet, headers: produksiScanHeaders},
 		{name: unitA2BSheet, headers: unitA2BHeaders},
 		{name: notaSheet, headers: notaHeaders},
 		{name: notaItemSheet, headers: notaItemHeaders},
@@ -577,6 +586,14 @@ func (r *GoogleSheetsRepository) ListUnitDT(ctx context.Context) ([]model.UnitDT
 	return units, nil
 }
 
+func parseIntCell(cell interface{}) int {
+	value, err := strconv.Atoi(strings.TrimSpace(cellString(cell)))
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
 func parseFloatCell(cell interface{}) float64 {
 	value, err := strconv.ParseFloat(strings.TrimSpace(cellString(cell)), 64)
 	if err != nil {
@@ -749,6 +766,77 @@ func produksiPlanToRow(plan *model.ProduksiPlan) []interface{} {
 
 // UnitA2BExists reads columns A:C only. The foto column carries a base64 data
 // URL, so a full-width read just to compare identifiers would pull megabytes.
+// MaxProduksiScanSequence reads only the id column: the sheet holds a photo per
+// row, and numbering the next scan must not drag every image across the wire.
+func (r *GoogleSheetsRepository) MaxProduksiScanSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, produksiScanSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *GoogleSheetsRepository) CreateProduksiScan(ctx context.Context, scan *model.ProduksiScan) error {
+	return r.appendRow(ctx, produksiScanSheet, produksiScanToRow(scan))
+}
+
+// FindProduksiScan looks a fingerprint up and stops at created_at, so the answer
+// to "has this file been filed before" costs the metadata and not the photos.
+func (r *GoogleSheetsRepository) FindProduksiScan(ctx context.Context, sidik string) (*model.ProduksiScan, error) {
+	sidik = strings.TrimSpace(sidik)
+	if sidik == "" {
+		return nil, nil
+	}
+	rows, err := r.readRows(ctx, produksiScanSheet, "G")
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range dataRows(rows) {
+		scan := rowToProduksiScan(row, r.location)
+		if scan.ScanID == "" {
+			continue
+		}
+		if strings.EqualFold(scan.Sidik, sidik) {
+			return &scan, nil
+		}
+	}
+	return nil, nil
+}
+
+func produksiScanToRow(scan *model.ProduksiScan) []interface{} {
+	return []interface{}{
+		scan.ScanID, scan.Sidik,
+		strconv.Itoa(scan.BarisMasuk), strconv.Itoa(scan.BarisDitolak),
+		scan.DibuatOleh, scan.DibuatOlehID, formatDateTime(scan.CreatedAt), scan.Foto,
+	}
+}
+
+// rowToProduksiScan tolerates a row cut short by a narrow read, which is how the
+// duplicate check gets its answer without the photo column.
+func rowToProduksiScan(row []interface{}, location *time.Location) model.ProduksiScan {
+	row = padRow(row, len(produksiScanHeaders))
+	createdAt, _ := parseDateTime(cellString(row[6]), location)
+	return model.ProduksiScan{
+		ScanID:       strings.TrimSpace(cellString(row[0])),
+		Sidik:        strings.TrimSpace(cellString(row[1])),
+		BarisMasuk:   parseIntCell(row[2]),
+		BarisDitolak: parseIntCell(row[3]),
+		DibuatOleh:   cellString(row[4]),
+		DibuatOlehID: cellString(row[5]),
+		CreatedAt:    createdAt,
+		Foto:         cellString(row[7]),
+	}
+}
+
 func (r *GoogleSheetsRepository) UnitA2BExists(ctx context.Context, idUnit string) (bool, error) {
 	rows, err := r.readRows(ctx, unitA2BSheet, "C")
 	if err != nil {
