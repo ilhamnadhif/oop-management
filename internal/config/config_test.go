@@ -84,3 +84,34 @@ func TestLoadRejectsInvalidMiMoTimeout(t *testing.T) {
 		})
 	}
 }
+
+// A receipt answers in seconds; a page of ruled lines does not, and the two
+// used to share one budget sized for the receipt.
+func TestLoadReadsTheSheetScanTimeoutSeparately(t *testing.T) {
+	prepareLoadTest(t)
+	t.Setenv("MIMO_SHEET_TIMEOUT", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MiMoSheetTimeout != 150*time.Second {
+		t.Fatalf("MiMoSheetTimeout = %v, want 150s", cfg.MiMoSheetTimeout)
+	}
+
+	t.Setenv("MIMO_SHEET_TIMEOUT", "90s")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MiMoSheetTimeout != 90*time.Second {
+		t.Fatalf("MiMoSheetTimeout = %v, want 90s", cfg.MiMoSheetTimeout)
+	}
+
+	for _, value := range []string{"0s", "-1s", "11m", "sepuluh"} {
+		t.Setenv("MIMO_SHEET_TIMEOUT", value)
+		if _, err := Load(); err == nil {
+			t.Fatalf("MIMO_SHEET_TIMEOUT=%q was accepted", value)
+		}
+	}
+}

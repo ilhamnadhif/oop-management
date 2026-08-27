@@ -63,10 +63,14 @@ type Server struct {
 	maxPhotoChars  int
 	receiptScanner receipt.Scanner
 	tallyScanner   tally.Scanner
-	scanRateMu     sync.Mutex
-	scanRates      map[string]aiScanRateEntry
-	scanSlots      chan struct{}
-	templates      *template.Template
+	// scanTimeout is how long the sheet reader is allowed to take. The handler
+	// needs it too: the server's write deadline is shorter, and the page has to
+	// tell the browser how long to wait.
+	scanTimeout time.Duration
+	scanRateMu  sync.Mutex
+	scanRates   map[string]aiScanRateEntry
+	scanSlots   chan struct{}
+	templates   *template.Template
 }
 
 type AuthPageData struct {
@@ -208,6 +212,10 @@ type ProduksiPageData struct {
 	// disabled and saying so, rather than vanishing and leaving the operator
 	// wondering where the feature went.
 	ScanEnabled bool
+	// ScanTimeoutMS is how long the browser waits before giving up on a scan. It
+	// comes from the same setting the reader is given, so the two cannot drift
+	// into the browser abandoning a scan the server is still running.
+	ScanTimeoutMS int64
 	// Today dates the confirmation dialog. It is kept apart from Form.Tanggal so
 	// a date typed into the entry form, and bounced back by a validation error,
 	// does not become the default for a sheet that has nothing to do with it.
@@ -294,8 +302,9 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 // WithTallyScanner enables the optional AI production tally scanner. Like the
 // receipt scanner it is optional: without a key the page still renders and says
 // the scan is not configured, and the form is filled in by hand.
-func (s *Server) WithTallyScanner(scanner tally.Scanner) *Server {
+func (s *Server) WithTallyScanner(scanner tally.Scanner, timeout time.Duration) *Server {
 	s.tallyScanner = scanner
+	s.scanTimeout = timeout
 	return s
 }
 
@@ -1723,6 +1732,7 @@ func (s *Server) renderProduksi(w http.ResponseWriter, r *http.Request, user *mo
 		Error:         errMessage,
 		Success:       success,
 		ScanEnabled:   s.tallyScanner != nil,
+		ScanTimeoutMS: s.scanBudget().Milliseconds(),
 		Today:         s.produksi.Today(),
 	}, status)
 }

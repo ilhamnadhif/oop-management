@@ -31,6 +31,15 @@ type Request struct {
 	// more room than one reading a receipt, so the budget is set per call rather
 	// than fixed here.
 	MaxTokens int
+	// MaxResponseBytes bounds the answer that comes back, and with it how much
+	// is read into memory at once. Zero takes DefaultMaxResponseBytes.
+	//
+	// It is the caller's for the same reason the token budget is: how large an
+	// answer is reasonable depends on what was asked for. It is not the token
+	// budget in bytes, either - the envelope around the completion is the
+	// provider's, and some of them echo parts of the request, which for an image
+	// request means the picture.
+	MaxResponseBytes int
 }
 
 // Client calls Xiaomi MiMo's OpenAI-compatible chat completions API.
@@ -137,6 +146,10 @@ func (c *Client) Read(ctx context.Context, request Request) ([]byte, error) {
 	if request.MaxTokens <= 0 {
 		return nil, ErrInvalidInput
 	}
+	limit := request.MaxResponseBytes
+	if limit <= 0 {
+		limit = DefaultMaxResponseBytes
+	}
 	// The timeout covers the whole read, including a retry and its backoff. A
 	// per-request timeout alone could let two slow attempts run past the web
 	// server's response deadline.
@@ -165,12 +178,12 @@ func (c *Client) Read(ctx context.Context, request Request) ([]byte, error) {
 	}
 
 	for attempt := 0; attempt < 2; attempt++ {
-		responseBody, statusCode, err := c.request(readContext, payload)
+		envelope, statusCode, err := c.request(readContext, payload, limit)
 		if err != nil {
 			return nil, err
 		}
 		if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
-			return completionContent(responseBody)
+			return completionContent(envelope, limit)
 		}
 
 		if isRetryableStatus(statusCode) && attempt == 0 {
@@ -185,10 +198,10 @@ func (c *Client) Read(ctx context.Context, request Request) ([]byte, error) {
 	return nil, ErrUnavailable
 }
 
-func (c *Client) request(ctx context.Context, payload []byte) ([]byte, int, error) {
+func (c *Client) request(ctx context.Context, payload []byte, limit int) (chatResponse, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return nil, 0, ErrUnavailable
+		return chatResponse{}, 0, ErrUnavailable
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -196,28 +209,64 @@ func (c *Client) request(ctx context.Context, payload []byte) ([]byte, int, erro
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, 0, classifyTransportError(ctx, err)
+		return chatResponse{}, 0, classifyTransportError(ctx, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return nil, resp.StatusCode, nil
+		return chatResponse{}, resp.StatusCode, nil
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
-	if err != nil || len(body) > MaxResponseBytes {
-		return nil, resp.StatusCode, Reasoned(ErrInvalidResponse, "body-too-large")
+	// Decoded straight off the wire rather than buffered whole. Only the fields
+	// worth keeping are held, so the ceiling below bounds what is read without
+	// also being the size of an allocation.
+	counted := &countingReader{reader: io.LimitReader(resp.Body, int64(limit)+1)}
+	var envelope chatResponse
+	err = DecodeLooseJSON(counted, &envelope)
+	switch {
+	case counted.read > int64(limit):
+		// The ceiling was hit, so whatever came back was cut off here and any
+		// decode error below is a consequence of that rather than its cause.
+		return chatResponse{}, resp.StatusCode, Reasoned(ErrInvalidResponse, "body-too-large")
+	case counted.err != nil:
+		// The connection failed part-way through, which is not an oversized body
+		// and usually not a broken one either: a model still writing a long
+		// answer when the deadline fires ends the read exactly here. So the
+		// failure is classified the same way one during the request is, and only
+		// what is left over is reported as a bad answer.
+		if failure := classifyTransportError(ctx, counted.err); !errors.Is(failure, ErrUnavailable) {
+			return chatResponse{}, resp.StatusCode, failure
+		}
+		return chatResponse{}, resp.StatusCode, Reasoned(ErrInvalidResponse, "body-read")
+	case err != nil:
+		return chatResponse{}, resp.StatusCode, Reasoned(ErrInvalidResponse, "envelope")
 	}
-	return body, resp.StatusCode, nil
+	return envelope, resp.StatusCode, nil
+}
+
+// countingReader remembers how much was read and what went wrong reading it,
+// which is what separates "the answer was too big" from "the connection broke".
+type countingReader struct {
+	reader io.Reader
+	read   int64
+	err    error
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	r.read += int64(n)
+	if err != nil && err != io.EOF {
+		r.err = err
+	}
+	return n, err
 }
 
 // completionContent unwraps the OpenAI-compatible envelope. A completion that
 // stopped for any reason other than finishing is refused rather than parsed:
 // a table cut off at the token limit reads as a shorter table, not as an error.
-func completionContent(body []byte) ([]byte, error) {
-	var envelope chatResponse
-	if err := DecodeLooseJSON(bytes.NewReader(body), &envelope); err != nil || len(envelope.Choices) == 0 {
+func completionContent(envelope chatResponse, limit int) ([]byte, error) {
+	if len(envelope.Choices) == 0 {
 		return nil, Reasoned(ErrInvalidResponse, "envelope")
 	}
 	choice := envelope.Choices[0]
@@ -231,7 +280,7 @@ func completionContent(body []byte) ([]byte, error) {
 	if content == "" {
 		return nil, Reasoned(ErrInvalidResponse, "empty-content")
 	}
-	if len(content) > MaxResponseBytes {
+	if len(content) > limit {
 		return nil, Reasoned(ErrInvalidResponse, "content-too-large")
 	}
 	return []byte(content), nil

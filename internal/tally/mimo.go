@@ -16,10 +16,22 @@ const (
 	// would come back truncated, and a table cut off mid-page reads as a
 	// shorter table rather than as an error.
 	maxCompletionTokens = 24000
-	maxCellRunes        = 120
-	maxNopolRunes       = 40
-	maxWarnings         = 10
-	maxWarningRunes     = 240
+	// The receipt-sized default refused a whole sheet on the size of the reply
+	// alone. The arithmetic that sets a floor under this: the picture is sent as
+	// a data URL of at most about 2.8 MB, a provider that echoes any part of the
+	// request sends that back, and the completion itself is a few hundred
+	// kilobytes at this token budget.
+	//
+	// The ceiling is set well above that floor because the envelope belongs to
+	// the provider and there is no reading its mind, and because it now bounds
+	// what is read rather than what is held: the answer is decoded off the wire
+	// and only the completion is kept. What one scan can hold is still bounded,
+	// by the completion, which the token budget already limits.
+	maxResponseBytes = 64 << 20
+	maxCellRunes     = 120
+	maxNopolRunes    = 40
+	maxWarnings      = 10
+	maxWarningRunes  = 240
 	// The reason a cell can be unusable. It is shown beside the line it belongs
 	// to, so it says what is wrong with that line rather than what the parser
 	// did.
@@ -45,6 +57,8 @@ Kembalikan tepat satu objek JSON dengan skema:
 {"rows":[{"no":1,"project":"string","supplier":"string","quary":"string","kategori":"string","lokasi":"string","layer":"string","nopol":"string","tt":0}],"warnings":[]}
 
 Aturan:
+- kembalikan baris berurutan dari atas ke bawah persis seperti di lembar.
+- no diambil dari kolom No. Bila kolom No kosong, isi dengan urutan baris itu dari atas dimulai dari 1. Setiap baris harus punya no yang berbeda.
 - rows hanya berisi baris yang benar-benar terisi. Lewati baris kosong dan garis tabel yang belum diisi.
 - nopol disalin apa adanya seperti tertulis, tanpa menebak huruf yang tidak terlihat.
 - tt adalah angka seperti tertulis di kolom TT, tanpa mengubah satuannya; sel kosong berarti 0.
@@ -75,10 +89,11 @@ func (s *MiMoScanner) Scan(ctx context.Context, imageDataURL string) (Sheet, err
 		return Sheet{}, ErrUnavailable
 	}
 	content, err := s.client.Read(ctx, vision.Request{
-		ImageDataURL: imageDataURL,
-		SystemPrompt: systemPrompt,
-		UserPrompt:   userPrompt,
-		MaxTokens:    maxCompletionTokens,
+		ImageDataURL:     imageDataURL,
+		SystemPrompt:     systemPrompt,
+		UserPrompt:       userPrompt,
+		MaxTokens:        maxCompletionTokens,
+		MaxResponseBytes: maxResponseBytes,
 	})
 	if err != nil {
 		return Sheet{}, err

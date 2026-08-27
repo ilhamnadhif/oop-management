@@ -75,7 +75,7 @@ func newTallyScanServer(t *testing.T, scanner tally.Scanner) (*httptest.Server, 
 		t.Fatalf("new server: %v", err)
 	}
 	if scanner != nil {
-		server.WithTallyScanner(scanner)
+		server.WithTallyScanner(scanner, 90*time.Second)
 	}
 	testServer := httptest.NewServer(server.Handler())
 	t.Cleanup(testServer.Close)
@@ -100,6 +100,9 @@ func TestProduksiPageOffersTheSheetScan(t *testing.T) {
 	for _, fragment := range []string{
 		"Scan lembar tally", `action="/produksi/scan/commit"`, `data-scan-enabled="true"`,
 		"/static/js/produksi-scan.js",
+		// The browser is told the same budget the reader was given, so it cannot
+		// abandon a scan the server is still running.
+		`data-scan-timeout="90000"`,
 		// The two the reader is never asked for are typed on the dialog, and the
 		// date opens on today so the common case needs no typing at all.
 		`name="tanggal"`, `name="supplier"`, `list="scanSupplierList"`,
@@ -316,4 +319,78 @@ func postSheet(t *testing.T, client *http.Client, url, csrf string, header bool,
 		t.Fatalf("post %s: %v", url, err)
 	}
 	return response
+}
+
+// The dialog lets a misread plate or height be typed over. What is stored is
+// what the dialog was left showing, judged again from the register.
+func TestProduksiScanCommitStoresTheCorrectedRow(t *testing.T) {
+	testServer, store := newTallyScanServer(t, &fakeTallyScanner{sheet: scannedTallySheet()})
+	client := loggedInClient(t, testServer)
+	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
+
+	// The reader saw "B 1Z34 A8C" and 0.02; the operator corrects both.
+	corrected := `[{"no":1,"project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace",` +
+		`"lokasi":"Blok A","layer":"L1","nopol":"b 1234 abc","tt":0.25}]`
+	response := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf,
+		map[string]string{"rows": corrected, "tanggal": "2026-08-07"}, testJPEG(t))
+	defer response.Body.Close()
+	page := readBody(t, response)
+	if !strings.Contains(page, "1 baris produksi tersimpan") {
+		t.Fatalf("the corrected row did not store: %s", page)
+	}
+
+	rows, _ := store.ListProduksi(context.Background())
+	if len(rows) != 1 {
+		t.Fatalf("stored %d rows, want 1", len(rows))
+	}
+	// The register spells the plate however it was typed, and the height is the
+	// corrected one.
+	if rows[0].Nopol != "B 1234 ABC" || rows[0].TT != 0.25 {
+		t.Fatalf("stored = %+v", rows[0])
+	}
+	// TF = 150 + 0.25/2 = 150.125, so the volume follows the correction.
+	if rows[0].TF != 150.13 {
+		t.Fatalf("TF = %v, want 150.13", rows[0].TF)
+	}
+}
+
+// A height typed below zero is refused by the server too, not only greyed out
+// in the dialog.
+func TestProduksiScanCommitRefusesANegativeTopUpHeight(t *testing.T) {
+	testServer, store := newTallyScanServer(t, &fakeTallyScanner{sheet: scannedTallySheet()})
+	client := loggedInClient(t, testServer)
+	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
+
+	rows := `[{"no":1,"project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace",` +
+		`"lokasi":"Blok A","layer":"L1","nopol":"B 1234 ABC","tt":-3}]`
+	response := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf,
+		map[string]string{"rows": rows, "tanggal": "2026-08-07"}, testJPEG(t))
+	defer response.Body.Close()
+	page := readBody(t, response)
+	if !strings.Contains(page, "0 baris produksi tersimpan") {
+		t.Fatalf("a negative height was accepted: %s", page)
+	}
+	if stored, _ := store.ListProduksi(context.Background()); len(stored) != 0 {
+		t.Fatalf("stored %d rows, want none", len(stored))
+	}
+}
+
+// A plate the wrong shape and a plate nobody registered are different problems
+// with different answers, and the result has to say which is which.
+func TestProduksiScanCommitNamesAMalformedPlateAsSuch(t *testing.T) {
+	testServer, store := newTallyScanServer(t, &fakeTallyScanner{sheet: scannedTallySheet()})
+	client := loggedInClient(t, testServer)
+	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
+
+	rows := `[{"no":1,"project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AB6990OE","tt":0}]`
+	response := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf,
+		map[string]string{"rows": rows, "tanggal": "2026-08-07"}, testJPEG(t))
+	defer response.Body.Close()
+	page := readBody(t, response)
+	if !strings.Contains(page, "0 baris produksi tersimpan") {
+		t.Fatalf("a misspelled plate was stored: %s", page)
+	}
+	if stored, _ := store.ListProduksi(context.Background()); len(stored) != 0 {
+		t.Fatalf("stored %d rows, want none", len(stored))
+	}
 }

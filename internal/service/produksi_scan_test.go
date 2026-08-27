@@ -278,3 +278,165 @@ func TestCommitScanRevalidatesRowsItIsHandedBack(t *testing.T) {
 	}
 	_ = model.Produksi{}
 }
+
+// The dialog lets the top-up height be corrected by hand, so the figure now
+// arrives from a browser rather than from the reader. A negative height would
+// shrink the load below the bed it was carried in.
+func TestCommitScanRefusesATopUpHeightBelowZero(t *testing.T) {
+	produksi, store, user := newProduksiFixture(t)
+	rows := []ScanRow{
+		{Nomor: 1, Project: "PCPM", Supplier: "HPP", Quary: "HS", Kategori: "Replace",
+			Lokasi: "Blok A", Layer: "L1", Nopol: "B 1234 ABC", TT: -5},
+		{Nomor: 2, Project: "PCPM", Supplier: "HPP", Quary: "HS", Kategori: "Replace",
+			Lokasi: "Blok A", Layer: "L1", Nopol: "B 1234 ABC", TT: 0.2},
+	}
+
+	result, err := produksi.CommitScan(context.Background(), user, ScanCommit{
+		Rows: rows, Foto: testSheetPhoto(), Tanggal: "2026-08-07",
+	})
+	if err != nil {
+		t.Fatalf("commit scan: %v", err)
+	}
+	if result.Tersimpan != 1 || len(result.Dilewati) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if !strings.Contains(result.Dilewati[0].Alasan, "TT") {
+		t.Fatalf("the rejected row does not say why: %+v", result.Dilewati[0])
+	}
+	stored, _ := store.ListProduksi(context.Background())
+	if len(stored) != 1 || stored[0].TT != 0.2 {
+		t.Fatalf("stored = %+v", stored)
+	}
+}
+
+// A corrected plate is looked up like any other: the dialog may say anything,
+// and the register decides.
+func TestPrepareScanFlagsATopUpHeightBelowZero(t *testing.T) {
+	produksi, _, _ := newProduksiFixture(t)
+	sheet := tally.Sheet{Rows: []tally.Row{{
+		Nomor: 1, Project: "PCPM", Supplier: "HPP", Quary: "HS",
+		Kategori: "Replace", Lokasi: "Blok A", Layer: "L1", Nopol: "B 1234 ABC", TT: -1,
+	}}}
+
+	preview, err := produksi.PrepareScan(context.Background(), sheet)
+	if err != nil {
+		t.Fatalf("prepare scan: %v", err)
+	}
+	if preview.Siap != 0 || !strings.Contains(preview.Rows[0].Alasan, "TT") {
+		t.Fatalf("preview = %+v", preview)
+	}
+}
+
+// The page is read top to bottom, and the No column is what says which line is
+// which. A reader that hands the lines back out of order would file them out of
+// order too, and the produksi ids would stop following the paper.
+func TestPrepareScanPutsTheRowsBackInSheetOrder(t *testing.T) {
+	produksi, _, _ := newProduksiFixture(t)
+	sheet := tally.Sheet{Rows: []tally.Row{
+		{Nomor: 3, Nopol: "B 1234 ABC", TT: 3},
+		{Nomor: 1, Nopol: "B 1234 ABC", TT: 1},
+		{Nomor: 2, Nopol: "B 1234 ABC", TT: 2},
+	}}
+
+	preview, err := produksi.PrepareScan(context.Background(), sheet)
+	if err != nil {
+		t.Fatalf("prepare scan: %v", err)
+	}
+	for index, row := range preview.Rows {
+		if row.Nomor != index+1 || row.TT != float64(index+1) {
+			t.Fatalf("row %d = %+v", index, row)
+		}
+	}
+}
+
+// Numbering that is missing or repeated says nothing about the order, so the
+// order the page was read in stands rather than being shuffled by a key that
+// does not mean anything.
+func TestPrepareScanKeepsReadingOrderWithoutUsableNumbers(t *testing.T) {
+	produksi, _, _ := newProduksiFixture(t)
+	tests := map[string][]tally.Row{
+		"unnumbered": {
+			{Nopol: "B 1234 ABC", TT: 1},
+			{Nopol: "B 1234 ABC", TT: 2},
+			{Nopol: "B 1234 ABC", TT: 3},
+		},
+		"repeated": {
+			{Nomor: 2, Nopol: "B 1234 ABC", TT: 1},
+			{Nomor: 2, Nopol: "B 1234 ABC", TT: 2},
+			{Nomor: 1, Nopol: "B 1234 ABC", TT: 3},
+		},
+	}
+	for name, rows := range tests {
+		t.Run(name, func(t *testing.T) {
+			preview, err := produksi.PrepareScan(context.Background(), tally.Sheet{Rows: rows})
+			if err != nil {
+				t.Fatalf("prepare scan: %v", err)
+			}
+			for index, row := range preview.Rows {
+				if row.TT != float64(index+1) {
+					t.Fatalf("row %d = %+v", index, row)
+				}
+			}
+		})
+	}
+}
+
+// Committing files them in the same order, so the produksi ids run down the
+// page the way the lines do.
+func TestCommitScanFilesTheRowsInSheetOrder(t *testing.T) {
+	produksi, store, user := newProduksiFixture(t)
+	rows := []ScanRow{
+		{Nomor: 3, Nopol: "B 1234 ABC", TT: 3},
+		{Nomor: 1, Nopol: "B 1234 ABC", TT: 1},
+		{Nomor: 2, Nopol: "B 1234 ABC", TT: 2},
+	}
+
+	if _, err := produksi.CommitScan(context.Background(), user, ScanCommit{
+		Rows: rows, Foto: testSheetPhoto(), Tanggal: "2026-08-07",
+	}); err != nil {
+		t.Fatalf("commit scan: %v", err)
+	}
+	stored, _ := store.ListProduksi(context.Background())
+	if len(stored) != 3 {
+		t.Fatalf("stored %d rows, want 3", len(stored))
+	}
+	for index, row := range stored {
+		if row.TT != float64(index+1) {
+			t.Fatalf("stored row %d = %+v", index, row)
+		}
+	}
+}
+
+// A plate typed the wrong shape is not a plate nobody registered. Saying it is
+// sends the operator to the Unit DT register to look for something that was
+// never going to be there.
+func TestPrepareScanTellsAMalformedPlateFromAnUnknownOne(t *testing.T) {
+	produksi, _, _ := newProduksiFixture(t)
+	sheet := tally.Sheet{Rows: []tally.Row{
+		{Nomor: 1, Nopol: "AB6990OE"},   // no spaces
+		{Nomor: 2, Nopol: "AB 6990 OE"}, // well formed, simply not in the register
+		{Nomor: 3, Nopol: ""},           // nothing at all
+		{Nomor: 4, Nopol: "B 1234 ABC"}, // registered
+	}}
+
+	preview, err := produksi.PrepareScan(context.Background(), sheet)
+	if err != nil {
+		t.Fatalf("prepare scan: %v", err)
+	}
+	if !strings.Contains(preview.Rows[0].Alasan, "Format") {
+		t.Fatalf("a misspelled plate reads as unregistered: %+v", preview.Rows[0])
+	}
+	if !strings.Contains(preview.Rows[1].Alasan, "belum terdaftar") {
+		t.Fatalf("an unknown plate = %+v", preview.Rows[1])
+	}
+	if !strings.Contains(preview.Rows[2].Alasan, "wajib diisi") {
+		t.Fatalf("an empty plate = %+v", preview.Rows[2])
+	}
+	if preview.Rows[3].Alasan != "" {
+		t.Fatalf("a registered plate was rejected: %+v", preview.Rows[3])
+	}
+	// What was typed stays visible, so the operator can see what to correct.
+	if preview.Rows[0].Nopol != "AB6990OE" {
+		t.Fatalf("the typed plate was rewritten: %+v", preview.Rows[0])
+	}
+}

@@ -393,7 +393,7 @@ func TestMiMoScannerRejectsOversizedResponse(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(strings.Repeat("x", vision.MaxResponseBytes+1)))
+		_, _ = w.Write([]byte(strings.Repeat("x", vision.DefaultMaxResponseBytes+1)))
 	}))
 	defer server.Close()
 

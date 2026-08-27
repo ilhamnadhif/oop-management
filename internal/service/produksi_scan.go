@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,9 +19,14 @@ import (
 // ErrScanDuplicate means this exact image has already been turned into rows.
 var ErrScanDuplicate = errors.New("lembar ini sudah pernah discan")
 
-// The reason a row cannot be stored. It is shown to the person holding the
-// paper, so it says what to do about it rather than what went wrong.
-const alasanNopol = "Nopol belum terdaftar di Unit DT"
+// The reasons a row cannot be stored. They are shown to the person holding the
+// paper, so each says what to do about it rather than what went wrong.
+const (
+	alasanNopolKosong = "Nopol wajib diisi"
+	alasanNopolFormat = "Format nopol harus seperti B 1234 ABC"
+	alasanNopol       = "Nopol belum terdaftar di Unit DT"
+	alasanTT          = "TT tidak boleh minus"
+)
 
 // scanPhotoMaxChars keeps the archived sheet inside one spreadsheet cell.
 const scanPhotoMaxChars = 45000
@@ -101,10 +108,33 @@ func (s *ProduksiService) judgeScanRows(ctx context.Context, rows []tally.Row) (
 	}
 
 	judged := make([]ScanRow, 0, len(rows))
-	for _, row := range rows {
+	for _, row := range orderedBySheet(rows) {
 		judged = append(judged, judgeScanRow(row, options, registered))
 	}
 	return judged, nil
+}
+
+// orderedBySheet puts the lines back the way the page has them. The No column
+// is what says which line is which, and a reading handed back out of order
+// would be filed out of order: the produksi ids are dealt down the list, so the
+// sequence would stop following the paper.
+//
+// Numbering that is missing or repeated says nothing about the order, so in
+// that case the order the page was read in stands. Shuffling by a key that does
+// not mean anything is worse than leaving it alone.
+func orderedBySheet(rows []tally.Row) []tally.Row {
+	seen := make(map[int]bool, len(rows))
+	for _, row := range rows {
+		if row.Nomor <= 0 || seen[row.Nomor] {
+			return rows
+		}
+		seen[row.Nomor] = true
+	}
+
+	ordered := make([]tally.Row, len(rows))
+	copy(ordered, rows)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Nomor < ordered[j].Nomor })
+	return ordered
 }
 
 func judgeScanRow(row tally.Row, options ProduksiOptions, registered map[string]model.UnitDT) ScanRow {
@@ -125,9 +155,26 @@ func judgeScanRow(row tally.Row, options ProduksiOptions, registered map[string]
 		judged.Alasan = reason
 		return judged
 	}
+	// The height is corrected by hand on the dialog, so it arrives from a
+	// browser and is checked here rather than taken on trust. The entry form
+	// refuses a negative dimension for the same reason: it would shrink the load
+	// below the bed that carried it.
+	if math.IsNaN(judged.TT) || math.IsInf(judged.TT, 0) || judged.TT < 0 {
+		judged.Alasan = alasanTT
+		return judged
+	}
+	// A plate the wrong shape and a plate nobody registered are different
+	// problems with different answers: one is corrected here, the other is
+	// corrected in the Unit DT register. Reporting both as "not registered" sent
+	// the operator looking for something that was never going to be there.
+	if judged.Nopol == "" {
+		judged.Alasan = alasanNopolKosong
+		return judged
+	}
 	key, err := NormalizeNopol(judged.Nopol)
 	if err != nil {
-		judged.Alasan = alasanNopol
+		// Left as typed, so what needs correcting is on the screen.
+		judged.Alasan = alasanNopolFormat
 		return judged
 	}
 	unit, known := registered[key]

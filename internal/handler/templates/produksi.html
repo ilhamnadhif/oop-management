@@ -7,7 +7,8 @@
        this panel does not prefill the form below - it reads the whole page and
        files it, and the form stays for the loads that arrive one at a time. */}}
   <form method="post" action="/produksi/scan/commit" enctype="multipart/form-data"
-    class="panel produksi-scan" data-produksi-scan data-scan-enabled="{{if .ScanEnabled}}true{{else}}false{{end}}">
+    class="panel produksi-scan" data-produksi-scan data-scan-enabled="{{if .ScanEnabled}}true{{else}}false{{end}}"
+    data-scan-timeout="{{.ScanTimeoutMS}}">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="rows" data-scan-rows>
     <div class="panel-heading">
@@ -31,6 +32,7 @@
 
     <dialog class="modal produksi-scan-dialog" data-scan-dialog>
       <h2 data-scan-summary>Hasil baca</h2>
+      <p class="produksi-scan-counts" data-scan-counts></p>
       <p class="hint" data-scan-note></p>
       {{/* Read off the paper these two never are: the date column is too often
            left blank, and a vendor written once beats writing it on every

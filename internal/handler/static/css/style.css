@@ -1679,6 +1679,11 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .produksi-scan-dialog { width: min(900px, calc(100vw - 2rem)); }
 .produksi-scan-fields { margin: 0.9rem 0 0.2rem; }
 .produksi-scan-table { max-height: 45vh; overflow: auto; margin: 0.8rem 0; }
+.produksi-scan-counts { margin: 0.2rem 0 0; font-size: 0.82rem; font-weight: 600; color: var(--navy-dark); }
+/* The two columns a misread lands in are typed over in place, so they read as
+   fields rather than as table text. */
+.produksi-scan-edit { width: 100%; min-width: 7rem; padding: 0.3rem 0.45rem; font-size: 0.82rem; }
+.produksi-scan-edit.numeric { min-width: 4.5rem; text-align: right; }
 .produksi-scan-skipped td { color: var(--muted); }
 .produksi-scan-skipped td:last-child { color: var(--red-600); }
 .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; }

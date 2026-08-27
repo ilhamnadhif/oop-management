@@ -12,10 +12,11 @@
   const note = panel.querySelector("[data-scan-note]");
   const body = panel.querySelector("[data-scan-rows-body]");
   const save = panel.querySelector("[data-scan-save]");
+  const counts = panel.querySelector("[data-scan-counts]");
   const date = panel.querySelector("[data-scan-date]");
   const payload = panel.querySelector("[data-scan-rows]");
   const csrf = panel.querySelector("[name='csrf_token']");
-  if (!file || !button || !dialog || !body || !save || !payload) return;
+  if (!file || !button || !dialog || !body || !save || !payload || !counts) return;
 
   const setStatus = (message, tone) => {
     if (!status) return;
@@ -29,59 +30,152 @@
     if (label) label.textContent = busy ? "Membaca lembar…" : "Baca lembar dengan AI";
   };
 
-  // The sheet is confirmed, not edited: a hundred rows retyped in a dialog is
-  // the work this feature exists to remove. A misread is fixed by retaking the
-  // photo, so the table is written as text and nothing in it is an input.
-  const renderRows = (rows) => {
+  // The two columns a misread actually lands in are the two that can be typed
+  // over. The rest stays as text: a hundred rows retyped in a dialog is the work
+  // this feature exists to remove, and a plate or a height is a keystroke.
+  const NOPOL_KOSONG = "Nopol wajib diisi";
+  const NOPOL_FORMAT = "Format nopol harus seperti B 1234 ABC";
+  const NOPOL_BELUM_TERDAFTAR = "Nopol belum terdaftar di Unit DT";
+  const TT_MINUS = "TT tidak boleh minus";
+  // The register's own shape: one or two letters, up to four digits, up to
+  // three letters, single spaces between.
+  const NOPOL_SHAPE = /^[A-Z]{1,2} [0-9]{1,4} [A-Z]{1,3}$/;
+  const NOPOL_UNSPACED = /^([A-Z]{1,2}) *([0-9]{1,4}) *([A-Z]{1,3})$/;
+
+  // What the server does to a plate before it looks it up: upper case, single
+  // spaces. Doing the same here is what lets the dialog agree with the result.
+  const settle = (value) => String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
+
+  // A plate read off a photograph often arrives with its spaces missing, and the
+  // groups are unambiguous once the shape is known. Putting them back is the
+  // difference between correcting a row and retyping it. Anything that does not
+  // fit is left exactly as typed, for the operator to see and fix.
+  const tidyPlate = (value) => {
+    const settled = settle(value);
+    if (NOPOL_SHAPE.test(settled)) return settled;
+    const parts = NOPOL_UNSPACED.exec(settled.replace(/\s+/g, ""));
+    return parts ? `${parts[1]} ${parts[2]} ${parts[3]}` : settled;
+  };
+
+  // The plates the register knows, read off the picker the entry form already
+  // renders. The server judges every row again regardless; this only lets the
+  // dialog say so before the sheet is filed.
+  const registered = new Set(
+    Array.from(document.querySelectorAll("#unitList option")).map((option) => settle(option.value)).filter(Boolean),
+  );
+
+  let rows = [];
+
+  // The checks run in the order the server runs them, and name the same
+  // reasons, so the dialog and the result never disagree about a row.
+  const judge = (row) => {
+    if (!Number.isFinite(row.tt) || row.tt < 0) return TT_MINUS;
+    const plate = settle(row.nopol);
+    if (!plate) return NOPOL_KOSONG;
+    if (!NOPOL_SHAPE.test(plate)) return NOPOL_FORMAT;
+    if (!registered.has(plate)) return NOPOL_BELUM_TERDAFTAR;
+    return "";
+  };
+
+  const textCell = (text, numeric) => {
+    const cell = document.createElement("td");
+    if (numeric) cell.className = "numeric";
+    cell.textContent = text;
+    return cell;
+  };
+
+  const renderRows = () => {
     body.textContent = "";
-    rows.forEach((row) => {
+    rows.forEach((row, index) => {
       const tr = document.createElement("tr");
-      const storable = !row.alasan;
-      if (!storable) tr.className = "produksi-scan-skipped";
-      [
-        String(row.no || ""),
-        row.nopol || "",
-        row.lokasi || "",
-        row.layer || "",
-        typeof row.tt === "number" ? String(row.tt) : "",
-        storable ? "Siap" : row.alasan,
-      ].forEach((text, index) => {
-        const cell = document.createElement("td");
-        if (index === 4) cell.className = "numeric";
-        cell.textContent = text;
-        tr.appendChild(cell);
-      });
+      tr.appendChild(textCell(String(row.no || ""), false));
+
+      const plateCell = document.createElement("td");
+      const plate = document.createElement("input");
+      plate.type = "text";
+      plate.className = "produksi-scan-edit";
+      plate.value = row.nopol || "";
+      plate.setAttribute("list", "unitList");
+      plate.setAttribute("autocomplete", "off");
+      plate.setAttribute("aria-label", `Nopol baris ${row.no || index + 1}`);
+      plateCell.appendChild(plate);
+      tr.appendChild(plateCell);
+
+      tr.appendChild(textCell(row.lokasi || "", false));
+      tr.appendChild(textCell(row.layer || "", false));
+
+      const heightCell = document.createElement("td");
+      heightCell.className = "numeric";
+      const height = document.createElement("input");
+      height.type = "number";
+      height.step = "0.01";
+      height.min = "0";
+      height.className = "produksi-scan-edit numeric";
+      height.value = Number.isFinite(row.tt) ? String(row.tt) : "0";
+      height.setAttribute("aria-label", `TT baris ${row.no || index + 1}`);
+      heightCell.appendChild(height);
+      tr.appendChild(heightCell);
+
+      const status = textCell("", false);
+      tr.appendChild(status);
       body.appendChild(tr);
+
+      const restate = () => {
+        row.alasan = judge(row);
+        status.textContent = row.alasan || "Siap";
+        tr.className = row.alasan ? "produksi-scan-skipped" : "";
+        refreshSave();
+      };
+      plate.addEventListener("input", () => {
+        row.nopol = plate.value;
+        restate();
+      });
+      // Tidied when the field is left rather than as it is typed: rewriting
+      // under someone's cursor moves it, and half a plate is not a plate yet.
+      plate.addEventListener("blur", () => {
+        const tidied = tidyPlate(plate.value);
+        if (tidied === plate.value) return;
+        plate.value = tidied;
+        row.nopol = tidied;
+        restate();
+      });
+      height.addEventListener("input", () => {
+        // An emptied box is a level load, which is what a blank cell on the
+        // paper means too.
+        const typed = height.value.trim();
+        row.tt = typed === "" ? 0 : Number(typed);
+        restate();
+      });
+      restate();
     });
   };
 
   const showResult = (result) => {
-    // Every row goes back, rejected ones included. The server judges them all
-    // again and reports what it left behind, so the page never has to decide
-    // which rows were storable.
-    payload.value = JSON.stringify(result.rows);
-    renderRows(result.rows);
+    rows = result.rows;
+    renderRows();
 
-    const siap = Number(result.siap || 0);
-    const ditolak = Number(result.ditolak || 0);
-    summary.textContent = `AI membaca ${result.rows.length} baris dari foto.`;
-    const parts = [`${siap} siap simpan`];
-    if (ditolak > 0) parts.push(`${ditolak} dilewati`);
+    summary.textContent = `AI membaca ${rows.length} baris dari foto.`;
     const warnings = Array.isArray(result.warnings)
       ? result.warnings.map((warning) => String(warning).trim()).filter(Boolean).slice(0, 3)
       : [];
-    note.textContent = parts.join(" · ") + (warnings.length ? ` · Catatan AI: ${warnings.join(" • ")}` : "");
+    note.textContent = "Betulkan nopol atau TT yang salah baca langsung di tabel."
+      + (warnings.length ? ` Catatan AI: ${warnings.join(" • ")}` : "");
 
-    ready = siap;
     refreshSave();
     if (typeof dialog.showModal === "function") dialog.showModal();
   };
 
   // Nothing is filed without a date, and the button says which of the two is
   // missing rather than sitting greyed out for an unstated reason.
-  let ready = 0;
   const refreshSave = () => {
+    const ready = rows.filter((row) => !row.alasan).length;
+    const skipped = rows.length - ready;
     const dated = date && date.value.trim() !== "";
+    if (rows.length > 0) {
+      const parts = [`${ready} siap simpan`];
+      if (skipped > 0) parts.push(`${skipped} dilewati`);
+      counts.textContent = parts.join(" · ");
+    }
     if (ready === 0) {
       save.textContent = "Tidak ada yang bisa disimpan";
     } else if (!dated) {
@@ -92,6 +186,14 @@
     save.disabled = ready === 0 || !dated;
   };
   if (date) date.addEventListener("input", refreshSave);
+
+  // The payload is written at the moment of submitting, from the rows as they
+  // now read. Every row goes back, rejected ones included: the server judges
+  // them all again and reports what it left behind, so the page never has to
+  // decide which rows were storable.
+  panel.addEventListener("submit", () => {
+    payload.value = JSON.stringify(rows);
+  });
 
   button.addEventListener("click", async () => {
     if (panel.dataset.scanEnabled !== "true") return;
@@ -104,7 +206,10 @@
     const form = new FormData();
     form.append("lembar", picked, picked.name || "lembar");
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 28000);
+    // The server states its own budget, so the browser cannot give up on a scan
+    // that is still running and leave the operator thinking it failed.
+    const budget = Number(panel.dataset.scanTimeout) || 150000;
+    const timeout = window.setTimeout(() => controller.abort(), budget + 5000);
     setBusy(true);
     setStatus("AI sedang membaca seluruh baris pada lembar…");
 
@@ -148,7 +253,9 @@
   // A photo swapped after a scan would be filed against the previous reading,
   // so the confirmed rows are dropped with it.
   file.addEventListener("change", () => {
+    rows = [];
     payload.value = "";
     body.textContent = "";
+    counts.textContent = "";
   });
 })();

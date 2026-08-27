@@ -22,6 +22,7 @@ type Config struct {
 	MiMoBaseURL           string
 	MiMoModel             string
 	MiMoTimeout           time.Duration
+	MiMoSheetTimeout      time.Duration
 	// Signatory prints on exported reports. Left empty the report shows a blank
 	// signature line, which is the safe default: a guessed name on a signed
 	// document is worse than none.
@@ -70,6 +71,13 @@ func Load() (Config, error) {
 	if err != nil || miMoTimeout <= 0 || miMoTimeout >= 30*time.Second {
 		return Config{}, fmt.Errorf("MIMO_TIMEOUT must be a positive duration shorter than 30s")
 	}
+	// The sheet scan gets its own budget. A receipt answers in a few seconds; a
+	// page of ruled lines has the model writing for far longer, and sharing the
+	// receipt's budget ended the read while the answer was still arriving.
+	miMoSheetTimeout, err := time.ParseDuration(getenv("MIMO_SHEET_TIMEOUT", "150s"))
+	if err != nil || miMoSheetTimeout <= 0 || miMoSheetTimeout > 10*time.Minute {
+		return Config{}, fmt.Errorf("MIMO_SHEET_TIMEOUT must be a positive duration of at most 10m")
+	}
 	miMoBaseURL := strings.TrimRight(strings.TrimSpace(getenv("MIMO_BASE_URL", "https://api.xiaomimimo.com/v1")), "/")
 	if miMoBaseURL == "" {
 		miMoBaseURL = "https://api.xiaomimimo.com/v1"
@@ -106,6 +114,7 @@ func Load() (Config, error) {
 		MiMoBaseURL:           miMoBaseURL,
 		MiMoModel:             miMoModel,
 		MiMoTimeout:           miMoTimeout,
+		MiMoSheetTimeout:      miMoSheetTimeout,
 		SignatoryName:         strings.TrimSpace(os.Getenv("SIGNATORY_NAME")),
 		SignatoryTitle:        getenv("SIGNATORY_TITLE", "Direktur"),
 		SignatoryPlace:        strings.TrimSpace(os.Getenv("SIGNATORY_PLACE")),

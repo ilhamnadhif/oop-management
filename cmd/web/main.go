@@ -91,13 +91,14 @@ func main() {
 			cfg.MiMoAPIKey,
 			cfg.MiMoBaseURL,
 			cfg.MiMoModel,
-			&http.Client{Timeout: cfg.MiMoTimeout},
+			&http.Client{Timeout: cfg.MiMoSheetTimeout},
 		)
 		if err != nil {
 			log.Fatalf("konfigurasi scan lembar produksi MiMo tidak valid: %v", err)
 		}
-		webServer.WithTallyScanner(sheetScanner)
-		log.Printf("Scan struk dan lembar produksi MiMo aktif (model=%s)", cfg.MiMoModel)
+		webServer.WithTallyScanner(sheetScanner, cfg.MiMoSheetTimeout)
+		log.Printf("Scan struk (%s) dan lembar produksi (%s) MiMo aktif (model=%s)",
+			cfg.MiMoTimeout, cfg.MiMoSheetTimeout, cfg.MiMoModel)
 	} else {
 		log.Printf("Scan MiMo nonaktif: MIMO_API_KEY belum diatur")
 	}
@@ -107,8 +108,11 @@ func main() {
 		Handler:           webServer.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		// Thirty seconds is right for every page here. The sheet scan is the one
+		// request that legitimately runs longer, and it lifts its own deadline
+		// for itself rather than loosening the limit for everything.
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {

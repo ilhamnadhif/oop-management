@@ -1,9 +1,13 @@
 package vision
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The base URL decides where an API key is sent, so what it accepts is a
@@ -150,5 +154,129 @@ func TestDecodeLooseJSONAllowsUnknownEnvelopeFields(t *testing.T) {
 	}
 	if into.Name != "a" {
 		t.Fatalf("name = %q", into.Name)
+	}
+}
+
+// The cap on a response belongs to the caller. A receipt answers in kilobytes;
+// a page of ruled lines answers in far more, and a provider that echoes any of
+// the request back sends the picture with it. One number fixed here would
+// either starve the second caller or hand the first a limit it never needed.
+func TestReadHonoursThePerRequestResponseCap(t *testing.T) {
+	t.Parallel()
+
+	// A completion whose envelope lands just over the default cap.
+	filler := strings.Repeat("x", DefaultMaxResponseBytes)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{"finish_reason": "stop", "message": map[string]string{"content": `{"filler":"` + filler + `"}`}},
+			},
+		}); err != nil {
+			t.Errorf("encode: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewMiMoClient("secret", server.URL+"/v1", "m", server.Client())
+	if err != nil {
+		t.Fatalf("NewMiMoClient: %v", err)
+	}
+	request := Request{
+		ImageDataURL: "data:image/jpeg;base64,QUJD",
+		SystemPrompt: "s", UserPrompt: "u", MaxTokens: 100,
+	}
+
+	if _, err := client.Read(t.Context(), request); Reason(err) != "body-too-large" {
+		t.Fatalf("default cap: Reason() = %q, want body-too-large", Reason(err))
+	}
+
+	request.MaxResponseBytes = 8 * DefaultMaxResponseBytes
+	content, err := client.Read(t.Context(), request)
+	if err != nil {
+		t.Fatalf("raised cap: %v", err)
+	}
+	if len(content) < DefaultMaxResponseBytes {
+		t.Fatalf("raised cap returned %d bytes", len(content))
+	}
+}
+
+// A connection that fails part-way through is not an oversized answer. Naming
+// them the same sent one diagnosis chasing a limit that was never the problem.
+func TestReadNamesABrokenReadApartFromAnOversizedOne(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "4096")
+		// Fewer bytes than promised, then the connection goes away: the client
+		// reads an unexpected EOF part-way through the envelope.
+		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"{`))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		if hijacker, ok := w.(http.Hijacker); ok {
+			conn, _, err := hijacker.Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewMiMoClient("secret", server.URL+"/v1", "m", server.Client())
+	if err != nil {
+		t.Fatalf("NewMiMoClient: %v", err)
+	}
+	_, err = client.Read(t.Context(), Request{
+		ImageDataURL: "data:image/jpeg;base64,QUJD",
+		SystemPrompt: "s", UserPrompt: "u", MaxTokens: 100,
+	})
+	if !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("Read() error = %v, want %v", err, ErrInvalidResponse)
+	}
+	if reason := Reason(err); reason != "body-read" {
+		t.Fatalf("Reason() = %q, want body-read", reason)
+	}
+}
+
+// A deadline that fires while the answer is still arriving is a timeout, not a
+// broken answer. Reading a dense page takes far longer than reading a receipt,
+// so this is the failure a sheet hits first, and it has to say so.
+func TestReadReportsADeadlineDuringTheBodyAsATimeout(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// The envelope opens and then stalls, the way a model still writing its
+		// answer does.
+		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"`))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer func() {
+		close(release)
+		server.Close()
+	}()
+
+	httpClient := server.Client()
+	httpClient.Timeout = 150 * time.Millisecond
+	client, err := NewMiMoClient("secret", server.URL+"/v1", "m", httpClient)
+	if err != nil {
+		t.Fatalf("NewMiMoClient: %v", err)
+	}
+	_, err = client.Read(t.Context(), Request{
+		ImageDataURL: "data:image/jpeg;base64,QUJD",
+		SystemPrompt: "s", UserPrompt: "u", MaxTokens: 100,
+	})
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("Read() error = %v (reason %q), want %v", err, Reason(err), ErrTimeout)
 	}
 }

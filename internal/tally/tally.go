@@ -47,7 +47,9 @@ var (
 // Row is one line of the sheet as read. Every field is what the paper appears
 // to say: nothing here has been looked up, matched, or filled in.
 type Row struct {
-	// Nomor is the No column, which is how a rejected row is pointed at later.
+	// Nomor is the No column, or the line's position from the top of the page
+	// when that column was left blank. It is what puts the lines back in the
+	// order the page has them, and how a rejected line is pointed at later.
 	Nomor    int     `json:"no"`
 	Project  string  `json:"project"`
 	Supplier string  `json:"supplier"`

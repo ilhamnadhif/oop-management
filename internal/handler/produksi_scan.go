@@ -21,6 +21,19 @@ import (
 // a sheet holds is refused before any of it is judged.
 const maxScanRowsPosted = tally.MaxRows
 
+// defaultScanBudget is what the reader gets when nobody configured one. It is
+// well past the server's own write deadline, which is why the handler lifts
+// that deadline for itself rather than the deadline being raised for every page.
+const defaultScanBudget = 150 * time.Second
+
+// scanBudget is how long a sheet read may take, end to end.
+func (s *Server) scanBudget() time.Duration {
+	if s.scanTimeout > 0 {
+		return s.scanTimeout
+	}
+	return defaultScanBudget
+}
+
 // handleProduksiScan reads one photographed tally sheet and returns what it
 // appears to say, judged against the register but written nowhere. Nothing
 // reaches the repository until the person confirms it and the commit re-judges
@@ -32,6 +45,20 @@ func (s *Server) handleProduksiScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
+
+	// A page of ruled lines keeps the model writing for longer than any other
+	// request here, and the server's write deadline is set for pages that
+	// answer at once. Lifting it for this request alone leaves that limit in
+	// place everywhere else. Failing to lift it is not fatal: the read simply
+	// ends the way it did before, reported as a timeout.
+	budget := s.scanBudget()
+	controller := http.NewResponseController(w)
+	if err := controller.SetWriteDeadline(time.Now().Add(budget + 30*time.Second)); err != nil {
+		log.Printf("produksi scan write deadline: %v", err)
+	}
+	if err := controller.SetReadDeadline(time.Now().Add(budget)); err != nil {
+		log.Printf("produksi scan read deadline: %v", err)
+	}
 
 	raw, message, ok := s.readSheetPhoto(w, r)
 	if !ok {
