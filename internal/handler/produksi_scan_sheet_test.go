@@ -12,16 +12,15 @@ import (
 	"opp-management/internal/tally"
 )
 
-// sheetFromTheField is what the sample sheet actually says: an ISO date per
-// row, a plate, a top-up height, and every option column left blank. The
-// heights are 14 and 33, which is what the paper carries - the register's
-// dimensions are centimetres, so a top-up is too.
+// sheetFromTheField is what the sample sheet actually says: a plate, a top-up
+// height, and every option column left blank. The heights are 14 and 33, which
+// is what the paper carries - the register's dimensions are centimetres, so a
+// top-up is too. The date is not among them; it is typed on the dialog.
 func sheetFromTheField() tally.Sheet {
 	return tally.Sheet{
-		TanggalKepala: "2026-08-23",
 		Rows: []tally.Row{
-			{Nomor: 1, Tanggal: "2026-08-23", Nopol: "AB 8698 GD", TT: 14},
-			{Nomor: 2, Tanggal: "2026-08-23", Nopol: "AD 8590 FG", TT: 33},
+			{Nomor: 1, Nopol: "AB 8698 GD", TT: 14},
+			{Nomor: 2, Nopol: "AD 8590 FG", TT: 33},
 		},
 	}
 }
@@ -105,9 +104,10 @@ func TestProduksiScanCommitKeepsTheSampleHeights(t *testing.T) {
 
 	client := loggedInClient(t, testServer)
 	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
-	rows := `[{"no":1,"tanggal":"2026-08-23","project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AB 8698 GD","tt":14},` +
-		`{"no":2,"tanggal":"2026-08-23","project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AD 8590 FG","tt":33}]`
-	response := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf, map[string]string{"rows": rows}, image)
+	rows := `[{"no":1,"project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AB 8698 GD","tt":14},` +
+		`{"no":2,"project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AD 8590 FG","tt":33}]`
+	response := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf,
+		map[string]string{"rows": rows, "tanggal": "2026-08-23"}, image)
 	defer response.Body.Close()
 	page := readBody(t, response)
 	if !strings.Contains(page, "2 baris produksi tersimpan") {
@@ -133,6 +133,9 @@ func TestProduksiScanCommitKeepsTheSampleHeights(t *testing.T) {
 	// The sheet left every option column blank, and blank is what is stored. A
 	// date, a plate and a top-up height are enough to compute the load, so the
 	// row is not thrown away over columns nobody filled in.
+	if stored[0].Tanggal != "2026-08-23" {
+		t.Fatalf("row dated %q, want the typed date", stored[0].Tanggal)
+	}
 	if stored[0].Project != "" || stored[0].Lokasi != "" || stored[0].Layer != "" {
 		t.Fatalf("a blank column was filled in: %+v", stored[0])
 	}

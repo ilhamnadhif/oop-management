@@ -17,12 +17,9 @@ import (
 // ErrScanDuplicate means this exact image has already been turned into rows.
 var ErrScanDuplicate = errors.New("lembar ini sudah pernah discan")
 
-// The reasons a row cannot be stored. They are shown to the person holding the
-// paper, so each one says what to do about it rather than what went wrong.
-const (
-	alasanNopol   = "Nopol belum terdaftar di Unit DT"
-	alasanTanggal = "Tanggal tidak terbaca di baris maupun kepala lembar"
-)
+// The reason a row cannot be stored. It is shown to the person holding the
+// paper, so it says what to do about it rather than what went wrong.
+const alasanNopol = "Nopol belum terdaftar di Unit DT"
 
 // scanPhotoMaxChars keeps the archived sheet inside one spreadsheet cell.
 const scanPhotoMaxChars = 45000
@@ -36,7 +33,6 @@ const scanPhotoMaxChars = 45000
 // server acts on.
 type ScanRow struct {
 	Nomor    int     `json:"no"`
-	Tanggal  string  `json:"tanggal"`
 	Project  string  `json:"project"`
 	Supplier string  `json:"supplier"`
 	Quary    string  `json:"quary"`
@@ -65,11 +61,12 @@ type ScanResult struct {
 	Dilewati  []ScanRow
 }
 
-// PrepareScan judges a read sheet without writing anything: it settles each
-// row's date, looks its plate up in the register, and adopts the spelling the
-// option lists already use.
+// PrepareScan judges a read sheet without writing anything: it looks each
+// plate up in the register and adopts the spelling the option lists already
+// use. The date is not among its concerns - it is typed once when the sheet is
+// confirmed.
 func (s *ProduksiService) PrepareScan(ctx context.Context, sheet tally.Sheet) (ScanPreview, error) {
-	rows, err := s.judgeScanRows(ctx, sheet.TanggalKepala, sheet.Rows)
+	rows, err := s.judgeScanRows(ctx, sheet.Rows)
 	if err != nil {
 		return ScanPreview{}, err
 	}
@@ -87,7 +84,7 @@ func (s *ProduksiService) PrepareScan(ctx context.Context, sheet tally.Sheet) (S
 // judgeScanRows is the whole judgement, and both the preview and the commit go
 // through it. Two paths would eventually disagree, and the one that disagreed
 // silently would be the one that writes.
-func (s *ProduksiService) judgeScanRows(ctx context.Context, header string, rows []tally.Row) ([]ScanRow, error) {
+func (s *ProduksiService) judgeScanRows(ctx context.Context, rows []tally.Row) ([]ScanRow, error) {
 	options, err := s.Options(ctx)
 	if err != nil {
 		return nil, err
@@ -103,18 +100,16 @@ func (s *ProduksiService) judgeScanRows(ctx context.Context, header string, rows
 		}
 	}
 
-	header = strings.TrimSpace(header)
 	judged := make([]ScanRow, 0, len(rows))
 	for _, row := range rows {
-		judged = append(judged, judgeScanRow(row, header, options, registered))
+		judged = append(judged, judgeScanRow(row, options, registered))
 	}
 	return judged, nil
 }
 
-func judgeScanRow(row tally.Row, header string, options ProduksiOptions, registered map[string]model.UnitDT) ScanRow {
+func judgeScanRow(row tally.Row, options ProduksiOptions, registered map[string]model.UnitDT) ScanRow {
 	judged := ScanRow{
 		Nomor:    row.Nomor,
-		Tanggal:  strings.TrimSpace(row.Tanggal),
 		Project:  settleOption(row.Project, options.Project),
 		Supplier: settleOption(row.Supplier, options.Supplier),
 		Quary:    settleOption(row.Quary, options.Quary),
@@ -130,20 +125,6 @@ func judgeScanRow(row tally.Row, header string, options ProduksiOptions, registe
 		judged.Alasan = reason
 		return judged
 	}
-	// An empty cell means the row belongs to the day written at the head of the
-	// sheet, which is how the paper is filled in when a whole page is one day.
-	if judged.Tanggal == "" {
-		judged.Tanggal = header
-	}
-	if judged.Tanggal == "" {
-		judged.Alasan = alasanTanggal
-		return judged
-	}
-	if _, err := time.Parse("2006-01-02", judged.Tanggal); err != nil {
-		judged.Alasan = alasanTanggal
-		return judged
-	}
-
 	key, err := NormalizeNopol(judged.Nopol)
 	if err != nil {
 		judged.Alasan = alasanNopol
@@ -181,6 +162,24 @@ func settleOption(value string, options []string) string {
 	return value
 }
 
+// ScanCommit is one confirmed sheet: the rows as the page showed them, the
+// photograph they were read from, and the two things the reader is not asked
+// for.
+//
+// Tanggal is typed rather than read. The column is too often left blank on the
+// paper, and a page that arrived without one used to be discovered at the last
+// step, after the reading was already paid for. One sheet is one day.
+//
+// Supplier is typed when the whole page belongs to one vendor, which is the
+// usual case and is quicker than writing it on every line. Left empty it
+// changes nothing, and whatever the paper carried per row stands.
+type ScanCommit struct {
+	Rows     []ScanRow
+	Foto     []byte
+	Tanggal  string
+	Supplier string
+}
+
 // CommitScan writes every storable row in one append and logs the sheet.
 //
 // The rows arrive from a browser, so they are judged again from the register
@@ -188,12 +187,23 @@ func settleOption(value string, options []string) string {
 // and it is taken as uploaded bytes: fingerprinting anything else would mean
 // re-encoding the picture first, and two encoders of the same photograph do not
 // agree on a byte.
-func (s *ProduksiService) CommitScan(ctx context.Context, user *model.User, rows []ScanRow, raw []byte) (ScanResult, error) {
+func (s *ProduksiService) CommitScan(ctx context.Context, user *model.User, commit ScanCommit) (ScanResult, error) {
 	if user == nil {
 		return ScanResult{}, fmt.Errorf("%w: pengguna tidak dikenal", ErrValidation)
 	}
+	rows, raw := commit.Rows, commit.Foto
 	if len(rows) == 0 {
 		return ScanResult{}, fmt.Errorf("%w: tidak ada baris untuk disimpan", ErrValidation)
+	}
+	// The date is checked before the photograph is fingerprinted. A sheet
+	// refused for a missing date must stay fileable once the date is supplied,
+	// and a fingerprint written on the way past would have locked it out.
+	tanggal := strings.TrimSpace(commit.Tanggal)
+	if tanggal == "" {
+		return ScanResult{}, fmt.Errorf("%w: tanggal wajib diisi", ErrValidation)
+	}
+	if _, err := time.Parse("2006-01-02", tanggal); err != nil {
+		return ScanResult{}, fmt.Errorf("%w: tanggal wajib valid", ErrValidation)
 	}
 
 	if len(raw) == 0 {
@@ -222,16 +232,22 @@ func (s *ProduksiService) CommitScan(ctx context.Context, user *model.User, rows
 	read := make([]tally.Row, 0, len(rows))
 	for _, row := range rows {
 		read = append(read, tally.Row{
-			Nomor: row.Nomor, Tanggal: row.Tanggal, Project: row.Project,
+			Nomor: row.Nomor, Project: row.Project,
 			Supplier: row.Supplier, Quary: row.Quary, Kategori: row.Kategori,
 			Lokasi: row.Lokasi, Layer: row.Layer, Nopol: row.Nopol, TT: row.TT,
 		})
 	}
-	// The rows carry their own dates by now, so there is no sheet head left to
-	// fall back to and none is invented here.
-	judged, err := s.judgeScanRows(ctx, "", read)
+	judged, err := s.judgeScanRows(ctx, read)
 	if err != nil {
 		return ScanResult{}, err
+	}
+	supplier := strings.Join(strings.Fields(commit.Supplier), " ")
+	if supplier != "" {
+		options, err := s.Options(ctx)
+		if err != nil {
+			return ScanResult{}, err
+		}
+		supplier = settleOption(supplier, options.Supplier)
 	}
 
 	units, err := s.Units(ctx)
@@ -268,13 +284,19 @@ func (s *ProduksiService) CommitScan(ctx context.Context, user *model.User, rows
 		}
 		unit := byNopol[key]
 		tf, volume, volumeOPP, deviasi := Calculate(unit.Panjang, unit.Lebar, unit.Tinggi, row.TT, unit.Keterangan)
+		// A vendor typed for the sheet speaks for every line on it. Left blank,
+		// whatever the paper carried per row stands.
+		rowSupplier := row.Supplier
+		if supplier != "" {
+			rowSupplier = supplier
+		}
 
 		highest++
 		prepared = append(prepared, &model.Produksi{
 			ProduksiID:  fmt.Sprintf("%s%04d", produksiIDPrefix(now.Year()), highest),
-			Tanggal:     row.Tanggal,
+			Tanggal:     tanggal,
 			Project:     row.Project,
-			Supplier:    row.Supplier,
+			Supplier:    rowSupplier,
 			Quary:       row.Quary,
 			Kategori:    row.Kategori,
 			Lokasi:      row.Lokasi,

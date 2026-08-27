@@ -73,8 +73,11 @@ func TestProduksiFormRendersOptionsAndUnits(t *testing.T) {
 	if strings.Contains(page, `<select id="kategori"`) {
 		t.Fatal("kategori is still a closed dropdown")
 	}
-	if got := strings.Count(page, `placeholder="Pilih atau ketik…"`); got != 6 {
-		t.Fatalf("expected 6 creatable pickers, got %d", got)
+	// Counted inside the entry form itself. The scan panel above it carries a
+	// picker of its own, and counting the whole page would measure both.
+	form := page[strings.Index(page, "data-produksi-form"):]
+	if got := strings.Count(form, `placeholder="Pilih atau ketik…"`); got != 6 {
+		t.Fatalf("expected 6 creatable pickers in the form, got %d", got)
 	}
 }
 

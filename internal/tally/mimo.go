@@ -6,7 +6,6 @@ import (
 	"math"
 	"net/http"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"opp-management/internal/vision"
@@ -21,11 +20,10 @@ const (
 	maxNopolRunes       = 40
 	maxWarnings         = 10
 	maxWarningRunes     = 240
-	// The reasons a cell can be unusable. They are shown beside the line they
-	// belong to, so each says what is wrong with that line rather than what the
-	// parser did.
-	alasanTanggal = "Tanggal tidak terbaca"
-	alasanTT      = "TT tidak terbaca"
+	// The reason a cell can be unusable. It is shown beside the line it belongs
+	// to, so it says what is wrong with that line rather than what the parser
+	// did.
+	alasanTT = "TT tidak terbaca"
 	// TT is a top-up height in the same units the unit register keeps its
 	// dimensions in, which are centimetres: a 375 x 190 x 150 bed divided by a
 	// million is the cubic metres it holds. The entry form puts no ceiling on it
@@ -41,13 +39,13 @@ Lembar berisi tabel dengan judul kolom: No, Tanggal, Project, Supplier, Quary, K
 
 Cocokkan setiap sel dengan JUDUL KOLOM di atasnya, bukan dengan urutannya. Sebagian lembar tidak memuat semua kolom itu - lembar tanpa kolom Layer, misalnya, tetap sah. Kolom yang tidak ada pada lembar diisi string kosong, dan jangan menggeser isi kolom lain untuk mengisinya.
 
+Kolom Tanggal dan isian Tanggal di kepala lembar TIDAK diminta. Jangan mengembalikannya, dan jangan memakai isinya untuk mengisi kolom lain.
+
 Kembalikan tepat satu objek JSON dengan skema:
-{"tanggal_kepala":"2026-08-20","rows":[{"no":1,"tanggal":"2026-08-20","project":"string","supplier":"string","quary":"string","kategori":"string","lokasi":"string","layer":"string","nopol":"string","tt":0}],"warnings":[]}
+{"rows":[{"no":1,"project":"string","supplier":"string","quary":"string","kategori":"string","lokasi":"string","layer":"string","nopol":"string","tt":0}],"warnings":[]}
 
 Aturan:
 - rows hanya berisi baris yang benar-benar terisi. Lewati baris kosong dan garis tabel yang belum diisi.
-- semua tanggal memakai format YYYY-MM-DD. Bila sel Tanggal pada baris kosong, isi dengan string kosong; jangan menyalin tanggal dari baris lain atau dari kepala lembar.
-- tanggal_kepala adalah Tanggal di kepala lembar dalam format YYYY-MM-DD, atau string kosong bila tidak ada atau tidak terbaca.
 - nopol disalin apa adanya seperti tertulis, tanpa menebak huruf yang tidak terlihat.
 - tt adalah angka seperti tertulis di kolom TT, tanpa mengubah satuannya; sel kosong berarti 0.
 - jangan menebak sel yang tidak terbaca. Salin yang terlihat, dan sebutkan keraguannya di warnings dengan menyebut nomor barisnya.
@@ -102,25 +100,16 @@ func validateSheet(raw Sheet) (Sheet, error) {
 	if len(raw.Rows) > MaxRows {
 		return Sheet{}, vision.Reasoned(ErrInvalidResponse, "too-many-rows")
 	}
-	header, headerOK := normalizeDate(raw.TanggalKepala)
 
-	sheet := Sheet{TanggalKepala: header, Rows: make([]Row, 0, len(raw.Rows))}
+	sheet := Sheet{Rows: make([]Row, 0, len(raw.Rows))}
 	for _, row := range raw.Rows {
 		alasan := ""
-		tanggal, ok := normalizeDate(row.Tanggal)
-		if !ok {
-			alasan = alasanTanggal
-			tanggal = ""
-		}
 		if !finite(row.TT) || row.TT < 0 || row.TT > maxTT {
-			if alasan == "" {
-				alasan = alasanTT
-			}
+			alasan = alasanTT
 			row.TT = 0
 		}
 		cleaned := Row{
 			Nomor:    row.Nomor,
-			Tanggal:  tanggal,
 			Alasan:   alasan,
 			Project:  cell(row.Project),
 			Supplier: cell(row.Supplier),
@@ -143,26 +132,7 @@ func validateSheet(raw Sheet) (Sheet, error) {
 	}
 
 	sheet.Warnings = sanitizeWarnings(raw.Warnings)
-	if !headerOK {
-		// The head of the page is only a fallback for rows that left their own
-		// date blank. Losing it costs those rows, not the reading.
-		sheet.Warnings = append(sheet.Warnings, "Tanggal di kepala lembar tidak terbaca")
-	}
 	return sheet, nil
-}
-
-// normalizeDate accepts an empty cell and a full ISO date, and nothing else. A
-// date the model wrote in prose is a date somebody would have to guess at, and
-// guessing which day a load belongs to is how production lands on the wrong one.
-func normalizeDate(value string) (string, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", true
-	}
-	if _, err := time.Parse("2006-01-02", value); err != nil {
-		return "", false
-	}
-	return value, true
 }
 
 func cell(value string) string {

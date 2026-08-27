@@ -11,13 +11,13 @@ import (
 	"testing"
 )
 
-func TestScanReadsRowsAndTheSheetDate(t *testing.T) {
+func TestScanReadsTheRowsOffThePage(t *testing.T) {
 	t.Parallel()
 
 	server := completionServer(t, func() string {
-		return `{"tanggal_kepala":" 2026-08-20 ","rows":[
-			{"no":1,"tanggal":"2026-08-20","project":" PCPM ","supplier":"HPP","quary":"Q1","kategori":"Tanah","lokasi":"Segmen 1a","layer":"L2","nopol":" b 1234 ab ","tt":0.2},
-			{"no":2,"tanggal":"","project":"PCPM","supplier":"HPP","quary":"Q1","kategori":"Tanah","lokasi":"Segmen 1a","layer":"L2","nopol":"B 5678 CD","tt":0}
+		return `{"rows":[
+			{"no":1,"project":" PCPM ","supplier":"HPP","quary":"Q1","kategori":"Tanah","lokasi":"Segmen 1a","layer":"L2","nopol":" b 1234 ab ","tt":0.2},
+			{"no":2,"project":"PCPM","supplier":"HPP","quary":"Q1","kategori":"Tanah","lokasi":"Segmen 1a","layer":"L2","nopol":"B 5678 CD","tt":0}
 		],"warnings":[" tulisan baris 2 samar "]}`
 	})
 	defer server.Close()
@@ -26,19 +26,11 @@ func TestScanReadsRowsAndTheSheetDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
-	if sheet.TanggalKepala != "2026-08-20" {
-		t.Fatalf("tanggal kepala = %q", sheet.TanggalKepala)
-	}
 	if len(sheet.Rows) != 2 {
 		t.Fatalf("rows = %#v", sheet.Rows)
 	}
 	if sheet.Rows[0].Project != "PCPM" || sheet.Rows[0].Nopol != "b 1234 ab" || sheet.Rows[0].TT != 0.2 {
 		t.Fatalf("first row not trimmed as read: %#v", sheet.Rows[0])
-	}
-	// An empty date cell stays empty here. Which date a row belongs to is the
-	// caller's rule, not something to guess while reading.
-	if sheet.Rows[1].Tanggal != "" {
-		t.Fatalf("an empty date cell was filled in: %#v", sheet.Rows[1])
 	}
 	if len(sheet.Warnings) != 1 || sheet.Warnings[0] != "tulisan baris 2 samar" {
 		t.Fatalf("warnings = %#v", sheet.Warnings)
@@ -50,7 +42,7 @@ func TestScanReadsRowsAndTheSheetDate(t *testing.T) {
 func TestScanReportsAnEmptySheet(t *testing.T) {
 	t.Parallel()
 
-	server := completionServer(t, func() string { return `{"tanggal_kepala":"","rows":[],"warnings":[]}` })
+	server := completionServer(t, func() string { return `{"rows":[],"warnings":[]}` })
 	defer server.Close()
 
 	_, err := mustScanner(t, server).Scan(context.Background(), testImageDataURL())
@@ -70,7 +62,7 @@ func TestScanRejectsAnUnusableAnswer(t *testing.T) {
 		reason  string
 	}{
 		{name: "unknown field", reason: "json-shape",
-			content: `{"tanggal_kepala":"","rows":[{"no":1,"nopol":"B 1 A","tt":0,"catatan":"x"}],"warnings":[]}`},
+			content: `{"rows":[{"no":1,"nopol":"B 1 A","tt":0,"catatan":"x"}],"warnings":[]}`},
 		{name: "too many rows", reason: "too-many-rows", content: tooManyRows()},
 	}
 
@@ -102,7 +94,7 @@ func TestScanRefusesATruncatedCompletion(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"choices": []map[string]interface{}{
-				{"finish_reason": "length", "message": map[string]string{"content": `{"tanggal_kepala":"","rows":[`}},
+				{"finish_reason": "length", "message": map[string]string{"content": `{"rows":[`}},
 			},
 		}); err != nil {
 			t.Errorf("encode: %v", err)
@@ -125,10 +117,10 @@ func TestScanMarksTheRowWithAnUnusableCell(t *testing.T) {
 	t.Parallel()
 
 	server := completionServer(t, func() string {
-		return `{"tanggal_kepala":"20 Agustus","rows":[
-			{"no":1,"tanggal":"20/08/2026","project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 1 A","tt":0},
-			{"no":2,"tanggal":"2026-08-20","project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 2 B","tt":-1},
-			{"no":3,"tanggal":"2026-08-20","project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 3 C","tt":0.2}
+		return `{"rows":[
+			{"no":1,"project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 1 A","tt":0},
+			{"no":2,"project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 2 B","tt":-1},
+			{"no":3,"project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 3 C","tt":0.2}
 		],"warnings":[]}`
 	})
 	defer server.Close()
@@ -140,19 +132,14 @@ func TestScanMarksTheRowWithAnUnusableCell(t *testing.T) {
 	if len(sheet.Rows) != 3 {
 		t.Fatalf("rows = %#v", sheet.Rows)
 	}
-	if sheet.Rows[0].Alasan == "" || sheet.Rows[0].Tanggal != "" {
-		t.Fatalf("a date that is not a date was accepted: %#v", sheet.Rows[0])
+	if sheet.Rows[0].Alasan != "" {
+		t.Fatalf("a good row was marked: %#v", sheet.Rows[0])
 	}
 	if sheet.Rows[1].Alasan == "" || sheet.Rows[1].TT != 0 {
 		t.Fatalf("a negative top-up height was accepted: %#v", sheet.Rows[1])
 	}
 	if sheet.Rows[2].Alasan != "" {
 		t.Fatalf("a good row was marked: %#v", sheet.Rows[2])
-	}
-	// The head of the page is only a fallback. Losing it costs the rows that
-	// left their own date blank, not the reading.
-	if sheet.TanggalKepala != "" || len(sheet.Warnings) != 1 {
-		t.Fatalf("sheet head = %q warnings = %#v", sheet.TanggalKepala, sheet.Warnings)
 	}
 }
 
@@ -164,9 +151,9 @@ func TestScanKeepsTopUpHeightsTheFormWouldAccept(t *testing.T) {
 	t.Parallel()
 
 	server := completionServer(t, func() string {
-		return `{"tanggal_kepala":"2026-08-23","rows":[
-			{"no":1,"tanggal":"2026-08-23","project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AB 8698 GD","tt":14},
-			{"no":2,"tanggal":"2026-08-23","project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AD 8590 FG","tt":33}
+		return `{"rows":[
+			{"no":1,"project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AB 8698 GD","tt":14},
+			{"no":2,"project":"","supplier":"","quary":"","kategori":"","lokasi":"","layer":"","nopol":"AD 8590 FG","tt":33}
 		],"warnings":[]}`
 	})
 	defer server.Close()
@@ -216,7 +203,7 @@ func TestScanSendsTheInjectionGuardAndRoomForAFullSheet(t *testing.T) {
 		if len(payload.Messages) > 0 {
 			_ = json.Unmarshal(payload.Messages[0].Content, &system)
 		}
-		writeCompletion(t, w, `{"tanggal_kepala":"2026-08-20","rows":[{"no":1,"tanggal":"2026-08-20","project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 1 A","tt":0}],"warnings":[]}`)
+		writeCompletion(t, w, `{"rows":[{"no":1,"project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 1 A","tt":0}],"warnings":[]}`)
 	}))
 	defer server.Close()
 
@@ -237,9 +224,9 @@ func tooManyRows() string {
 	rows := make([]string, 0, MaxRows+1)
 	for index := 0; index <= MaxRows; index++ {
 		rows = append(rows, fmt.Sprintf(
-			`{"no":%d,"tanggal":"2026-08-20","project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 1 A","tt":0}`, index+1))
+			`{"no":%d,"project":"P","supplier":"S","quary":"Q","kategori":"K","lokasi":"L","layer":"Y","nopol":"B 1 A","tt":0}`, index+1))
 	}
-	return `{"tanggal_kepala":"","rows":[` + strings.Join(rows, ",") + `],"warnings":[]}`
+	return `{"rows":[` + strings.Join(rows, ",") + `],"warnings":[]}`
 }
 
 func completionServer(t *testing.T, content func() string) *httptest.Server {

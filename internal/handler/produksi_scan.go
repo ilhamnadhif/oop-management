@@ -117,7 +117,12 @@ func (s *Server) handleProduksiScanCommit(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, err := s.produksi.CommitScan(r.Context(), user, rows, raw)
+	result, err := s.produksi.CommitScan(r.Context(), user, service.ScanCommit{
+		Rows: rows, Foto: raw,
+		// Typed on the confirmation dialog, not read off the paper.
+		Tanggal:  strings.TrimSpace(r.FormValue("tanggal")),
+		Supplier: strings.TrimSpace(r.FormValue("supplier")),
+	})
 	if err != nil {
 		status := http.StatusUnprocessableEntity
 		text := "Gagal menyimpan hasil scan. Silakan coba lagi."

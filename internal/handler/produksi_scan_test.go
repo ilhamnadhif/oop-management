@@ -37,7 +37,6 @@ func (f *fakeTallyScanner) Scan(_ context.Context, imageDataURL string) (tally.S
 
 func scannedTallySheet() tally.Sheet {
 	return tally.Sheet{
-		TanggalKepala: "2026-08-07",
 		Rows: []tally.Row{
 			{Nomor: 1, Project: "PCPM", Supplier: "HPP", Quary: "HS", Kategori: "Replace",
 				Lokasi: "Blok A", Layer: "L1", Nopol: "B 1234 ABC", TT: 0.2},
@@ -101,6 +100,10 @@ func TestProduksiPageOffersTheSheetScan(t *testing.T) {
 	for _, fragment := range []string{
 		"Scan lembar tally", `action="/produksi/scan/commit"`, `data-scan-enabled="true"`,
 		"/static/js/produksi-scan.js",
+		// The two the reader is never asked for are typed on the dialog, and the
+		// date opens on today so the common case needs no typing at all.
+		`name="tanggal"`, `name="supplier"`, `list="scanSupplierList"`,
+		`id="scan_tanggal" name="tanggal" type="date" value="2026-08-07"`,
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the produksi page is missing %q", fragment)
@@ -136,9 +139,8 @@ func TestProduksiScanPreviewsWithoutStoringAnything(t *testing.T) {
 		Siap    int  `json:"siap"`
 		Ditolak int  `json:"ditolak"`
 		Rows    []struct {
-			Tanggal string `json:"tanggal"`
-			Nopol   string `json:"nopol"`
-			Alasan  string `json:"alasan"`
+			Nopol  string `json:"nopol"`
+			Alasan string `json:"alasan"`
 		} `json:"rows"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
@@ -146,10 +148,6 @@ func TestProduksiScanPreviewsWithoutStoringAnything(t *testing.T) {
 	}
 	if !payload.OK || payload.Siap != 2 || payload.Ditolak != 1 {
 		t.Fatalf("payload = %+v", payload)
-	}
-	// The head of the sheet supplied the date the rows left blank.
-	if payload.Rows[0].Tanggal != "2026-08-07" {
-		t.Fatalf("row date = %q", payload.Rows[0].Tanggal)
 	}
 	if payload.Rows[2].Alasan == "" {
 		t.Fatalf("the unregistered plate was not flagged: %+v", payload.Rows[2])
@@ -171,7 +169,7 @@ func TestProduksiScanCommitStoresRowsAndNamesWhatItSkipped(t *testing.T) {
 	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
 
 	response := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf,
-		map[string]string{"rows": scannedRowsJSON()}, testJPEG(t))
+		map[string]string{"rows": scannedRowsJSON(), "tanggal": "2026-08-07"}, testJPEG(t))
 	defer response.Body.Close()
 	page := readBody(t, response)
 	if response.StatusCode != http.StatusOK {
@@ -199,10 +197,10 @@ func TestProduksiScanCommitRefusesTheSamePhotoTwice(t *testing.T) {
 	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
 	image := testJPEG(t)
 
-	first := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf, map[string]string{"rows": scannedRowsJSON()}, image)
+	first := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf, map[string]string{"rows": scannedRowsJSON(), "tanggal": "2026-08-07"}, image)
 	first.Body.Close()
 
-	second := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf, map[string]string{"rows": scannedRowsJSON()}, image)
+	second := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf, map[string]string{"rows": scannedRowsJSON(), "tanggal": "2026-08-07"}, image)
 	defer second.Body.Close()
 	page := readBody(t, second)
 	if second.StatusCode != http.StatusConflict {
@@ -242,10 +240,10 @@ func TestProduksiScanCommitRevalidatesThePostedRows(t *testing.T) {
 	client := loggedInClient(t, testServer)
 	csrf := csrfFromForm(t, fetchAuthedPage(t, client, testServer.URL+"/produksi"))
 
-	tampered := `[{"no":1,"tanggal":"2026-08-07","project":"PCPM","supplier":"HPP","quary":"HS",` +
+	tampered := `[{"no":1,"project":"PCPM","supplier":"HPP","quary":"HS",` +
 		`"kategori":"Replace","lokasi":"Blok A","layer":"L1","nopol":"B 0000 ZZ","tt":9}]`
 	response := postSheetCommit(t, client, testServer.URL+"/produksi/scan/commit", csrf,
-		map[string]string{"rows": tampered}, testJPEG(t))
+		map[string]string{"rows": tampered, "tanggal": "2026-08-07"}, testJPEG(t))
 	defer response.Body.Close()
 	page := readBody(t, response)
 	if !strings.Contains(page, "0 baris produksi tersimpan") {
@@ -259,9 +257,9 @@ func TestProduksiScanCommitRevalidatesThePostedRows(t *testing.T) {
 
 func scannedRowsJSON() string {
 	return `[` +
-		`{"no":1,"tanggal":"2026-08-07","project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace","lokasi":"Blok A","layer":"L1","nopol":"B 1234 ABC","tt":0.2},` +
-		`{"no":2,"tanggal":"2026-08-07","project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace","lokasi":"Blok A","layer":"L1","nopol":"B 1234 ABC","tt":0},` +
-		`{"no":3,"tanggal":"2026-08-07","project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace","lokasi":"Blok A","layer":"L1","nopol":"B 9021 XY","tt":0,"alasan":"Nopol belum terdaftar di Unit DT"}` +
+		`{"no":1,"project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace","lokasi":"Blok A","layer":"L1","nopol":"B 1234 ABC","tt":0.2},` +
+		`{"no":2,"project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace","lokasi":"Blok A","layer":"L1","nopol":"B 1234 ABC","tt":0},` +
+		`{"no":3,"project":"PCPM","supplier":"HPP","quary":"HS","kategori":"Replace","lokasi":"Blok A","layer":"L1","nopol":"B 9021 XY","tt":0,"alasan":"Nopol belum terdaftar di Unit DT"}` +
 		`]`
 }
 

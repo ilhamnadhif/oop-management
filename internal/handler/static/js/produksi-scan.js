@@ -12,6 +12,7 @@
   const note = panel.querySelector("[data-scan-note]");
   const body = panel.querySelector("[data-scan-rows-body]");
   const save = panel.querySelector("[data-scan-save]");
+  const date = panel.querySelector("[data-scan-date]");
   const payload = panel.querySelector("[data-scan-rows]");
   const csrf = panel.querySelector("[name='csrf_token']");
   if (!file || !button || !dialog || !body || !save || !payload) return;
@@ -39,7 +40,6 @@
       if (!storable) tr.className = "produksi-scan-skipped";
       [
         String(row.no || ""),
-        row.tanggal || "",
         row.nopol || "",
         row.lokasi || "",
         row.layer || "",
@@ -47,7 +47,7 @@
         storable ? "Siap" : row.alasan,
       ].forEach((text, index) => {
         const cell = document.createElement("td");
-        if (index === 5) cell.className = "numeric";
+        if (index === 4) cell.className = "numeric";
         cell.textContent = text;
         tr.appendChild(cell);
       });
@@ -72,10 +72,26 @@
       : [];
     note.textContent = parts.join(" · ") + (warnings.length ? ` · Catatan AI: ${warnings.join(" • ")}` : "");
 
-    save.textContent = siap > 0 ? `Simpan ${siap} baris` : "Tidak ada yang bisa disimpan";
-    save.disabled = siap === 0;
+    ready = siap;
+    refreshSave();
     if (typeof dialog.showModal === "function") dialog.showModal();
   };
+
+  // Nothing is filed without a date, and the button says which of the two is
+  // missing rather than sitting greyed out for an unstated reason.
+  let ready = 0;
+  const refreshSave = () => {
+    const dated = date && date.value.trim() !== "";
+    if (ready === 0) {
+      save.textContent = "Tidak ada yang bisa disimpan";
+    } else if (!dated) {
+      save.textContent = "Isi tanggal dulu";
+    } else {
+      save.textContent = `Simpan ${ready} baris`;
+    }
+    save.disabled = ready === 0 || !dated;
+  };
+  if (date) date.addEventListener("input", refreshSave);
 
   button.addEventListener("click", async () => {
     if (panel.dataset.scanEnabled !== "true") return;
@@ -124,6 +140,10 @@
       setBusy(false);
     }
   });
+
+  // The field opens on today, so the common case needs no typing at all and the
+  // empty box that used to read as a format hint is gone.
+  refreshSave();
 
   // A photo swapped after a scan would be filed against the previous reading,
   // so the confirmed rows are dropped with it.

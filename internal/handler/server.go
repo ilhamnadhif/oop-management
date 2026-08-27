@@ -208,6 +208,10 @@ type ProduksiPageData struct {
 	// disabled and saying so, rather than vanishing and leaving the operator
 	// wondering where the feature went.
 	ScanEnabled bool
+	// Today dates the confirmation dialog. It is kept apart from Form.Tanggal so
+	// a date typed into the entry form, and bounced back by a validation error,
+	// does not become the default for a sheet that has nothing to do with it.
+	Today string
 }
 
 type DashboardPageData struct {
@@ -1719,6 +1723,7 @@ func (s *Server) renderProduksi(w http.ResponseWriter, r *http.Request, user *mo
 		Error:         errMessage,
 		Success:       success,
 		ScanEnabled:   s.tallyScanner != nil,
+		Today:         s.produksi.Today(),
 	}, status)
 }
 

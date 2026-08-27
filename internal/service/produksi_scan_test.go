@@ -32,16 +32,13 @@ func testSheetPhoto() []byte {
 
 func scannedSheet() tally.Sheet {
 	return tally.Sheet{
-		TanggalKepala: "2026-08-07",
 		Rows: []tally.Row{
-			// Its own date.
-			{Nomor: 1, Tanggal: "2026-08-06", Project: "PCPM", Supplier: "HPP", Quary: "HS",
+			{Nomor: 1, Project: "PCPM", Supplier: "HPP", Quary: "HS",
 				Kategori: "Replace", Lokasi: "Blok A", Layer: "L1", Nopol: "B 1234 ABC", TT: 0.2},
-			// No date of its own, so the head of the sheet supplies one.
 			{Nomor: 2, Project: "PCPM", Supplier: "HPP", Quary: "HS",
 				Kategori: "Replace", Lokasi: "Blok A", Layer: "L1", Nopol: "b 1234 abc"},
 			// A machine nobody registered.
-			{Nomor: 3, Tanggal: "2026-08-06", Project: "PCPM", Supplier: "HPP", Quary: "HS",
+			{Nomor: 3, Project: "PCPM", Supplier: "HPP", Quary: "HS",
 				Kategori: "Replace", Lokasi: "Blok A", Layer: "L1", Nopol: "B 9021 XY"},
 		},
 		Warnings: []string{"baris 3 samar"},
@@ -60,9 +57,6 @@ func TestPrepareScanSortsStorableRowsFromTheRest(t *testing.T) {
 	if preview.Siap != 2 || preview.Ditolak != 1 {
 		t.Fatalf("siap = %d ditolak = %d, want 2 and 1", preview.Siap, preview.Ditolak)
 	}
-	if preview.Rows[1].Tanggal != "2026-08-07" {
-		t.Fatalf("an empty date cell did not fall back to the sheet: %+v", preview.Rows[1])
-	}
 	// The register spells the plate; the paper only points at it.
 	if preview.Rows[1].Nopol != "B 1234 ABC" {
 		t.Fatalf("nopol not settled from the register: %+v", preview.Rows[1])
@@ -78,21 +72,94 @@ func TestPrepareScanSortsStorableRowsFromTheRest(t *testing.T) {
 	}
 }
 
-// A row with no date on it and no date at the head of the sheet belongs to no
-// day, and a guess would put a load on the wrong one.
-func TestPrepareScanRejectsARowWithNoDateAnywhere(t *testing.T) {
-	produksi, _, _ := newProduksiFixture(t)
-	sheet := tally.Sheet{Rows: []tally.Row{{
-		Nomor: 1, Project: "PCPM", Supplier: "HPP", Quary: "HS",
-		Kategori: "Replace", Lokasi: "Blok A", Layer: "L1", Nopol: "B 1234 ABC",
-	}}}
-
-	preview, err := produksi.PrepareScan(context.Background(), sheet)
+// A commit without a date is refused before anything is read or fingerprinted,
+// because the sheet has to stay fileable once the date is supplied.
+func TestCommitScanRefusesASheetWithoutADate(t *testing.T) {
+	produksi, store, user := newProduksiFixture(t)
+	preview, err := produksi.PrepareScan(context.Background(), scannedSheet())
 	if err != nil {
 		t.Fatalf("prepare scan: %v", err)
 	}
-	if preview.Siap != 0 || !strings.Contains(preview.Rows[0].Alasan, "Tanggal") {
-		t.Fatalf("preview = %+v", preview)
+
+	for _, tanggal := range []string{"", "   ", "07/08/2026"} {
+		commit := ScanCommit{Rows: preview.Rows, Foto: testSheetPhoto(), Tanggal: tanggal}
+		if _, err := produksi.CommitScan(context.Background(), user, commit); !errors.Is(err, ErrValidation) {
+			t.Fatalf("CommitScan(%q) error = %v, want %v", tanggal, err, ErrValidation)
+		}
+	}
+	if rows, _ := store.ListProduksi(context.Background()); len(rows) != 0 {
+		t.Fatalf("a dateless commit stored %d rows", len(rows))
+	}
+	// Nothing was filed, so the same photograph must still be fileable.
+	if scans := store.ProduksiScanList(); len(scans) != 0 {
+		t.Fatalf("a refused commit was logged: %+v", scans)
+	}
+}
+
+// One sheet is one day, and the day is the one that was typed.
+func TestCommitScanStampsEveryRowWithTheTypedDate(t *testing.T) {
+	produksi, store, user := newProduksiFixture(t)
+	preview, err := produksi.PrepareScan(context.Background(), scannedSheet())
+	if err != nil {
+		t.Fatalf("prepare scan: %v", err)
+	}
+
+	commit := ScanCommit{Rows: preview.Rows, Foto: testSheetPhoto(), Tanggal: "2026-08-05"}
+	if _, err := produksi.CommitScan(context.Background(), user, commit); err != nil {
+		t.Fatalf("commit scan: %v", err)
+	}
+	rows, _ := store.ListProduksi(context.Background())
+	if len(rows) != 2 {
+		t.Fatalf("stored %d rows, want 2", len(rows))
+	}
+	for _, row := range rows {
+		if row.Tanggal != "2026-08-05" {
+			t.Fatalf("row dated %q, want the typed date", row.Tanggal)
+		}
+	}
+}
+
+// A vendor typed for the sheet speaks for every line on it. Left blank it
+// changes nothing.
+func TestCommitScanAppliesTheTypedVendorToEveryRow(t *testing.T) {
+	produksi, store, user := newProduksiFixture(t)
+	preview, err := produksi.PrepareScan(context.Background(), scannedSheet())
+	if err != nil {
+		t.Fatalf("prepare scan: %v", err)
+	}
+
+	commit := ScanCommit{
+		Rows: preview.Rows, Foto: testSheetPhoto(),
+		Tanggal: "2026-08-05", Supplier: "  Vendor  Baru ",
+	}
+	if _, err := produksi.CommitScan(context.Background(), user, commit); err != nil {
+		t.Fatalf("commit scan: %v", err)
+	}
+	rows, _ := store.ListProduksi(context.Background())
+	for _, row := range rows {
+		// Whitespace collapsed the way every other picker settles a value.
+		if row.Supplier != "Vendor Baru" {
+			t.Fatalf("supplier = %q, want the typed vendor", row.Supplier)
+		}
+	}
+}
+
+func TestCommitScanKeepsThePaperVendorWhenNoneIsTyped(t *testing.T) {
+	produksi, store, user := newProduksiFixture(t)
+	preview, err := produksi.PrepareScan(context.Background(), scannedSheet())
+	if err != nil {
+		t.Fatalf("prepare scan: %v", err)
+	}
+
+	commit := ScanCommit{Rows: preview.Rows, Foto: testSheetPhoto(), Tanggal: "2026-08-05"}
+	if _, err := produksi.CommitScan(context.Background(), user, commit); err != nil {
+		t.Fatalf("commit scan: %v", err)
+	}
+	rows, _ := store.ListProduksi(context.Background())
+	for _, row := range rows {
+		if row.Supplier != "HPP" {
+			t.Fatalf("supplier = %q, want what the paper carried", row.Supplier)
+		}
 	}
 }
 
@@ -105,7 +172,7 @@ func TestCommitScanStoresTheStorableRowsAndReportsTheRest(t *testing.T) {
 		t.Fatalf("prepare scan: %v", err)
 	}
 
-	result, err := produksi.CommitScan(context.Background(), user, preview.Rows, testSheetPhoto())
+	result, err := produksi.CommitScan(context.Background(), user, ScanCommit{Rows: preview.Rows, Foto: testSheetPhoto(), Tanggal: "2026-08-07"})
 	if err != nil {
 		t.Fatalf("commit scan: %v", err)
 	}
@@ -144,11 +211,11 @@ func TestCommitScanRefusesAPhotoAlreadyFiled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare scan: %v", err)
 	}
-	if _, err := produksi.CommitScan(context.Background(), user, preview.Rows, testSheetPhoto()); err != nil {
+	if _, err := produksi.CommitScan(context.Background(), user, ScanCommit{Rows: preview.Rows, Foto: testSheetPhoto(), Tanggal: "2026-08-07"}); err != nil {
 		t.Fatalf("first commit: %v", err)
 	}
 
-	_, err = produksi.CommitScan(context.Background(), user, preview.Rows, testSheetPhoto())
+	_, err = produksi.CommitScan(context.Background(), user, ScanCommit{Rows: preview.Rows, Foto: testSheetPhoto(), Tanggal: "2026-08-07"})
 	if !errors.Is(err, ErrScanDuplicate) {
 		t.Fatalf("second commit error = %v, want %v", err, ErrScanDuplicate)
 	}
@@ -169,7 +236,7 @@ func TestCommitScanLogsTheSheet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare scan: %v", err)
 	}
-	if _, err := produksi.CommitScan(context.Background(), user, preview.Rows, testSheetPhoto()); err != nil {
+	if _, err := produksi.CommitScan(context.Background(), user, ScanCommit{Rows: preview.Rows, Foto: testSheetPhoto(), Tanggal: "2026-08-07"}); err != nil {
 		t.Fatalf("commit scan: %v", err)
 	}
 
@@ -194,11 +261,11 @@ func TestCommitScanLogsTheSheet(t *testing.T) {
 func TestCommitScanRevalidatesRowsItIsHandedBack(t *testing.T) {
 	produksi, store, user := newProduksiFixture(t)
 	tampered := []ScanRow{{
-		Nomor: 1, Tanggal: "2026-08-07", Project: "PCPM", Supplier: "HPP", Quary: "HS",
+		Nomor: 1, Project: "PCPM", Supplier: "HPP", Quary: "HS",
 		Kategori: "Replace", Lokasi: "Blok A", Layer: "L1", Nopol: "B 0000 ZZ",
 	}}
 
-	result, err := produksi.CommitScan(context.Background(), user, tampered, testSheetPhoto())
+	result, err := produksi.CommitScan(context.Background(), user, ScanCommit{Rows: tampered, Foto: testSheetPhoto(), Tanggal: "2026-08-07"})
 	if err != nil {
 		t.Fatalf("commit scan: %v", err)
 	}

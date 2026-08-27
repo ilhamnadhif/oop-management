@@ -3,10 +3,13 @@
 // The sheet is a printed grid filled in by hand through the day: one line per
 // load, ten columns, and a date written once at the head. What this package
 // returns is what the paper appears to say, cleaned of stray whitespace and
-// bounded in size. It resolves nothing: an empty date cell stays empty, and a
-// nopol that no unit register knows is still handed back. Which row is usable
-// is a question about the business, and it is answered where the register and
-// the options live, not here.
+// bounded in size. It resolves nothing: a nopol that no unit register knows is
+// still handed back. Which row is usable is a question about the business, and
+// it is answered where the register and the options live, not here.
+//
+// The date is not read at all. It is filled in by hand when the sheet is
+// confirmed, because the column is too often left blank on the paper and a page
+// that arrived without one used to fail at the last step.
 package tally
 
 import (
@@ -46,7 +49,6 @@ var (
 type Row struct {
 	// Nomor is the No column, which is how a rejected row is pointed at later.
 	Nomor    int     `json:"no"`
-	Tanggal  string  `json:"tanggal"`
 	Project  string  `json:"project"`
 	Supplier string  `json:"supplier"`
 	Quary    string  `json:"quary"`
@@ -56,10 +58,10 @@ type Row struct {
 	Nopol    string  `json:"nopol"`
 	TT       float64 `json:"tt"`
 
-	// Alasan is set when a cell came back unusable - a date that is not a date,
-	// a top-up height that is not a height. The row is carried rather than
-	// dropped so the page can point at the line that needs looking at, and one
-	// bad cell does not throw away the ninety-nine rows read correctly.
+	// Alasan is set when a cell came back unusable - a top-up height that is not
+	// a height. The row is carried rather than dropped so the page can point at
+	// the line that needs looking at, and one bad cell does not throw away the
+	// ninety-nine rows read correctly.
 	//
 	// It is not part of the schema the model answers to: the field is written
 	// here, never read from the completion.
@@ -68,11 +70,8 @@ type Row struct {
 
 // Sheet is one photographed page.
 type Sheet struct {
-	// TanggalKepala is the date written once at the head of the page, which is
-	// where a row with an empty date cell gets its date from.
-	TanggalKepala string   `json:"tanggal_kepala"`
-	Rows          []Row    `json:"rows"`
-	Warnings      []string `json:"warnings,omitempty"`
+	Rows     []Row    `json:"rows"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Reason reports the fixed keyword a failure was tagged with, or "" when it

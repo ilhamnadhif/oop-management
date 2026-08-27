@@ -1677,7 +1677,8 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 /* Seven columns of a confirmation table need more room than the 560px a modal
    is otherwise given, and the table scrolls inside rather than the page. */
 .produksi-scan-dialog { width: min(900px, calc(100vw - 2rem)); }
-.produksi-scan-table { max-height: 55vh; overflow: auto; margin: 0.8rem 0; }
+.produksi-scan-fields { margin: 0.9rem 0 0.2rem; }
+.produksi-scan-table { max-height: 45vh; overflow: auto; margin: 0.8rem 0; }
 .produksi-scan-skipped td { color: var(--muted); }
 .produksi-scan-skipped td:last-child { color: var(--red-600); }
 .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; }

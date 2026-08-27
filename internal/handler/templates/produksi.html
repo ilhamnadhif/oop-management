@@ -32,12 +32,29 @@
     <dialog class="modal produksi-scan-dialog" data-scan-dialog>
       <h2 data-scan-summary>Hasil baca</h2>
       <p class="hint" data-scan-note></p>
+      {{/* Read off the paper these two never are: the date column is too often
+           left blank, and a vendor written once beats writing it on every
+           line. They are typed here, and they speak for the whole sheet. */}}
+      <div class="form-grid form-grid-2 produksi-scan-fields">
+        <div>
+          <label for="scan_tanggal" class="required-label">{{template "icon" "calendar"}}Tanggal *</label>
+          <input id="scan_tanggal" name="tanggal" type="date" value="{{.Today}}" required data-scan-date>
+          <p class="hint">Berlaku untuk seluruh baris di lembar ini.</p>
+        </div>
+        <div>
+          <label for="scan_supplier">{{template "icon" "tag"}}Vendor <span class="hint">(opsional)</span></label>
+          <input id="scan_supplier" name="supplier" type="text" list="scanSupplierList" placeholder="Pilih atau ketik…" autocomplete="off">
+          <datalist id="scanSupplierList">
+            {{range .Options.Supplier}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+          <p class="hint">Kosongkan bila vendor sudah tertulis per baris.</p>
+        </div>
+      </div>
       <div class="table-scroll produksi-scan-table">
         <table class="data-table">
           <thead>
             <tr>
               <th scope="col">No</th>
-              <th scope="col">Tanggal</th>
               <th scope="col">Nopol</th>
               <th scope="col">Lokasi</th>
               <th scope="col">Layer</th>
