@@ -17,6 +17,11 @@ type Table struct {
 	// column before the first total.
 	Totals map[int]float64
 
+	// FilterColumns limits the spreadsheet's autofilter to the leading columns
+	// named here. A report where every day of the month is a column would
+	// otherwise put a dropdown on all of them; zero means the whole table.
+	FilterColumns int
+
 	// Attachments are the photos the PDF prints after the signature. They are
 	// PDF only: a spreadsheet with images embedded stops being a spreadsheet.
 	// A report with none simply leaves this empty.

@@ -12,7 +12,7 @@ var menuPaths = map[string][]string{
 	"beranda":  {"/dashboard"},
 	"absensi":  {"/absensi"},
 	"leave":    {"/leave/request"},
-	"hr":       {"/hr/overview", "/hr/approval-leave"},
+	"hr":       {"/hr/overview", "/hr/approval-leave", "/hr/export"},
 	"produksi": {"/produksi", "/produksi/overview", "/produksi/export"},
 	"unit":     {"/unit/overview", "/unit-dt", "/unit/export"},
 	// The fuel masuk approval page is deliberately absent: it is narrower than

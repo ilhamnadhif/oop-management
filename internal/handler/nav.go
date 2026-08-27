@@ -31,6 +31,8 @@ var navItems = []NavItem{
 			Lede: "Ringkasan karyawan, kehadiran, dan pengajuan leave."},
 		{Key: "hr-approval-leave", Label: "Approval Leave", Path: "/hr/approval-leave", Icon: "check",
 			Lede: "Tinjau dan putuskan pengajuan cuti atau izin karyawan."},
+		{Key: "hr-export", Label: "Export Data", Path: "/hr/export", Icon: "save",
+			Lede: "Unduh rekap absensi bulanan karyawan dalam Excel."},
 	}},
 	{Key: "produksi", Label: "Produksi", Icon: "chart", Children: []NavItem{
 		{Key: "produksi-overview", Label: "Overview", Path: "/produksi/overview", Icon: "activity",

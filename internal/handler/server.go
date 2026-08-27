@@ -330,6 +330,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/profile/photo", s.handleProfilePhoto)
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
 	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
+	mux.HandleFunc("/hr/export", s.handleAbsensiExportPage)
+	mux.HandleFunc("/hr/export/download", s.handleAbsensiExportDownload)
 	mux.HandleFunc("/produksi", s.handleProduksi)
 	mux.HandleFunc("/produksi/scan", s.handleProduksiScan)
 	mux.HandleFunc("/produksi/scan/commit", s.handleProduksiScanCommit)

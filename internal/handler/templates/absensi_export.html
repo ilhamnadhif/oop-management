@@ -1,0 +1,54 @@
+{{/* The monthly attendance export: a month and a jabatan filter, then one
+     Excel download. The matrix layout lives in the file, not on the page. */}}
+{{define "absensi_export"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "calculator"}}RENTANG DATA</p>
+        <h2>Pilih bulan dan jabatan</h2>
+      </div>
+    </div>
+    <form class="filter-form" method="get" action="/hr/export">
+      <div>
+        <label for="month">{{template "icon" "calendar"}}Bulan</label>
+        <input id="month" name="month" type="month" value="{{.Month}}" required>
+      </div>
+      <div>
+        <label for="jabatan">{{template "icon" "user"}}Jabatan</label>
+        <select id="jabatan" name="jabatan">
+          <option value=""{{if not .Jabatan}} selected{{end}}>Semua jabatan</option>
+          {{range .JabatanOptions}}
+          <option value="{{.}}"{{if eq $.Jabatan .}} selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/hr/export">Reset</a>
+      <p class="hint filter-note">Default: bulan berjalan dan seluruh jabatan.</p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}UNDUH LAPORAN</p>
+        <h2>{{.Rows}} karyawan siap diunduh</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <p class="panel-empty">{{.Note}}</p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="/hr/export/download?month={{.Month}}{{if .Jabatan}}&amp;jabatan={{.Jabatan}}{{end}}">
+        {{template "icon" "save"}}Unduh XLSX
+      </a>
+    </div>
+    {{else}}
+    <p class="panel-empty">Tidak ada karyawan aktif pada bulan ini untuk jabatan yang dipilih.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

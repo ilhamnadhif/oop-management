@@ -7,6 +7,10 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+// headerRow is where every sheet's column headings sit: three letterhead rows,
+// one blank row, then the header.
+const headerRow = 5
+
 // RenderXLSX writes the spreadsheet: a short letterhead, then the table with a
 // coloured, frozen header so the columns stay identifiable while scrolling
 // thousands of rows.
@@ -48,7 +52,6 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 	_ = file.SetCellStyle(sheet, "A3", "A3", styles.subtitle)
 	_ = file.MergeCell(sheet, "A3", lastColumn+"3")
 
-	const headerRow = 5
 	for i, column := range table.Columns {
 		name, err := excelize.ColumnNumberToName(i + 1)
 		if err != nil {
@@ -70,7 +73,11 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 				return nil, err
 			}
 			cell := fmt.Sprintf("%s%d", name, rowNumber)
-			_ = file.SetCellValue(sheet, cell, value)
+			if formula, ok := value.(Formula); ok {
+				_ = file.SetCellFormula(sheet, cell, formula.Expression)
+			} else {
+				_ = file.SetCellValue(sheet, cell, value)
+			}
 			_ = file.SetCellStyle(sheet, cell, cell, styles.forColumn(table.Columns[j]))
 		}
 	}
@@ -109,8 +116,21 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 		return nil, fmt.Errorf("freeze header: %w", err)
 	}
 	if len(table.Values) > 0 {
+		filterEnd := lastColumn
+		if table.FilterColumns > 0 {
+			if filterEnd, err = excelize.ColumnNumberToName(table.FilterColumns); err != nil {
+				return nil, err
+			}
+		}
 		_ = file.AutoFilter(sheet,
-			fmt.Sprintf("A%d:%s%d", headerRow, lastColumn, headerRow+len(table.Values)), nil)
+			fmt.Sprintf("A%d:%s%d", headerRow, filterEnd, headerRow+len(table.Values)), nil)
+	}
+
+	// A cell written as a formula has no cached value, so the workbook has to
+	// recompute it the moment it opens, or the percentage would sit blank.
+	fullCalc := true
+	if err := file.SetCalcProps(&excelize.CalcPropsOptions{FullCalcOnLoad: &fullCalc}); err != nil {
+		return nil, fmt.Errorf("set calc props: %w", err)
 	}
 
 	var buffer bytes.Buffer
@@ -125,21 +145,30 @@ type sheetStyles struct {
 	subtitle   int
 	header     int
 	text       int
+	whole      int
 	number     int
 	volume     int
+	percent    int
 	total      int
 	totalLabel int
 }
 
-// forColumn picks the number format. Two decimals for dimensions, four for
-// volumes: the deviation is the figure people argue over, so it keeps its
-// precision.
+// forColumn picks the number format. Counts stay whole (no trailing ",00"),
+// dimensions take two decimals, volumes four - the deviation is the figure
+// people argue over, so it keeps its precision - and a percentage prints with
+// its percent sign.
 func (s sheetStyles) forColumn(column Column) int {
 	if !column.Numeric {
 		return s.text
 	}
+	if column.Percent {
+		return s.percent
+	}
 	if column.Decimals >= 4 {
 		return s.volume
+	}
+	if column.Decimals == 0 {
+		return s.whole
 	}
 	return s.number
 }
@@ -174,6 +203,12 @@ func newStyles(file *excelize.File) (sheetStyles, error) {
 	}); err != nil {
 		return styles, err
 	}
+	if styles.whole, err = file.NewStyle(&excelize.Style{
+		CustomNumFmt: stringPtr("#,##0"),
+		Border:       cellBorder("DCE4E9"),
+	}); err != nil {
+		return styles, err
+	}
 	if styles.number, err = file.NewStyle(&excelize.Style{
 		CustomNumFmt: stringPtr("#,##0.00"),
 		Border:       cellBorder("DCE4E9"),
@@ -182,6 +217,12 @@ func newStyles(file *excelize.File) (sheetStyles, error) {
 	}
 	if styles.volume, err = file.NewStyle(&excelize.Style{
 		CustomNumFmt: stringPtr("#,##0.0000"),
+		Border:       cellBorder("DCE4E9"),
+	}); err != nil {
+		return styles, err
+	}
+	if styles.percent, err = file.NewStyle(&excelize.Style{
+		CustomNumFmt: stringPtr("0.0%"),
 		Border:       cellBorder("DCE4E9"),
 	}); err != nil {
 		return styles, err

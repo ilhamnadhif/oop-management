@@ -46,6 +46,18 @@ type Column struct {
 	// separated by dots. Six unbroken digits are hard to read at 6pt, and a
 	// misread figure on an expense report is an argument about money.
 	Money bool
+	// Percent prints the spreadsheet cell as a percentage (23.8 rather than
+	// 0.238), which is how a rate reads when someone looks at the file. The
+	// value is still stored as the raw fraction, so it stays usable in a
+	// spreadsheet formula.
+	Percent bool
+}
+
+// Formula is a spreadsheet cell that is computed rather than stored. The PDF
+// prints the row's formatted string; the XLSX keeps the expression so the
+// number stays live when the sheet underneath it changes.
+type Formula struct {
+	Expression string
 }
 
 func (m Meta) periodLabel() string {
