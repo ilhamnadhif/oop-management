@@ -191,7 +191,7 @@ func TestPDFTextIsTransliterated(t *testing.T) {
 func TestWrapCellKeepsEveryCharacter(t *testing.T) {
 	pdf := fpdf.New("L", "mm", "A4", "")
 	pdf.AddPage()
-	pdf.SetFont("Helvetica", "", bodyFont)
+	pdf.SetFont("Helvetica", "", defaultPDFMetrics.bodyFont)
 
 	for _, text := range []string{
 		"Faturrahman Al Rasyid Nugroho",

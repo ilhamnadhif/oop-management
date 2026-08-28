@@ -14,15 +14,34 @@ import (
 const (
 	pageWidth   = 297.0
 	pageMargin  = 8.0
-	bodyFont    = 6.0
-	headerFont  = 6.5
-	rowHeight   = 4.6
-	lineHeight  = 3.4
-	cellPadding = 1.2
 	headerFill  = "173F5F"
 	stripeFill  = "F4F7F9"
 	borderGrey  = "DCE4E9"
 	signatureMM = 46.0
+)
+
+// pdfMetrics carries the type sizes a report is printed with. Most reports use
+// the default; the attendance matrix, forty-odd columns wide, prints smaller so
+// it still fits one landscape page, and unsigned because it is a data sheet
+// rather than a document to sign.
+type pdfMetrics struct {
+	bodyFont    float64
+	headerFont  float64
+	rowHeight   float64
+	lineHeight  float64
+	cellPadding float64
+	signed      bool
+}
+
+var (
+	defaultPDFMetrics = pdfMetrics{
+		bodyFont: 6, headerFont: 6.5, rowHeight: 4.6, lineHeight: 3.4, cellPadding: 1.2,
+		signed: true,
+	}
+	compactPDFMetrics = pdfMetrics{
+		bodyFont: 5, headerFont: 5.5, rowHeight: 4.0, lineHeight: 2.9, cellPadding: 0.8,
+		signed: false,
+	}
 )
 
 // The appendix prints the photos two to a row. One per row would waste half a
@@ -43,6 +62,16 @@ const (
 // RenderPDF writes the signable report: a letterhead on every page, a table
 // with a repeating coloured header, and a signature block at the end.
 func RenderPDF(table Table, meta Meta) ([]byte, error) {
+	return renderPDF(table, meta, defaultPDFMetrics)
+}
+
+// RenderPDFCompact is the same report at the smaller type sizes the wide
+// attendance matrix needs, and without the closing signature: a data sheet.
+func RenderPDFCompact(table Table, meta Meta) ([]byte, error) {
+	return renderPDF(table, meta, compactPDFMetrics)
+}
+
+func renderPDF(table Table, meta Meta, metrics pdfMetrics) ([]byte, error) {
 	pdf := fpdf.New("L", "mm", "A4", "")
 	pdf.SetMargins(pageMargin, pageMargin, pageMargin)
 	pdf.SetAutoPageBreak(true, 16)
@@ -96,7 +125,7 @@ func RenderPDF(table Table, meta Meta) ([]byte, error) {
 			drawAppendixHeading(pdf)
 			return
 		}
-		drawTableHeader(pdf, table.Columns)
+		drawTableHeader(pdf, table.Columns, metrics)
 	})
 
 	pdf.SetFooterFunc(func() {
@@ -109,9 +138,9 @@ func RenderPDF(table Table, meta Meta) ([]byte, error) {
 
 	pdf.AddPage()
 
-	pdf.SetFont("Helvetica", "", bodyFont)
+	pdf.SetFont("Helvetica", "", metrics.bodyFont)
 	for i, cells := range table.Rows {
-		drawRow(pdf, table.Columns, cells, i%2 == 1)
+		drawRow(pdf, table.Columns, cells, i%2 == 1, metrics)
 	}
 
 	if len(table.Rows) == 0 {
@@ -119,10 +148,12 @@ func RenderPDF(table Table, meta Meta) ([]byte, error) {
 		pdf.SetTextColor(107, 119, 133)
 		pdf.CellFormat(0, 10, tr("Tidak ada data pada periode ini."), "", 1, "C", false, 0, "")
 	} else if table.hasTotals() {
-		drawTotals(pdf, table)
+		drawTotals(pdf, table, metrics)
 	}
 
-	drawSignature(pdf, meta)
+	if metrics.signed {
+		drawSignature(pdf, meta)
+	}
 
 	// The photos come after the signature: the signed figures are the report,
 	// and the evidence backs them up rather than interrupting them.
@@ -138,8 +169,8 @@ func RenderPDF(table Table, meta Meta) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func drawTableHeader(pdf *fpdf.Fpdf, columns []Column) {
-	pdf.SetFont("Helvetica", "B", headerFont)
+func drawTableHeader(pdf *fpdf.Fpdf, columns []Column, metrics pdfMetrics) {
+	pdf.SetFont("Helvetica", "B", metrics.headerFont)
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFillColor(hexToRGB(headerFill))
 	pdf.SetDrawColor(hexToRGB(headerFill))
@@ -149,20 +180,20 @@ func drawTableHeader(pdf *fpdf.Fpdf, columns []Column) {
 	for i, column := range columns {
 		headers[i] = column.Header
 	}
-	drawCells(pdf, columns, headers, alignHeader, 6)
+	drawCells(pdf, columns, headers, alignHeader, 6, metrics)
 
 	pdf.SetTextColor(28, 40, 51)
 	pdf.SetDrawColor(hexToRGB(borderGrey))
 }
 
-func drawRow(pdf *fpdf.Fpdf, columns []Column, cells []string, stripe bool) {
+func drawRow(pdf *fpdf.Fpdf, columns []Column, cells []string, stripe bool, metrics pdfMetrics) {
 	if stripe {
 		pdf.SetFillColor(hexToRGB(stripeFill))
 	} else {
 		pdf.SetFillColor(255, 255, 255)
 	}
-	pdf.SetFont("Helvetica", "", bodyFont)
-	drawCells(pdf, columns, cells, alignBody, rowHeight)
+	pdf.SetFont("Helvetica", "", metrics.bodyFont)
+	drawCells(pdf, columns, cells, alignBody, metrics.rowHeight, metrics)
 }
 
 type cellAlign func(index int, column Column) string
@@ -183,7 +214,7 @@ func alignBody(index int, column Column) string {
 // drawCells writes one band of the table. Text too long for its column wraps
 // onto further lines and the whole band grows to fit: a report that quietly
 // shortened a name would be read as if that were the name.
-func drawCells(pdf *fpdf.Fpdf, columns []Column, cells []string, align cellAlign, minHeight float64) {
+func drawCells(pdf *fpdf.Fpdf, columns []Column, cells []string, align cellAlign, minHeight float64, metrics pdfMetrics) {
 	wrapped := make([][]string, len(columns))
 	longest := 1
 	for i, column := range columns {
@@ -191,12 +222,12 @@ func drawCells(pdf *fpdf.Fpdf, columns []Column, cells []string, align cellAlign
 		if i < len(cells) {
 			text = cells[i]
 		}
-		wrapped[i] = wrapCell(pdf, tr(text), column.Width-1.6)
+		wrapped[i] = wrapCell(pdf, tr(text), column.Width-2*metrics.cellPadding)
 		if len(wrapped[i]) > longest {
 			longest = len(wrapped[i])
 		}
 	}
-	height := float64(longest)*lineHeight + cellPadding
+	height := float64(longest)*metrics.lineHeight + metrics.cellPadding
 	if height < minHeight {
 		height = minHeight
 	}
@@ -213,10 +244,10 @@ func drawCells(pdf *fpdf.Fpdf, columns []Column, cells []string, align cellAlign
 	left := pageMargin
 	for i, column := range columns {
 		pdf.Rect(left, top, column.Width, height, "FD")
-		textTop := top + (height-float64(len(wrapped[i]))*lineHeight)/2
+		textTop := top + (height-float64(len(wrapped[i]))*metrics.lineHeight)/2
 		for j, line := range wrapped[i] {
-			pdf.SetXY(left, textTop+float64(j)*lineHeight)
-			pdf.CellFormat(column.Width, lineHeight, line, "", 0, align(i, column), false, 0, "")
+			pdf.SetXY(left, textTop+float64(j)*metrics.lineHeight)
+			pdf.CellFormat(column.Width, metrics.lineHeight, line, "", 0, align(i, column), false, 0, "")
 		}
 		left += column.Width
 	}
@@ -265,8 +296,8 @@ func wrapCell(pdf *fpdf.Fpdf, text string, width float64) []string {
 	return lines
 }
 
-func drawTotals(pdf *fpdf.Fpdf, table Table) {
-	pdf.SetFont("Helvetica", "B", headerFont)
+func drawTotals(pdf *fpdf.Fpdf, table Table, metrics pdfMetrics) {
+	pdf.SetFont("Helvetica", "B", metrics.headerFont)
 	pdf.SetFillColor(hexToRGB(stripeFill))
 
 	start := table.totalsStart()
@@ -402,6 +433,9 @@ func drawSignature(pdf *fpdf.Fpdf, meta Meta) {
 // Unicode font for a handful of symbols would multiply the file size.
 var replacer = strings.NewReplacer(
 	"³", "3", "²", "2", "·", "-", "—", "-", "–", "-", "…", "...", "×", "x", "−", "-",
+	// The attendance matrix marks a day present with a check; the core fonts
+	// cannot draw it, so it prints as the "v" the user reads as the same thing.
+	"✓", "v",
 )
 
 func tr(text string) string { return replacer.Replace(text) }

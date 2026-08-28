@@ -60,29 +60,46 @@ func downloadAbsensi(t *testing.T, client *http.Client, url string) *http.Respon
 	return response
 }
 
-func TestAbsensiExportDownloadsTheMatrix(t *testing.T) {
+func TestAbsensiExportDownloadsBothFormats(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	seedAbsensiReport(t, store)
 	client := loggedInClient(t, testServer)
 
+	cases := map[string]struct {
+		contentType string
+		magic       []byte
+	}{
+		"xlsx": {"spreadsheetml", []byte("PK")},
+		"pdf":  {"application/pdf", []byte("%PDF-")},
+	}
+	for format, want := range cases {
+		response := downloadAbsensi(t, client, testServer.URL+"/hr/export/download?format="+format)
+		body := readBodyBytes(t, response)
+
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d", format, response.StatusCode)
+		}
+		if got := response.Header.Get("Content-Type"); !strings.Contains(got, want.contentType) {
+			t.Fatalf("%s: content type %q", format, got)
+		}
+		if !bytes.HasPrefix(body, want.magic) {
+			t.Fatalf("%s: body does not start with %q", format, want.magic)
+		}
+		disposition := response.Header.Get("Content-Disposition")
+		if !strings.HasPrefix(disposition, "attachment;") || !strings.Contains(disposition, "."+format) {
+			t.Fatalf("%s: content disposition %q", format, disposition)
+		}
+		if got := response.Header.Get("Cache-Control"); got != "no-store" {
+			t.Fatalf("%s: cache control %q, want no-store", format, got)
+		}
+	}
+
+	// No format means the spreadsheet, which is the default the page's links
+	// and any old bookmark rely on.
 	response := downloadAbsensi(t, client, testServer.URL+"/hr/export/download")
 	body := readBodyBytes(t, response)
-
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("download: status %d", response.StatusCode)
-	}
-	if got := response.Header.Get("Content-Type"); !strings.Contains(got, "spreadsheetml") {
-		t.Fatalf("content type = %q", got)
-	}
 	if !bytes.HasPrefix(body, []byte("PK")) {
-		t.Fatal("the download is not an xlsx file")
-	}
-	disposition := response.Header.Get("Content-Disposition")
-	if !strings.HasPrefix(disposition, "attachment;") || !strings.Contains(disposition, ".xlsx") {
-		t.Fatalf("content disposition %q", disposition)
-	}
-	if got := response.Header.Get("Cache-Control"); got != "no-store" {
-		t.Fatalf("cache control %q, want no-store", got)
+		t.Fatal("a download without a format is not the xlsx default")
 	}
 }
 
@@ -92,16 +109,16 @@ func TestAbsensiExportFilenameCarriesMonthAndJabatan(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	response := downloadAbsensi(t, client,
-		testServer.URL+"/hr/export/download?month=2026-08&jabatan=Surveyor")
+		testServer.URL+"/hr/export/download?format=xlsx&month=2026-08&jabatan=Surveyor")
 	response.Body.Close()
 	if got := response.Header.Get("Content-Disposition"); !strings.Contains(got, "rekap-absensi-2026-08-surveyor.xlsx") {
 		t.Fatalf("content disposition %q does not name month and jabatan", got)
 	}
 
-	all := downloadAbsensi(t, client, testServer.URL+"/hr/export/download?month=2026-08")
+	all := downloadAbsensi(t, client, testServer.URL+"/hr/export/download?format=pdf&month=2026-08")
 	all.Body.Close()
-	if got := all.Header.Get("Content-Disposition"); !strings.Contains(got, "rekap-absensi-2026-08.xlsx") {
-		t.Fatalf("unfiltered disposition %q should name only the month", got)
+	if got := all.Header.Get("Content-Disposition"); !strings.Contains(got, "rekap-absensi-2026-08.pdf") {
+		t.Fatalf("unfiltered PDF disposition %q should name only the month", got)
 	}
 }
 
@@ -132,7 +149,7 @@ func TestAbsensiExportRejectsInvalidMonth(t *testing.T) {
 	seedAbsensiReport(t, store)
 	client := loggedInClient(t, testServer)
 
-	response := downloadAbsensi(t, client, testServer.URL+"/hr/export/download?month=2026-13")
+	response := downloadAbsensi(t, client, testServer.URL+"/hr/export/download?format=xlsx&month=2026-13")
 	response.Body.Close()
 	if response.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid month: status %d, want 422", response.StatusCode)
@@ -141,6 +158,18 @@ func TestAbsensiExportRejectsInvalidMonth(t *testing.T) {
 	page := fetchAuthedPage(t, client, testServer.URL+"/hr/export?month=agustus")
 	if !strings.Contains(page, "bulan tidak valid") {
 		t.Fatal("the page does not surface the invalid month error")
+	}
+}
+
+func TestAbsensiExportRejectsUnknownFormat(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedAbsensiReport(t, store)
+	client := loggedInClient(t, testServer)
+
+	response := downloadAbsensi(t, client, testServer.URL+"/hr/export/download?format=docx")
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown format: status %d, want 400", response.StatusCode)
 	}
 }
 

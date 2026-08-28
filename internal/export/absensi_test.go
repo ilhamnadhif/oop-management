@@ -3,6 +3,7 @@ package export
 import (
 	"archive/zip"
 	"bytes"
+	"compress/zlib"
 	"io"
 	"strings"
 	"testing"
@@ -198,4 +199,107 @@ func TestAbsensiTableFollowsTheMonthLength(t *testing.T) {
 		t.Fatalf("last day header = %q, want 30",
 			table.Columns[len(table.Columns)-absensiTotalColumns-1].Header)
 	}
+}
+
+// The PDF has to fit forty-odd columns on one landscape page, whatever the
+// month's length, so its widths must never exceed the usable width.
+func TestAbsensiPDFFitsTheLandscapePage(t *testing.T) {
+	for _, days := range []int{28, 30, 31} {
+		report := &service.MonthlyAbsensi{Month: "2026-08", Days: days}
+		if total := absensiPDFTable(report).totalWidth(); total > pageWidth-2*pageMargin {
+			t.Fatalf("%d days: PDF columns total %.1fmm, wider than the %.1fmm usable page",
+				days, total, pageWidth-2*pageMargin)
+		}
+	}
+}
+
+// The attendance matrix prints compact and unsigned: it is a data sheet, not a
+// signed document, and the check for hadir prints as "v" because the core PDF
+// fonts cannot draw the check mark.
+func TestAbsensiPDFIsCompactLandscapeAndUnsigned(t *testing.T) {
+	report := sampleMonthlyAbsensi()
+	payload, err := AbsensiPDF(report, sampleAbsensiMeta())
+	if err != nil {
+		t.Fatalf("render pdf: %v", err)
+	}
+	if !bytes.HasPrefix(payload, []byte("%PDF-")) {
+		t.Fatal("the output is not a PDF")
+	}
+	if !strings.Contains(string(payload), "841.89 595.28") {
+		t.Fatal("the page is not landscape A4")
+	}
+
+	text := pdfText(t, payload)
+	if !strings.Contains(text, "Rekap Absensi Bulanan") {
+		t.Fatal("the letterhead did not print")
+	}
+	if !strings.Contains(text, "(v)Tj") {
+		t.Fatal("the present-day check did not print as v")
+	}
+	if !strings.Contains(text, "(23.8%)Tj") {
+		t.Fatal("the percentage cell did not print")
+	}
+	if strings.Contains(text, "Tertanda,") {
+		t.Fatal("an unsigned data sheet must not carry a signature block")
+	}
+
+	// The same layout, rendered signed, does carry the signature - proving the
+	// unsigned PDF is unsigned by choice, not because the renderer lost it.
+	signed, err := RenderPDF(absensiPDFTable(report), sampleAbsensiMeta())
+	if err != nil {
+		t.Fatalf("render signed pdf: %v", err)
+	}
+	if !strings.Contains(pdfText(t, signed), "Tertanda,") {
+		t.Fatal("the signed render lost its signature block")
+	}
+}
+
+func TestPDFCheckmarkPrintsAsV(t *testing.T) {
+	if got := tr("✓"); got != "v" {
+		t.Fatalf("tr(✓) = %q, want v", got)
+	}
+}
+
+// pdfText decompresses the PDF content streams so a test can read what was
+// actually printed. The text itself is zlib-compressed, so searching the raw
+// file for a word would miss it.
+func pdfText(t *testing.T, payload []byte) string {
+	t.Helper()
+	var out strings.Builder
+	for _, stream := range pdfStreams(payload) {
+		reader, err := zlib.NewReader(bytes.NewReader(stream))
+		if err != nil {
+			continue
+		}
+		data, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			continue
+		}
+		out.Write(data)
+	}
+	return out.String()
+}
+
+func pdfStreams(payload []byte) [][]byte {
+	var streams [][]byte
+	pos := 0
+	for {
+		i := bytes.Index(payload[pos:], []byte("stream"))
+		if i < 0 {
+			break
+		}
+		i += pos
+		after := i + len("stream")
+		for after < len(payload) && (payload[after] == '\r' || payload[after] == '\n') {
+			after++
+		}
+		end := bytes.Index(payload[after:], []byte("endstream"))
+		if end < 0 {
+			break
+		}
+		streams = append(streams, payload[after:after+end])
+		pos = after + end
+	}
+	return streams
 }

@@ -17,42 +17,78 @@ func AbsensiXLSX(report *service.MonthlyAbsensi, meta Meta) ([]byte, error) {
 	return RenderXLSX(AbsensiTable(report), meta)
 }
 
-// AbsensiTable describes the matrix in the table model both renderers take.
-func AbsensiTable(report *service.MonthlyAbsensi) Table {
-	columns := []Column{
-		{Header: "No", Width: 7},
-		{Header: "Nama", Width: 36},
-		{Header: "Jabatan", Width: 22},
-	}
-	for day := 1; day <= report.Days; day++ {
-		columns = append(columns, Column{Header: strconv.Itoa(day), Width: 7})
-	}
-	columns = append(columns,
-		Column{Header: "Total M1", Width: 12, Numeric: true},
-		Column{Header: "Total M2", Width: 12, Numeric: true},
-		Column{Header: "Total M3", Width: 12, Numeric: true},
-		Column{Header: "Total M4", Width: 12, Numeric: true},
-		Column{Header: "Total Kehadiran", Width: 17, Numeric: true},
-		Column{Header: "Total Sakit", Width: 12, Numeric: true},
-		Column{Header: "Total Izin", Width: 12, Numeric: true},
-		Column{Header: "Total Cuti", Width: 12, Numeric: true},
-		Column{Header: "Total Tidak absen", Width: 17, Numeric: true},
-		Column{Header: "Presentase", Width: 12, Numeric: true, Decimals: 1, Percent: true},
-	)
+// AbsensiPDF prints the same matrix, but the forty-odd columns cannot hold
+// their Excel widths on paper, so they are squeezed into the one landscape page
+// and set at the compact type size, without a signature block.
+func AbsensiPDF(report *service.MonthlyAbsensi, meta Meta) ([]byte, error) {
+	return RenderPDFCompact(absensiPDFTable(report), meta)
+}
 
-	table := Table{
+// AbsensiTable describes the matrix for the spreadsheet.
+func AbsensiTable(report *service.MonthlyAbsensi) Table {
+	columns := absensiColumns(report.Days,
+		7, 36, 22, 7,
+		[]float64{12, 12, 12, 12, 17, 12, 12, 12, 17, 12})
+	rows, values := absensiRows(report)
+	return Table{
 		SheetName:     "Absensi",
 		Columns:       columns,
-		Rows:          make([][]string, 0, len(report.Rows)),
-		Values:        make([][]interface{}, 0, len(report.Rows)),
+		Rows:          rows,
+		Values:        values,
 		FilterColumns: 3,
 	}
+}
+
+// absensiPDFTable is the same matrix at the widths that fit the usable width of
+// a landscape A4 page (297 - 2x8 = 281mm) whatever the month's length.
+func absensiPDFTable(report *service.MonthlyAbsensi) Table {
+	columns := absensiColumns(report.Days,
+		6, 30, 15, 4.5,
+		[]float64{8, 8, 8, 8, 10, 7, 7, 7, 10, 8})
+	rows, values := absensiRows(report)
+	return Table{
+		SheetName: "Absensi",
+		Columns:   columns,
+		Rows:      rows,
+		Values:    values,
+	}
+}
+
+// absensiColumns lays out the matrix. The spreadsheet and the PDF share the
+// structure - identity, one column per day, then the totals - but not the
+// widths, since the PDF has to fit the whole thing on one landscape page.
+func absensiColumns(days int, no, nama, jabatan, day float64, totals []float64) []Column {
+	columns := []Column{
+		{Header: "No", Width: no},
+		{Header: "Nama", Width: nama},
+		{Header: "Jabatan", Width: jabatan},
+	}
+	for number := 1; number <= days; number++ {
+		columns = append(columns, Column{Header: strconv.Itoa(number), Width: day})
+	}
+	totalNames := []string{"Total M1", "Total M2", "Total M3", "Total M4", "Total Kehadiran",
+		"Total Sakit", "Total Izin", "Total Cuti", "Total Tidak absen", "Presentase"}
+	for i, name := range totalNames {
+		if name == "Presentase" {
+			columns = append(columns, Column{Header: name, Width: totals[i], Numeric: true, Decimals: 1, Percent: true})
+		} else {
+			columns = append(columns, Column{Header: name, Width: totals[i], Numeric: true})
+		}
+	}
+	return columns
+}
+
+// absensiRows builds the shared cell data: the identity, the day marks and the
+// totals, with the percentage kept live as a formula for the spreadsheet.
+func absensiRows(report *service.MonthlyAbsensi) (rows [][]string, values [][]interface{}) {
+	rows = make([][]string, 0, len(report.Rows))
+	values = make([][]interface{}, 0, len(report.Rows))
 	for i, row := range report.Rows {
 		cells := []string{strconv.Itoa(row.No), row.Nama, row.Jabatan}
-		values := []interface{}{row.No, row.Nama, row.Jabatan}
+		rowValues := []interface{}{row.No, row.Nama, row.Jabatan}
 		for _, mark := range row.Hari {
 			cells = append(cells, mark)
-			values = append(values, mark)
+			rowValues = append(rowValues, mark)
 		}
 		cells = append(cells,
 			FormatFloat(float64(row.M1), 0),
@@ -66,15 +102,15 @@ func AbsensiTable(report *service.MonthlyAbsensi) Table {
 			FormatFloat(float64(row.TidakAbsen), 0),
 			fmt.Sprintf("%.1f%%", row.Persentase),
 		)
-		values = append(values,
+		rowValues = append(rowValues,
 			row.M1, row.M2, row.M3, row.M4,
 			row.Hadir, row.Sakit, row.Izin, row.Cuti, row.TidakAbsen,
 			absensiPercentFormula(report, i),
 		)
-		table.Rows = append(table.Rows, cells)
-		table.Values = append(table.Values, values)
+		rows = append(rows, cells)
+		values = append(values, rowValues)
 	}
-	return table
+	return rows, values
 }
 
 // absensiPercentFormula is the live attendance rate: every day that was not

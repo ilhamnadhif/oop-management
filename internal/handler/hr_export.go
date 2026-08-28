@@ -64,9 +64,17 @@ func (s *Server) handleAbsensiExportPage(w http.ResponseWriter, r *http.Request)
 	s.render(w, "absensi_export", data, http.StatusOK)
 }
 
-// handleAbsensiExportDownload streams the XLSX itself.
+// handleAbsensiExportDownload streams the XLSX or the PDF itself.
 func (s *Server) handleAbsensiExportDownload(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.requireAccess(w, r, "hr-export"); !ok {
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format == "" {
+		format = "xlsx"
+	}
+	if format != "xlsx" && format != "pdf" {
+		http.Error(w, "format tidak dikenal", http.StatusBadRequest)
 		return
 	}
 	month := strings.TrimSpace(r.URL.Query().Get("month"))
@@ -88,9 +96,20 @@ func (s *Server) handleAbsensiExportDownload(w http.ResponseWriter, r *http.Requ
 
 	meta := s.exportMeta("Rekap Absensi Bulanan", report.Month+"-01", report.Month+"-31")
 	meta.Period = monthLabel(report.Month)
-	payload, err := export.AbsensiXLSX(report, meta)
+
+	var payload []byte
+	var contentType, extension string
+	if format == "xlsx" {
+		payload, err = export.AbsensiXLSX(report, meta)
+		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		extension = "xlsx"
+	} else {
+		payload, err = export.AbsensiPDF(report, meta)
+		contentType = "application/pdf"
+		extension = "pdf"
+	}
 	if err != nil {
-		log.Printf("build absensi xlsx: %v", err)
+		log.Printf("build absensi %s: %v", format, err)
 		http.Error(w, "Gagal membuat berkas", http.StatusInternalServerError)
 		return
 	}
@@ -99,8 +118,8 @@ func (s *Server) handleAbsensiExportDownload(w http.ResponseWriter, r *http.Requ
 	if report.Jabatan != "" {
 		filename += "-" + strings.ToLower(report.Jabatan)
 	}
-	filename += ".xlsx"
-	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	filename += "." + extension
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 	// A report is a snapshot of a moving sheet; a cached copy would quietly go

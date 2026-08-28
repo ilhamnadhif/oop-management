@@ -41,8 +41,11 @@
     {{if .Rows}}
     <p class="panel-empty">{{.Note}}</p>
     <div class="action-row export-actions">
-      <a class="button primary" href="/hr/export/download?month={{.Month}}{{if .Jabatan}}&amp;jabatan={{.Jabatan}}{{end}}">
+      <a class="button primary" href="/hr/export/download?format=xlsx&amp;month={{.Month}}{{if .Jabatan}}&amp;jabatan={{.Jabatan}}{{end}}">
         {{template "icon" "save"}}Unduh XLSX
+      </a>
+      <a class="button subtle" href="/hr/export/download?format=pdf&amp;month={{.Month}}{{if .Jabatan}}&amp;jabatan={{.Jabatan}}{{end}}">
+        {{template "icon" "save"}}Unduh PDF
       </a>
     </div>
     {{else}}
