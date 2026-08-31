@@ -30,12 +30,7 @@ func newTwoProjectServer(t *testing.T) (*httptest.Server, *testStores, *service.
 	if _, err := deps.Projects.Create(context.Background(), secondProjectName, "kendal-spreadsheet", nil, nil); err != nil {
 		t.Fatalf("create second project: %v", err)
 	}
-	server, err := NewServer(deps)
-	if err != nil {
-		t.Fatalf("new server: %v", err)
-	}
-	testServer := httptest.NewServer(server.Handler())
-	t.Cleanup(testServer.Close)
+	testServer := newFixtureServer(t, deps)
 	return testServer, stores, deps.Projects
 }
 
@@ -543,12 +538,7 @@ func TestAddProjectReportsASpreadsheetItCannotPrepare(t *testing.T) {
 	deps.Provision = func(context.Context, string) error {
 		return errors.New("spreadsheet itu belum dibagikan ke service account aplikasi")
 	}
-	server, err := NewServer(deps)
-	if err != nil {
-		t.Fatalf("new server: %v", err)
-	}
-	testServer := httptest.NewServer(server.Handler())
-	t.Cleanup(testServer.Close)
+	testServer := newFixtureServer(t, deps)
 
 	client := loggedInClient(t, testServer)
 	page := fetchAuthedPage(t, client, testServer.URL+"/project/settings")

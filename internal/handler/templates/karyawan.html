@@ -1,0 +1,117 @@
+{{define "karyawan"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <form method="post" action="/hr/karyawan" class="stack-form" data-loading-form>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "users"}}KARYAWAN BARU</p>
+          <h2>Data karyawan</h2>
+        </div>
+        {{/* The account lands in the project this page is being used from. HR of
+             one site cannot add somebody to another. */}}
+        {{if .Project}}<p class="panel-tag">{{template "icon" "pin"}}{{.Project}}</p>{{end}}
+      </div>
+
+      <div class="form-grid form-grid-2">
+        <div>
+          <label for="tanggal_gabung">{{template "icon" "calendar"}}Tanggal gabung</label>
+          <input id="tanggal_gabung" name="tanggal_gabung" type="date" value="{{.Form.TanggalGabung}}" required>
+        </div>
+        <div>
+          <label for="nama_lengkap">{{template "icon" "user"}}Nama lengkap</label>
+          <input id="nama_lengkap" name="nama_lengkap" type="text" value="{{.Form.NamaLengkap}}" placeholder="Budi Santoso" autocomplete="off" required>
+        </div>
+        <div>
+          <div class="field-head">
+            <label for="nrp">{{template "icon" "tag"}}NRP</label>
+            {{template "fieldHelp" "Hanya angka. Dipakai untuk login, jadi harus unik."}}
+          </div>
+          <input id="nrp" name="nrp" type="text" inputmode="numeric" pattern="[0-9]+" value="{{.Form.NRP}}" placeholder="123456" autocomplete="off" required>
+        </div>
+        <div>
+          <div class="field-head">
+            <label for="jabatan">{{template "icon" "tag"}}Jabatan</label>
+            {{template "fieldHelp" "Menentukan menu apa saja yang bisa dibuka orang ini."}}
+          </div>
+          <select id="jabatan" name="jabatan" required>
+            <option value="">Pilih jabatan</option>
+            {{range .JabatanOptions}}<option value="{{.}}"{{if eq . $.Form.Jabatan}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label for="email">{{template "icon" "mail"}}Email</label>
+          <input id="email" name="email" type="email" value="{{.Form.Email}}" placeholder="nama@perusahaan.com" autocomplete="off" required>
+        </div>
+        <div>
+          <div class="field-head">
+            <label for="status_pengguna">{{template "icon" "check"}}Status</label>
+            {{template "fieldHelp" "Akun tidak aktif tidak bisa login. Pakai ini kalau akunnya disiapkan lebih dulu sebelum orangnya masuk kerja."}}
+          </div>
+          <select id="status_pengguna" name="status_pengguna">
+            <option value="AKTIF"{{if eq .Form.Status "AKTIF"}} selected{{end}}>Aktif</option>
+            <option value="TIDAK_AKTIF"{{if eq .Form.Status "TIDAK_AKTIF"}} selected{{end}}>Tidak aktif</option>
+          </select>
+        </div>
+      </div>
+
+      {{/* No password field on purpose: the person is not here to choose one.
+           They get the shared starting password and the app makes them replace
+           it the first time they sign in. */}}
+      <div class="field-readonly">
+        <span class="field-readonly-label">{{template "icon" "lock"}}Password awal
+          {{template "fieldHelp" "Sama untuk setiap karyawan baru. Saat login pertama, aplikasi langsung meminta orangnya membuat password sendiri sebelum bisa membuka apa pun."}}
+        </span>
+        <code>{{.DefaultPassword}}</code>
+        <p class="hint">Beritahukan langsung ke orangnya. Setelah diganti, halaman ini tidak muncul lagi untuk akun tersebut.</p>
+      </div>
+
+      <div class="action-row">
+        <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+          <span class="spinner" aria-hidden="true" hidden></span>
+          {{template "icon" "plus"}}<span data-submit-label>Tambah karyawan</span>
+        </button>
+      </div>
+    </section>
+  </form>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "users"}}TERDAFTAR</p>
+        <h2>{{len .Members}} karyawan di {{.Project}}</h2>
+      </div>
+    </div>
+    {{if .Members}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Nama</th>
+            <th scope="col">Jabatan</th>
+            <th scope="col">Email</th>
+            <th scope="col">Project</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Members}}
+          <tr>
+            <th scope="row" class="wrap">{{.NamaLengkap}}<br><span class="table-subtext">{{.NRP}}</span></th>
+            <td>{{.Jabatan}}</td>
+            <td class="wrap">{{.Email}}</td>
+            <td>{{if eq .Assigned $.SemuaProyekMark}}Semua project{{else}}{{.Assigned}}{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada karyawan di project ini.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+{{end}}

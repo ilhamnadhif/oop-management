@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -115,6 +116,56 @@ func testProjectServices(store repository.Store, location *time.Location, nowFun
 			Place: project.Settings.SignatoryPlace,
 		},
 	}
+}
+
+// The registration page closes as soon as an account exists, so fixtures that
+// need a second person cannot go through it. They reach the auth service
+// directly instead, which is also what the app itself does from the HR screen.
+//
+// The service is looked up by the test server's own URL: fixtures run in
+// parallel, and a package-level "the last one built" would hand a test somebody
+// else's store.
+var (
+	fixtureMu   sync.Mutex
+	fixtureAuth = map[string]*service.AuthService{}
+)
+
+// newFixtureServer starts a test server and records the auth service behind it.
+func newFixtureServer(t *testing.T, deps Deps) *httptest.Server {
+	t.Helper()
+	server, err := NewServer(deps)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	return startFixtureServer(t, server, deps)
+}
+
+// startFixtureServer is newFixtureServer for the fixtures that need to reach
+// the *Server first, to hang a scanner off it.
+func startFixtureServer(t *testing.T, server *Server, deps Deps) *httptest.Server {
+	t.Helper()
+	testServer := httptest.NewServer(server.Handler())
+	fixtureMu.Lock()
+	fixtureAuth[testServer.URL] = deps.Auth
+	fixtureMu.Unlock()
+	t.Cleanup(func() {
+		testServer.Close()
+		fixtureMu.Lock()
+		delete(fixtureAuth, testServer.URL)
+		fixtureMu.Unlock()
+	})
+	return testServer
+}
+
+func fixtureAuthFor(t *testing.T, testServer *httptest.Server) *service.AuthService {
+	t.Helper()
+	fixtureMu.Lock()
+	defer fixtureMu.Unlock()
+	auth, ok := fixtureAuth[testServer.URL]
+	if !ok {
+		t.Fatal("this test server was not started through newFixtureServer")
+	}
+	return auth
 }
 
 // defaultTestBranding is what most fixtures print on an export.

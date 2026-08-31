@@ -20,6 +20,11 @@ type Store interface {
 	UpdateLastLogin(ctx context.Context, userID string, at time.Time) error
 	FindUserRow(ctx context.Context, userID string) (*model.User, int, error)
 	UpdateUserProfile(ctx context.Context, rowNumber int, user *model.User, updatePhoto bool) error
+	// UpdateUserPassword writes only the password cell, so changing a password
+	// cannot disturb the rest of the account.
+	UpdateUserPassword(ctx context.Context, rowNumber int, passwordHash string, at time.Time) error
+	// CountUsers answers whether this deployment has any accounts yet.
+	CountUsers(ctx context.Context) (int, error)
 	ReadUserPhoto(ctx context.Context, rowNumber int) (string, error)
 	AppendActivity(ctx context.Context, activity *model.LoginActivity) error
 	UnitDTExists(ctx context.Context, nopol string) (bool, error)

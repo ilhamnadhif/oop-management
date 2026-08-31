@@ -48,15 +48,15 @@ func newTallyScanServer(t *testing.T, scanner tally.Scanner) (*httptest.Server, 
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
-	server, err := NewServer(testDeps(t, store, location, nowFunc, defaultTestBranding()))
+	deps := testDeps(t, store, location, nowFunc, defaultTestBranding())
+	server, err := NewServer(deps)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
 	if scanner != nil {
 		server.WithTallyScanner(scanner, 90*time.Second)
 	}
-	testServer := httptest.NewServer(server.Handler())
-	t.Cleanup(testServer.Close)
+	testServer := startFixtureServer(t, server, deps)
 
 	unit := &model.UnitDT{
 		UnitID: "UNT-2026-0001", Nopol: "B 1234 ABC",

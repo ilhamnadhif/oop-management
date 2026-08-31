@@ -401,6 +401,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/logout", s.handleLogout)
+	mux.HandleFunc("/onboarding", s.handleOnboarding)
 	mux.HandleFunc("/dashboard", s.handleDashboard)
 	mux.HandleFunc("/absensi", s.handleAbsensi)
 	mux.HandleFunc("/leave/request", s.handleLeaveRequest)
@@ -410,6 +411,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/profile", s.handleProfile)
 	mux.HandleFunc("/profile/photo", s.handleProfilePhoto)
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
+	mux.HandleFunc("/hr/karyawan", s.handleKaryawan)
 	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
 	mux.HandleFunc("/hr/export", s.handleAbsensiExportPage)
 	mux.HandleFunc("/hr/export/download", s.handleAbsensiExportDownload)
@@ -485,7 +487,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identifier := strings.TrimSpace(r.FormValue("identifier"))
-	user, err := s.auth.Authenticate(r.Context(), identifier, r.FormValue("password"), requestMeta(r))
+	password := r.FormValue("password")
+	user, err := s.auth.Authenticate(r.Context(), identifier, password, requestMeta(r))
 	if err != nil {
 		message := "NRP/Email atau password salah"
 		if !errors.Is(err, service.ErrInvalidCredentials) && !errors.Is(err, service.ErrInactiveUser) {
@@ -495,15 +498,44 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "login", AuthPageData{Title: "Masuk", ActiveTab: "login", Error: message, Identifier: identifier}, http.StatusUnauthorized)
 		return
 	}
-	if _, err := s.sessions.Create(w, user.UserID, s.now().In(s.location)); err != nil {
+	// Whether this account is still on the password everybody starts with is
+	// only knowable here, where the plaintext was supplied. The session carries
+	// the answer; nothing reads it off the stored hash later.
+	create := s.sessions.Create
+	destination := "/dashboard"
+	if service.IsDefaultPassword(password) {
+		create = s.sessions.CreateWithPasswordChange
+		destination = onboardingPath
+	}
+	if _, err := create(w, user.UserID, s.now().In(s.location)); err != nil {
 		log.Printf("create session: %v", err)
 		s.render(w, "login", AuthPageData{Title: "Masuk", ActiveTab: "login", Error: "Terjadi kesalahan saat membuat sesi"}, http.StatusInternalServerError)
 		return
 	}
-	redirect(w, r, "/dashboard")
+	redirect(w, r, destination)
 }
 
+// handleRegister opens only while this deployment has no accounts at all.
+//
+// Somebody has to be able to make the first one, and it has to be a Management
+// account or nobody can reach the settings that make everything else possible.
+// After that the page is closed: left open it let anyone who found the URL mint
+// themselves an account, choosing their own position - Management included -
+// which is every permission in the app handed out to a stranger. Accounts are
+// added by HR from inside instead.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	occupied, err := s.auth.HasAccounts(r.Context())
+	if err != nil {
+		log.Printf("count accounts: %v", err)
+		http.Error(w, "Terjadi kesalahan", http.StatusInternalServerError)
+		return
+	}
+	if occupied {
+		// Not an error page: there is nothing here, and the person who wanted
+		// an account needs to ask HR rather than read about why.
+		redirect(w, r, "/login")
+		return
+	}
 	if r.Method == http.MethodGet {
 		s.render(w, "register", AuthPageData{
 			Title:          "Daftar Akun",
@@ -527,7 +559,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Email:         strings.TrimSpace(r.FormValue("email")),
 		Status:        strings.TrimSpace(r.FormValue("status_pengguna")),
 	}
-	_, err := s.auth.Register(r.Context(), service.RegisterInput{
+	_, err = s.auth.Register(r.Context(), service.RegisterInput{
 		TanggalGabung: form.TanggalGabung,
 		NamaLengkap:   form.NamaLengkap,
 		NRP:           form.NRP,
@@ -603,6 +635,13 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (*model.Use
 		redirect(w, r, "/login")
 		return nil, session.Session{}, false
 	}
+	if sessionValue.MustChangePassword {
+		// Turned away rather than shown a dialog over the page: a dialog is
+		// only a dialog to a browser, and this account still has the password
+		// it was handed.
+		redirect(w, r, onboardingPath)
+		return nil, session.Session{}, false
+	}
 	return user, sessionValue, true
 }
 
@@ -632,6 +671,12 @@ func (s *Server) requireAccess(w http.ResponseWriter, r *http.Request, navKey st
 // server bound to it. The settled project is written back to the session, so the
 // choice survives the next request without being asked again.
 func (s *Server) bindProject(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session) (*Server, session.Session, bool) {
+	// The form handlers load the session themselves, so the block that
+	// requireUser applies to every GET is applied again here for every POST.
+	if sessionValue.MustChangePassword {
+		redirect(w, r, onboardingPath)
+		return nil, sessionValue, false
+	}
 	reachable, err := s.projects.Reachable(r.Context(), user)
 	if err != nil {
 		log.Printf("read projects: %v", err)

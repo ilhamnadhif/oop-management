@@ -23,6 +23,14 @@ type Session struct {
 	// Empty means it has not been settled yet, which is how a session starts.
 	// The request that first needs it settles it and stores it back.
 	Project string
+	// MustChangePassword is set when the sign-in that opened this session used
+	// the password every new account starts with. While it is set the session
+	// may reach nothing but the page that replaces that password.
+	//
+	// It lives here rather than on the account because the plaintext is only in
+	// hand at sign-in; reading it back off the stored hash would cost a bcrypt
+	// compare against a password nobody supplied.
+	MustChangePassword bool
 }
 
 type Manager struct {
@@ -40,7 +48,35 @@ func NewManager(ttl time.Duration, secure bool) *Manager {
 	}
 }
 
+// CreateWithPasswordChange opens a session that may do nothing until the account
+// has been given a password of its own.
+func (m *Manager) CreateWithPasswordChange(w http.ResponseWriter, userID string, now time.Time) (Session, error) {
+	return m.create(w, userID, now, true)
+}
+
+// PasswordChanged lifts the block, so the session the person is already in
+// carries on rather than sending them back to sign in again.
+func (m *Manager) PasswordChanged(r *http.Request) (Session, bool) {
+	cookie, err := r.Cookie(CookieName)
+	if err != nil || cookie.Value == "" {
+		return Session{}, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stored, ok := m.sessions[cookie.Value]
+	if !ok {
+		return Session{}, false
+	}
+	stored.MustChangePassword = false
+	m.sessions[cookie.Value] = stored
+	return stored, true
+}
+
 func (m *Manager) Create(w http.ResponseWriter, userID string, now time.Time) (Session, error) {
+	return m.create(w, userID, now, false)
+}
+
+func (m *Manager) create(w http.ResponseWriter, userID string, now time.Time, mustChangePassword bool) (Session, error) {
 	sessionID, err := randomToken()
 	if err != nil {
 		return Session{}, err
@@ -50,7 +86,12 @@ func (m *Manager) Create(w http.ResponseWriter, userID string, now time.Time) (S
 		return Session{}, err
 	}
 
-	s := Session{UserID: userID, CSRFToken: csrfToken, ExpiresAt: now.Add(m.ttl)}
+	s := Session{
+		UserID:             userID,
+		CSRFToken:          csrfToken,
+		ExpiresAt:          now.Add(m.ttl),
+		MustChangePassword: mustChangePassword,
+	}
 	m.mu.Lock()
 	m.sessions[sessionID] = s
 	m.mu.Unlock()

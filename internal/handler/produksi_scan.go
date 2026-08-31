@@ -222,6 +222,10 @@ func (s *Server) beginScanRequest(w http.ResponseWriter, r *http.Request, label 
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "Sesi tidak valid. Silakan masuk kembali."})
 		return nil, nil, false
 	}
+	if sessionValue.MustChangePassword {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Buat password baru dulu sebelum memakai aplikasi."})
+		return nil, nil, false
+	}
 	if !CanAccess(user.Jabatan, "produksi-input") {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Jabatan Anda tidak berhak mengakses input Produksi."})
 		return nil, nil, false

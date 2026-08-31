@@ -521,6 +521,38 @@ func (r *GoogleSheetsRepository) MaxProjectSequence(ctx context.Context, prefix 
 	return highest, nil
 }
 
+// UpdateUserPassword writes the password cell and the audit stamp, and nothing
+// else. Rewriting the whole row would blank the profile photo, which no read
+// that reaches here has fetched.
+func (r *GoogleSheetsRepository) UpdateUserPassword(ctx context.Context, rowNumber int, passwordHash string, at time.Time) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, userSheet)
+	}
+	sheet := quoteSheet(userSheet)
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data: []*sheets.ValueRange{
+			{Range: fmt.Sprintf("%s!G%d", sheet, rowNumber), Values: [][]interface{}{{passwordHash}}},
+			{Range: fmt.Sprintf("%s!J%d", sheet, rowNumber), Values: [][]interface{}{{formatDateTime(at)}}},
+		},
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update password row %d: %w", rowNumber, err)
+	}
+	return nil
+}
+
+// CountUsers reports how many accounts exist. It answers one question: whether
+// this deployment has anybody yet, which is what decides if the bootstrap
+// registration page is open.
+func (r *GoogleSheetsRepository) CountUsers(ctx context.Context) (int, error) {
+	rows, err := r.readRows(ctx, userSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	return len(dataRows(rows)), nil
+}
+
 // UpdateUserProject writes the one cell that says which project an account
 // belongs to. It is its own call because assigning somebody to a site must not
 // rewrite their password hash or blank their photo.

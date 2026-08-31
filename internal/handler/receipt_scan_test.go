@@ -55,13 +55,13 @@ func newReceiptScanServer(t *testing.T, scanner receipt.Scanner) (*httptest.Serv
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
-	server, err := NewServer(testDeps(t, store, location, nowFunc, defaultTestBranding()))
+	deps := testDeps(t, store, location, nowFunc, defaultTestBranding())
+	server, err := NewServer(deps)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
 	server.WithReceiptScanner(scanner)
-	testServer := httptest.NewServer(server.Handler())
-	t.Cleanup(testServer.Close)
+	testServer := startFixtureServer(t, server, deps)
 	return testServer, store
 }
 

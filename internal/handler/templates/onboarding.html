@@ -1,0 +1,51 @@
+{{define "onboarding"}}
+{{template "pageHead" .}}
+<main class="auth-shell">
+  <section class="auth-card" aria-labelledby="onboarding-title">
+    {{template "brandLogo"}}
+    <p class="eyebrow">ORECON PUTRA PERKASA</p>
+    <h1 id="onboarding-title">Buat password baru</h1>
+    <p class="muted">
+      Halo {{.NamaLengkap}}. Akun Anda masih memakai password awal dari HR.
+      Buat password milik Anda sendiri untuk melanjutkan.
+    </p>
+    {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+    {{/* No way out of this page but through it: the account still holds a
+         password that was handed over out loud, so nothing else opens until it
+         has been replaced. */}}
+    <form method="post" action="/onboarding" class="stack-form" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+      <label for="password">{{template "icon" "lock"}}Password baru</label>
+      <div class="input-with-action">
+        <input id="password" name="password" type="password" placeholder="Minimal 8 karakter"
+          autocomplete="new-password" minlength="8" maxlength="72" required autofocus>
+        {{template "passwordToggle" "password"}}
+      </div>
+
+      <label for="konfirmasi_password">{{template "icon" "lock"}}Ulangi password baru</label>
+      <div class="input-with-action">
+        <input id="konfirmasi_password" name="konfirmasi_password" type="password" placeholder="Ulangi password baru"
+          autocomplete="new-password" minlength="8" maxlength="72" required
+          data-confirm-for="password" data-confirm-message="Konfirmasi password tidak sama.">
+        {{template "passwordToggle" "konfirmasi_password"}}
+      </div>
+
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "check"}}<span data-submit-label>Simpan password</span>
+      </button>
+    </form>
+
+    {{/* Signing out is the one other thing they may do: an account handed to
+         the wrong person has to be able to get off it. */}}
+    <form method="post" action="/logout" class="auth-signout">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button class="button subtle" type="submit">{{template "icon" "logout"}}Keluar</button>
+    </form>
+  </section>
+</main>
+<script src="/static/js/auth.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

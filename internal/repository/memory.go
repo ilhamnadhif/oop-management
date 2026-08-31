@@ -101,6 +101,24 @@ func (r *TestRepository) MaxProjectSequence(_ context.Context, prefix string) (i
 	return highest, nil
 }
 
+func (r *TestRepository) UpdateUserPassword(_ context.Context, rowNumber int, passwordHash string, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.users) {
+		return fmt.Errorf("invalid user row number %d", rowNumber)
+	}
+	r.users[index].PasswordHash = passwordHash
+	r.users[index].UpdatedAt = at
+	return nil
+}
+
+func (r *TestRepository) CountUsers(context.Context) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.users), nil
+}
+
 func (r *TestRepository) UpdateUserProject(_ context.Context, rowNumber int, project string, at time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

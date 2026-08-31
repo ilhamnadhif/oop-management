@@ -10,7 +10,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
-	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strings"
@@ -28,12 +27,7 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
-	server, err := NewServer(testDeps(t, store, location, nowFunc, Branding{}))
-	if err != nil {
-		t.Fatalf("new server: %v", err)
-	}
-	testServer := httptest.NewServer(server.Handler())
-	defer testServer.Close()
+	testServer := newFixtureServer(t, testDeps(t, store, location, nowFunc, Branding{}))
 
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -136,18 +130,13 @@ func TestLoginFailureUsesGenericMessage(t *testing.T) {
 	nowFunc := func() time.Time { return now }
 	deps := testDeps(t, store, time.Local, nowFunc, Branding{})
 	auth := deps.Auth
-	server, err := NewServer(deps)
-	if err != nil {
-		t.Fatalf("new server: %v", err)
-	}
+	testServer := newFixtureServer(t, deps)
 	if _, err := auth.Register(context.Background(), service.RegisterInput{
 		TanggalGabung: "2026-08-07", NamaLengkap: "Budi", NRP: "1", Jabatan: "Produksi",
 		Email: "budi@example.com", Password: "rahasia123", Status: model.StatusAktif,
 	}); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	testServer := httptest.NewServer(server.Handler())
-	defer testServer.Close()
 	response, err := http.PostForm(testServer.URL+"/login", urlValues(map[string]string{"identifier": "1", "password": "salah123"}))
 	if err != nil {
 		t.Fatalf("login: %v", err)

@@ -30,6 +30,10 @@ func (s *Server) handleProjectSwitch(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
+	if sessionValue.MustChangePassword {
+		redirect(w, r, onboardingPath)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Form tidak valid", http.StatusUnprocessableEntity)
 		return
@@ -87,6 +91,10 @@ func safeReturnPath(referer string) string {
 // writes the error response itself and returns it, so the caller only has to
 // check for one.
 func (s *Server) forProjectJSON(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session) (*Server, error) {
+	if sessionValue.MustChangePassword {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Buat password baru dulu sebelum memakai aplikasi."})
+		return nil, errMustChangePassword
+	}
 	reachable, err := s.projects.Reachable(r.Context(), user)
 	if err != nil {
 		log.Printf("read projects: %v", err)
@@ -113,6 +121,10 @@ func (s *Server) forProjectJSON(w http.ResponseWriter, r *http.Request, user *mo
 	return bound, nil
 }
 
-// errNoProject is returned when an account belongs nowhere. The caller has
-// already been answered by the time it sees this.
-var errNoProject = errors.New("akun tanpa project")
+// errNoProject is returned when an account belongs nowhere, and
+// errMustChangePassword when the account still holds the password it was
+// handed. The caller has already been answered by the time it sees either.
+var (
+	errNoProject          = errors.New("akun tanpa project")
+	errMustChangePassword = errors.New("password awal belum diganti")
+)

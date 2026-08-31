@@ -39,6 +39,8 @@ var navItems = []NavItem{
 	{Key: "hr", Label: "HR", Icon: "users", Children: []NavItem{
 		{Key: "hr-overview", Label: "Overview", Path: "/hr/overview", Icon: "activity",
 			Lede: "Ringkasan karyawan, kehadiran, dan pengajuan leave."},
+		{Key: "hr-karyawan", Label: "Input Karyawan", Path: "/hr/karyawan", Icon: "users",
+			Lede: "Daftarkan karyawan baru ke project ini. Akun dibuat dengan password awal."},
 		{Key: "hr-approval-leave", Label: "Approval Leave", Path: "/hr/approval-leave", Icon: "check",
 			Lede: "Tinjau dan putuskan pengajuan cuti atau izin karyawan."},
 		{Key: "hr-export", Label: "Export Data", Path: "/hr/export", Icon: "save",

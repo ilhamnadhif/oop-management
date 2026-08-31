@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"opp-management/internal/model"
+	"opp-management/internal/service"
 )
 
 // loggedInClient signs in as Management, the position that may open every menu,
@@ -37,19 +40,19 @@ func loggedInClientAs(t *testing.T, testServer *httptest.Server, jabatan string)
 	}
 	client := &http.Client{Jar: jar}
 
-	registerResponse, err := client.PostForm(testServer.URL+"/register", urlValues(map[string]string{
-		"tanggal_gabung":  "2026-08-07",
-		"nama_lengkap":    "Budi Santoso",
-		"nrp":             nrp,
-		"jabatan":         jabatan,
-		"email":           email,
-		"password":        "rahasia123",
-		"status_pengguna": model.StatusAktif,
-	}))
-	if err != nil {
-		t.Fatalf("register request: %v", err)
+	// Created through the auth service rather than the registration page: that
+	// page closes as soon as one account exists, and several tests need two.
+	if _, err := fixtureAuthFor(t, testServer).Register(context.Background(), service.RegisterInput{
+		TanggalGabung: "2026-08-07",
+		NamaLengkap:   "Budi Santoso",
+		NRP:           nrp,
+		Jabatan:       jabatan,
+		Email:         email,
+		Password:      "rahasia123",
+		Status:        model.StatusAktif,
+	}); err != nil && !errors.Is(err, service.ErrDuplicateUser) {
+		t.Fatalf("create account: %v", err)
 	}
-	registerResponse.Body.Close()
 
 	loginResponse, err := client.PostForm(testServer.URL+"/login", urlValues(map[string]string{
 		"identifier": nrp,

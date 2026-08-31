@@ -39,6 +39,22 @@ type RegisterInput struct {
 	Email         string
 	Password      string
 	Status        string
+	// Project is the site this account works in. Empty on the bootstrap
+	// registration, which happens before any project exists.
+	Project string
+}
+
+// DefaultPassword is what an account made by HR starts with. It is not a secret
+// and is not meant to be one: it is handed over out loud, and the first sign-in
+// with it will not let the person do anything until they have replaced it.
+const DefaultPassword = "password"
+
+// IsDefaultPassword reports whether a password typed at sign-in is the one every
+// new account starts with. It compares the plaintext, which is only ever in hand
+// at that moment - checking the stored hash instead would mean a bcrypt compare
+// on a password nobody supplied.
+func IsDefaultPassword(password string) bool {
+	return password == DefaultPassword
 }
 
 type ActivityMeta struct {
@@ -135,6 +151,7 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*model
 		Email:          input.Email,
 		PasswordHash:   string(passwordHash),
 		StatusPengguna: input.Status,
+		Project:        input.Project,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -142,6 +159,64 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*model
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	return user, nil
+}
+
+// AddEmployee is Register as HR uses it: the person being added is not present
+// to choose a password, so the account starts on the default one and cannot be
+// used for anything until it is replaced.
+//
+// allowManagement is the caller's own authority. HR may add every position but
+// Management: an HR who could mint a Management account could hand themselves
+// every project, which is the one escalation this form must not allow.
+func (s *AuthService) AddEmployee(ctx context.Context, input RegisterInput, allowManagement bool) (*model.User, error) {
+	if !allowManagement {
+		if canonical, ok := canonicalJabatan(input.Jabatan); ok && canonical == model.JabatanManagement {
+			return nil, fmt.Errorf("%w: hanya Management yang bisa menambah akun Management", ErrValidation)
+		}
+	}
+	input.Password = DefaultPassword
+	return s.Register(ctx, input)
+}
+
+// ChangePassword replaces one account's password. It is what the sign-in
+// onboarding writes, and it refuses to set the default back: an account that
+// could be handed the shared password again would be asked to change it again
+// on the next sign-in, forever.
+func (s *AuthService) ChangePassword(ctx context.Context, userID, password, confirmation string) error {
+	if password != confirmation {
+		return fmt.Errorf("%w: konfirmasi password tidak sama", ErrValidation)
+	}
+	passwordBytes := []byte(password)
+	if len(passwordBytes) < 8 || len(passwordBytes) > 72 {
+		return fmt.Errorf("%w: password harus 8 sampai 72 byte", ErrValidation)
+	}
+	if IsDefaultPassword(password) {
+		return fmt.Errorf("%w: password baru tidak boleh sama dengan password awal", ErrValidation)
+	}
+
+	_, rowNumber, err := s.store.FindUserRow(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("read user %s: %w", userID, err)
+	}
+	hash, err := bcrypt.GenerateFromPassword(passwordBytes, s.hashCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	if err := s.store.UpdateUserPassword(ctx, rowNumber, string(hash), s.now().In(s.location)); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	return nil
+}
+
+// HasAccounts reports whether this deployment has any accounts yet. The public
+// registration page is open only while it does not: somebody has to be able to
+// make the first one, and nobody should be able to make the rest.
+func (s *AuthService) HasAccounts(ctx context.Context) (bool, error) {
+	count, err := s.store.CountUsers(ctx)
+	if err != nil {
+		return false, fmt.Errorf("count users: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (s *AuthService) Authenticate(ctx context.Context, identifier, password string, meta ActivityMeta) (*model.User, error) {
