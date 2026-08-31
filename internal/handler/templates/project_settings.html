@@ -168,10 +168,10 @@
                 <input type="hidden" name="project_nama" value="{{$.Selected.Nama}}">
                 <input type="hidden" name="user_id" value="{{.UserID}}">
                 <label class="sr-only" for="assign-{{.UserID}}">Project untuk {{.NamaLengkap}}</label>
-                <select id="assign-{{.UserID}}" name="user_project" onchange="this.form.submit()">
+                <select id="assign-{{.UserID}}" name="user_project" data-auto-submit>
                   {{range $.Assignable}}<option value="{{.}}"{{if eq . $assigned}} selected{{end}}>{{if eq . $.SemuaProyek}}Semua project{{else}}{{.}}{{end}}</option>{{end}}
                 </select>
-                <noscript><button class="button subtle" type="submit">Simpan</button></noscript>
+                <button class="button subtle table-action" type="submit" data-auto-submit-fallback>Simpan</button>
               </form>
             </td>
           </tr>

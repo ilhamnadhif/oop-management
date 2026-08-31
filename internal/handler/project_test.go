@@ -574,3 +574,87 @@ func TestAddProjectReportsASpreadsheetItCannotPrepare(t *testing.T) {
 		t.Fatalf("stored %d projects, want the failed one left out", got)
 	}
 }
+
+// The app sends script-src 'self' with no 'unsafe-inline'. An inline handler is
+// not blocked loudly under that policy - it simply never runs, so a control
+// wired with one looks fine and does nothing. The switcher shipped that way
+// once; this is the guard that it cannot happen again anywhere.
+func TestTemplatesCarryNoInlineEventHandlers(t *testing.T) {
+	entries, err := assetFiles.ReadDir("templates")
+	if err != nil {
+		t.Fatalf("read templates: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no templates found")
+	}
+	for _, entry := range entries {
+		body, err := assetFiles.ReadFile("templates/" + entry.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		for _, handler := range []string{"onclick=", "onchange=", "onsubmit=", "oninput=", "onload=", "onerror="} {
+			if strings.Contains(string(body), handler) {
+				t.Errorf("%s uses %s, which the Content-Security-Policy silently drops; move it to a script under /static/js", entry.Name(), handler)
+			}
+		}
+	}
+}
+
+// The switcher is a select with no submit of its own, so the script that
+// submits it on change has to be wired and served, and a button has to be there
+// for the case where it is not.
+func TestProjectSwitcherIsWiredToItsScript(t *testing.T) {
+	testServer, _, _ := newTwoProjectServer(t)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/dashboard")
+	for _, fragment := range []string{
+		`<select id="projectSwitch" name="project" data-auto-submit>`,
+		`data-auto-submit-fallback`,
+		"/static/js/auto-submit.js",
+	} {
+		if !strings.Contains(page, fragment) {
+			t.Fatalf("the switcher is missing %q", fragment)
+		}
+	}
+	asset, err := client.Get(testServer.URL + "/static/js/auto-submit.js")
+	if err != nil {
+		t.Fatalf("get script: %v", err)
+	}
+	defer asset.Body.Close()
+	if asset.StatusCode != http.StatusOK {
+		t.Fatalf("auto-submit.js is not served: %d", asset.StatusCode)
+	}
+}
+
+// Switching projects has to outlive the request that did it: the choice lives
+// in the session, so every page after it reads the same project until it is
+// switched again.
+func TestTheChosenProjectSurvivesReloads(t *testing.T) {
+	testServer, stores, _ := newTwoProjectServer(t)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/dashboard")
+	if !strings.Contains(page, `>`+testProjectName+`</option>`) {
+		t.Fatal("the switcher does not offer the first project")
+	}
+	switchProject(t, client, testServer, csrfFromForm(t, page), secondProjectName)
+
+	// Three loads of three different pages, all still in the chosen project.
+	for _, path := range []string{"/dashboard", "/produksi", "/dashboard"} {
+		page = fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, `value="`+secondProjectName+`" selected`) {
+			t.Fatalf("%s came back in another project after switching:\n%s", path, firstLines(page))
+		}
+	}
+
+	// And the data behind those pages comes from that project's own store.
+	seedUnitIn(t, stores.forProject(secondProjectName))
+	page = fetchAuthedPage(t, client, testServer.URL+"/produksi")
+	if !strings.Contains(page, "B 1234 ABC") {
+		t.Fatal("the page is not reading the chosen project's register")
+	}
+	if rows := stores.forProject(testProjectName).UnitDTList(); len(rows) != 0 {
+		t.Fatal("the fixture leaked into the other project's store")
+	}
+}

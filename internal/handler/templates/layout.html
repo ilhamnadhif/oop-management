@@ -85,10 +85,12 @@
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <label class="sr-only" for="projectSwitch">Project aktif</label>
           {{template "icon" "pin"}}
-          <select id="projectSwitch" name="project" onchange="this.form.submit()">
+          <select id="projectSwitch" name="project" data-auto-submit>
             {{range .Projects}}<option value="{{.}}"{{if eq . $.Project}} selected{{end}}>{{.}}</option>{{end}}
           </select>
-          <noscript><button class="button subtle" type="submit">Pindah</button></noscript>
+          {{/* Removed by auto-submit.js when it runs, so the control works with
+               a script and still works without one. */}}
+          <button class="button subtle project-switch-go" type="submit" data-auto-submit-fallback>Pindah</button>
         </form>
         {{else if .Project}}
         <p class="project-badge">{{template "icon" "pin"}}<span>{{.Project}}</span></p>
@@ -168,6 +170,9 @@
 {{/* Field help marks appear on several pages, so their script rides in the
      shell alongside the dialog one. */}}
 <script src="/static/js/field-help.js" defer></script>
+{{/* The project switcher rides in the shell, so the script that submits it on
+     change does too. */}}
+<script src="/static/js/auto-submit.js" defer></script>
 {{/* Every page with an upload gets the same camera-or-file sheet on a phone. */}}
 <script src="/static/js/upload.js" defer></script>
 {{/* The avatar is shown in a circle everywhere, so the profile form crops to
