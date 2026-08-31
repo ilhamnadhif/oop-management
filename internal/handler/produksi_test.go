@@ -27,7 +27,6 @@ func validProduksiForm(csrf string) url.Values {
 	return urlValues(map[string]string{
 		"csrf_token": csrf,
 		"tanggal":    "2026-08-07",
-		"project":    "PCPM",
 		"supplier":   "HPP",
 		"quary":      "HS",
 		"kategori":   "Replace",
@@ -48,9 +47,8 @@ func TestProduksiFormRendersOptionsAndUnits(t *testing.T) {
 		`value="2026-08-07"`, // today is preselected
 		// Creatable pickers: a text input backed by a datalist of what the
 		// sheet already holds.
-		`list="projectList"`, `list="supplierList"`, `list="quaryList"`,
+		`list="supplierList"`, `list="quaryList"`,
 		`list="kategoriList"`, `list="layerList"`, `list="lokasiList"`,
-		`<option value="PCPM">`,
 		`<option value="HS">`,
 		`<option value="Replace">`,
 		`<option value="L5">`,
@@ -76,8 +74,8 @@ func TestProduksiFormRendersOptionsAndUnits(t *testing.T) {
 	// Counted inside the entry form itself. The scan panel above it carries a
 	// picker of its own, and counting the whole page would measure both.
 	form := page[strings.Index(page, "data-produksi-form"):]
-	if got := strings.Count(form, `placeholder="Pilih atau ketik…"`); got != 6 {
-		t.Fatalf("expected 6 creatable pickers in the form, got %d", got)
+	if got := strings.Count(form, `placeholder="Pilih atau ketik…"`); got != 5 {
+		t.Fatalf("expected 5 creatable pickers in the form, got %d", got)
 	}
 }
 
@@ -124,7 +122,7 @@ func TestProduksiNopolPickerIsNotCreatable(t *testing.T) {
 	}
 
 	// Every other picker stays creatable.
-	for _, id := range []string{"project", "supplier", "quary", "kategori", "layer", "lokasi"} {
+	for _, id := range []string{"supplier", "quary", "kategori", "layer", "lokasi"} {
 		if strings.Contains(tagAt(t, page, `id="`+id+`"`), "data-no-create") {
 			t.Fatalf("%s should still be creatable", id)
 		}

@@ -68,7 +68,7 @@ func (s *Server) handleFuelMasuk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFuelMasukPage(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "a2b-fuel-masuk")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "a2b-fuel-masuk")
 	if !ok {
 		return
 	}
@@ -87,7 +87,8 @@ func (s *Server) handleFuelMasukCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "a2b-fuel-masuk") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "a2b-fuel-masuk")
+	if !okProject {
 		return
 	}
 
@@ -201,7 +202,7 @@ func (s *Server) renderFuelMasuk(w http.ResponseWriter, r *http.Request, user *m
 // delivery may see the pictures it was recorded with, so the check is the same
 // one that guards the input page.
 func (s *Server) handleFuelMasukPhoto(w http.ResponseWriter, r *http.Request) {
-	user, _, ok := s.requireAccess(w, r, "a2b-fuel-masuk")
+	s, user, _, ok := s.requireAccess(w, r, "a2b-fuel-masuk")
 	if !ok {
 		return
 	}

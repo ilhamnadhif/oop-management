@@ -193,6 +193,109 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .topbar-date { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0; padding-right: 1rem; border-right: 1px solid var(--line); color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
 .topbar-date .date-short { display: none; }
 .topbar-date .icon { color: var(--danger); }
+/* The project switcher sits ahead of the date, reading as the thing the rest
+   of the header is about: everything on the page below belongs to it. */
+.project-switch { display: flex; align-items: center; gap: 0.4rem; margin: 0; padding-right: 1rem; border-right: 1px solid var(--line); }
+.project-switch .icon { color: var(--danger); }
+.project-switch select { min-width: 8rem; padding: 0.3rem 1.7rem 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 8px; color: var(--navy-dark); font-size: 0.84rem; font-weight: 600; }
+.project-badge { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0; padding-right: 1rem; border-right: 1px solid var(--line); color: var(--navy-dark); font-size: 0.84rem; font-weight: 600; white-space: nowrap; }
+.project-badge .icon { color: var(--danger); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Project settings. The menu picker is a grid of ticks rather than a list of
+   checkboxes: which modules a project runs is read at a glance far more often
+   than it is changed. */
+.menu-picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.6rem; }
+/* Written as .stack-form label.menu-option because the plain label rule above
+   is more specific than a lone class, and its flex-wrap would drop the tick
+   onto a line of its own the moment a module's page list ran long. */
+.menu-option,
+.stack-form label.menu-option { display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 0.6rem; margin: 0; padding: 0.75rem 0.85rem; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease; }
+.menu-option:hover { border-color: var(--navy); background: #f7fafb; }
+.menu-option:has(input:checked) { border-color: var(--navy); background: #eef4f7; }
+/* The global input rule stretches every field, which would blow up a checkbox
+   the same way the comment above .checkbox-row warns about. */
+.menu-option input[type="checkbox"] { flex: none; width: 18px; min-width: 18px; height: 18px; min-height: 0; margin: 0.15rem 0 0; padding: 0; border-radius: 4px; box-shadow: none; accent-color: var(--danger); cursor: pointer; }
+.menu-option-locked input[type="checkbox"] { cursor: default; }
+.menu-option span { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.menu-option strong { color: var(--navy-dark); font-size: 0.9rem; }
+.menu-option small { color: var(--muted); font-size: 0.76rem; line-height: 1.35; }
+.menu-option-locked { background: #f6f8f9; cursor: default; }
+.menu-option-locked:hover { border-color: var(--line); background: #f6f8f9; }
+
+/* The project list. Cards rather than table rows: a project is a name, what it
+   runs, and how many people are in it - more than a row reads well. */
+.project-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 0.9rem; margin: 0; padding: 0; list-style: none; }
+.project-card { display: flex; flex-direction: column; gap: 0.8rem; padding: 1.05rem 1.1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
+.project-card:hover { border-color: #c3d3da; box-shadow: 0 6px 18px rgba(16, 47, 72, 0.07); }
+.project-card-off { background: #fafbfc; }
+.project-card-off .project-card-name h3 { color: var(--muted); }
+.project-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.7rem; }
+.project-card-name { min-width: 0; }
+.project-card-name h3 { margin: 0; color: var(--navy-dark); font-size: 1.05rem; letter-spacing: 0.01em; }
+.project-card-name p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.76rem; }
+.project-card-menus { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+/* Pushed down so the action sits at the foot of every card, level across a row
+   whatever length the module list ran to. */
+.project-card-facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin: 0; margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+.project-card-facts dt { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; }
+.project-card-facts dd { margin: 0.1rem 0 0; color: var(--navy-dark); font-size: 0.88rem; font-weight: 600; }
+.project-card-sheet { flex: 1; min-width: 0; }
+.project-card-sheet dd { overflow: hidden; color: var(--muted); font-size: 0.74rem; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.project-card-action { align-self: flex-start; }
+
+/* A tag names one module a project runs. */
+.tag { display: inline-flex; align-items: center; padding: 0.22rem 0.55rem; border-radius: 999px; background: #eef3f5; color: var(--navy-dark); font-size: 0.73rem; font-weight: 600; }
+.tag-all { background: #dcf7e8; color: #17633b; }
+.tag-none { background: #ffe1e5; color: #a60d20; }
+
+/* A note about one field, folded into a mark beside its label. The bubble is
+   shown on hover and on focus: focus is what gives it to the keyboard and to
+   touch, where there is no hover to have.
+
+   Anchored to the mark's left rather than centred on it, because these sit at
+   the left of half-width grid cells and a centred bubble would hang off the
+   panel. */
+.field-help { position: relative; display: inline-flex; }
+.field-help-mark { display: grid; place-items: center; width: 17px; min-width: 17px; height: 17px; min-height: 0; padding: 0; border: 0; border-radius: 999px; color: var(--muted); background: none; cursor: help; }
+.field-help-mark .icon { width: 15px; height: 15px; }
+.field-help-mark:hover, .field-help:focus-within .field-help-mark { color: var(--danger); }
+.field-help-mark:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.field-help-bubble { position: absolute; bottom: calc(100% + 9px); left: -9px; z-index: 30; width: max-content; max-width: min(280px, 68vw); padding: 0.5rem 0.7rem; border-radius: 10px; color: #fff; background: var(--navy-dark); font-size: 0.76rem; font-weight: 400; line-height: 1.45; white-space: normal; opacity: 0; visibility: hidden; transition: opacity 0.12s ease, visibility 0.12s ease; pointer-events: none; }
+/* The tail points back at the mark it belongs to. */
+.field-help-bubble::after { position: absolute; top: 100%; left: 13px; border: 5px solid transparent; border-top-color: var(--navy-dark); content: ""; }
+.field-help:hover .field-help-bubble,
+.field-help:focus-within .field-help-bubble,
+.field-help[data-open] .field-help-bubble { opacity: 1; visibility: visible; }
+.field-help[data-open] .field-help-mark { color: var(--danger); }
+
+/* A label and its help mark on one line. The margin the lone label rule gives
+   moves here, so a field with a mark sits exactly where one without it does. */
+.field-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.6rem; }
+.stack-form .field-head label, .field-head label { margin-top: 0; }
+
+/* The way back out of a detail page. */
+.back-link { display: inline-flex; align-items: center; gap: 0.35rem; margin-bottom: 1rem; color: var(--muted); font-size: 0.85rem; font-weight: 600; text-decoration: none; }
+.back-link:hover { color: var(--navy); }
+
+/* A value the form shows but does not let anybody change. */
+.field-readonly { margin-top: 1.1rem; padding: 0.8rem 0.9rem; border: 1px solid var(--line); border-radius: 12px; background: #f7fafb; }
+.field-readonly-label { display: flex; align-items: center; gap: 0.35rem; color: var(--navy-dark); font-size: 0.82rem; font-weight: 600; }
+.field-readonly code { display: block; margin-top: 0.35rem; overflow-wrap: anywhere; color: var(--muted); font-size: 0.78rem; }
+.field-readonly .hint { margin-bottom: 0; }
+
+/* Numbered setup instructions inside a dialog. */
+.steps { margin: 0 0 1.1rem; padding-left: 1.2rem; color: var(--muted); font-size: 0.83rem; line-height: 1.55; }
+.steps li + li { margin-top: 0.25rem; }
+.steps code { color: var(--navy-dark); }
+
+/* Names the project a form writes into, sitting opposite the panel heading. */
+.panel-tag { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0; padding: 0.25rem 0.6rem; border-radius: 999px; background: #eef3f5; color: var(--navy-dark); font-size: 0.78rem; font-weight: 600; }
+.panel-tag .icon { color: var(--danger); }
+
+.inline-form { display: flex; align-items: center; gap: 0.4rem; margin: 0; }
+.inline-form select { padding: 0.25rem 1.6rem 0.25rem 0.45rem; border: 1px solid var(--line); border-radius: 8px; font-size: 0.82rem; }
+
 .topbar-user { padding-left: 1rem; border-left: 1px solid var(--line); text-align: right; }
 .topbar-user-name { margin-bottom: 0; color: var(--navy-dark); font-size: 0.9rem; font-weight: 600; line-height: 1.3; }
 .topbar-user-role { margin-bottom: 0; color: var(--muted); font-size: 0.76rem; }
@@ -215,6 +318,16 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .calc-grid .accent-amber { color: #b8791f; }
 .panel { padding: clamp(1.4rem, 3.5vw, 2.1rem); border: 1px solid var(--line); border-radius: 20px; background: var(--white); box-shadow: 0 10px 32px rgba(23, 63, 95, 0.06); }
 .panel + .panel, .clock-hero + .panel { margin-top: 1.6rem; }
+/* The rule above only catches two bare panels side by side. A page whose panels
+   are wrapped - a form holding some of them, a plain panel after it - has
+   siblings that are not panels, and those sat flush against each other. Spacing
+   is a property of the page's top level, so it is stated there: every block
+   after the first is separated from the one before it, whatever kind it is.
+   Margins collapse in this container, so nothing here doubles up on spacing an
+   element already carries. */
+.app-shell > * + .panel,
+.app-shell > * + form,
+.app-shell > * + section { margin-top: 1.6rem; }
 /* Panels laid out by a grid are siblings too, and the stacking margin above
    would push every card but the first down and shorten it inside its row. */
 .kpi-grid > .panel, .chart-grid > .panel { margin-top: 0; }
@@ -252,6 +365,9 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .camera-indicator.ready { color: var(--success); }
 .camera-status { min-height: 1.3rem; margin: 0.8rem 0 1rem; color: var(--muted); font-size: 0.86rem; }
 .action-row { justify-content: flex-end; }
+/* An action row is separated from whatever it follows. Flush against the last
+   field it reads as part of that field rather than as the end of the form. */
+.panel > * + .action-row { margin-top: 1.6rem; }
 
 .map-frame { position: relative; overflow: hidden; border-radius: 16px; background: #e6edf1; }
 #attendanceMap { width: 100%; height: 320px; }
@@ -394,6 +510,10 @@ dialog.upload-sheet { width: min(420px, calc(100vw - 1.5rem)); margin-top: auto;
    The shadow stands in for one until the script upgrades it. */
 .modal[open] { position: fixed; inset: 0; margin: auto; box-shadow: 0 0 0 100vmax rgba(16, 47, 72, 0.62), 0 24px 60px rgba(16, 47, 72, 0.35); }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+/* An alert inside a dialog answers the dialog's own form, so it sits between
+   the heading and the fields rather than floating at the page's top edge where
+   the backdrop would cover it. */
+.modal > .alert { margin-bottom: 1.1rem; }
 .modal-head h2 { margin: 0.2rem 0 0; font-size: 1.1rem; }
 
 /* Profile ----------------------------------------------------------------- */
@@ -445,6 +565,11 @@ dialog.upload-sheet { width: min(420px, calc(100vw - 1.5rem)); margin-top: auto;
   .account-identity, .account-summary .group-caret { display: none; }
   /* The full date runs out of room beside the menu button and the avatar. */
   .topbar-date { padding-right: 0.7rem; }
+  /* On a phone the header has room for the project or the date, not both, and
+     which project you are in matters more than which day it is. */
+  .project-switch { padding-right: 0.7rem; }
+  .project-switch select { min-width: 6rem; }
+  .project-badge { padding-right: 0.7rem; }
   .topbar-date .date-long { display: none; }
   .topbar-date .date-short { display: inline; }
   .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 1100; width: min(272px, 82vw); transform: translateX(-100%); transition: transform 0.2s ease; }

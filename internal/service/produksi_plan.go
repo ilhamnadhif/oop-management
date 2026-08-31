@@ -44,10 +44,9 @@ func (s *ProduksiService) CreatePlan(ctx context.Context, user *model.User, inpu
 	if err != nil {
 		return nil, err
 	}
-	project, err := adoptOption("Project", input.Project, options.Project)
-	if err != nil {
-		return nil, err
-	}
+	// Stamped rather than typed: a plan lives in one project's spreadsheet, so
+	// it can belong to no other.
+	project := strings.Join(strings.Fields(input.Project), " ")
 	supplier, err := adoptOption("Supplier", input.Supplier, options.Supplier)
 	if err != nil {
 		return nil, err

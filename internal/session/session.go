@@ -15,6 +15,14 @@ type Session struct {
 	UserID    string
 	CSRFToken string
 	ExpiresAt time.Time
+	// Project is the project this session is currently working in, by name.
+	// Only an account that reaches every project can change it, and changing it
+	// is what the switcher does: it is a property of the session rather than of
+	// the account, so switching does not rewrite anybody's record.
+	//
+	// Empty means it has not been settled yet, which is how a session starts.
+	// The request that first needs it settles it and stores it back.
+	Project string
 }
 
 type Manager struct {
@@ -102,6 +110,25 @@ func (m *Manager) Delete(r *http.Request, w http.ResponseWriter) {
 // ValidCSRFToken compares a token the caller already extracted. Multipart
 // handlers use this after they have size-limited and parsed the body
 // themselves, which is what ValidCSRF refuses to do on their behalf.
+// SetProject records the project this session is working in. It is stored
+// against the session id rather than sent to the browser: a project the cookie
+// carried could be edited into one the account may not open.
+func (m *Manager) SetProject(r *http.Request, project string) (Session, bool) {
+	cookie, err := r.Cookie(CookieName)
+	if err != nil || cookie.Value == "" {
+		return Session{}, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stored, ok := m.sessions[cookie.Value]
+	if !ok {
+		return Session{}, false
+	}
+	stored.Project = project
+	m.sessions[cookie.Value] = stored
+	return stored, true
+}
+
 func (m *Manager) ValidCSRFToken(provided string, s Session) bool {
 	return provided != "" && provided == s.CSRFToken
 }

@@ -75,7 +75,7 @@ func (s *Server) handleA2BHourMeter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHourMeterPage(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "a2b-hm")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "a2b-hm")
 	if !ok {
 		return
 	}
@@ -94,7 +94,8 @@ func (s *Server) handleHourMeterCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "a2b-hm") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "a2b-hm")
+	if !okProject {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)

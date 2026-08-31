@@ -221,8 +221,12 @@ func settleOption(value string, options []string) string {
 // usual case and is quicker than writing it on every line. Left empty it
 // changes nothing, and whatever the paper carried per row stands.
 type ScanCommit struct {
-	Rows     []ScanRow
-	Foto     []byte
+	Rows []ScanRow
+	Foto []byte
+	// Project is stamped by the caller from the project this request is working
+	// in. The paper has a column for it, but the sheet these rows are going into
+	// already settles the answer, so what the paper says is not consulted.
+	Project  string
 	Tanggal  string
 	Supplier string
 }
@@ -342,7 +346,7 @@ func (s *ProduksiService) CommitScan(ctx context.Context, user *model.User, comm
 		prepared = append(prepared, &model.Produksi{
 			ProduksiID:  fmt.Sprintf("%s%04d", produksiIDPrefix(now.Year()), highest),
 			Tanggal:     tanggal,
-			Project:     row.Project,
+			Project:     strings.Join(strings.Fields(commit.Project), " "),
 			Supplier:    rowSupplier,
 			Quary:       row.Quary,
 			Kategori:    row.Kategori,

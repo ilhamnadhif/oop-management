@@ -30,6 +30,11 @@ type Config struct {
 	SignatoryTitle string
 	SignatoryPlace string
 	CompanyName    string
+	// ProjectName names the project the app was already keeping books for. It
+	// is used once: to write the opening row of the project sheet on the first
+	// start after projects existed. After that the sheet is the authority and
+	// this is ignored.
+	ProjectName string
 	// The working day every attendance record is judged against.
 	WorkStart            string
 	WorkEnd              string
@@ -119,6 +124,7 @@ func Load() (Config, error) {
 		SignatoryTitle:        getenv("SIGNATORY_TITLE", "Direktur"),
 		SignatoryPlace:        strings.TrimSpace(os.Getenv("SIGNATORY_PLACE")),
 		CompanyName:           getenv("COMPANY_NAME", "PT Orecon Putra Perkasa"),
+		ProjectName:           getenv("PROJECT_NAME", "PCPM"),
 		WorkStart:             getenv("ATTENDANCE_START", "07:00"),
 		WorkEnd:               getenv("ATTENDANCE_END", "17:00"),
 		LateToleranceMinutes:  lateTolerance,

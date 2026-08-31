@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"golang.org/x/crypto/bcrypt"
-
 	"bytes"
 	"context"
 	"encoding/json"
@@ -23,7 +21,6 @@ import (
 	"opp-management/internal/photo"
 	"opp-management/internal/repository"
 	"opp-management/internal/service"
-	"opp-management/internal/session"
 )
 
 func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
@@ -31,10 +28,7 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
-	auth := service.NewAuthService(store, location, nowFunc).WithHashCost(bcrypt.MinCost)
-	attendance := service.NewAttendanceService(store, location, nowFunc)
-	webSessions := session.NewManager(24*time.Hour, false)
-	server, err := NewServer(auth, attendance, service.NewUnitDTService(store, location, nowFunc), service.NewProduksiService(store, location, nowFunc), service.NewOverviewService(store, location, nowFunc), service.NewUnitA2BService(store, location, nowFunc), service.NewNotaService(store, location, nowFunc), service.NewLeaveService(store, location, nowFunc), service.NewUnitOverviewService(store, location, nowFunc), service.NewFuelMasukService(store, location, nowFunc), service.NewFuelKeluarService(store, location, nowFunc), service.NewHourMeterService(store, location, nowFunc), webSessions, location, nowFunc, 2*1024*1024, photo.MaxOutputChars, Branding{})
+	server, err := NewServer(testDeps(t, store, location, nowFunc, Branding{}))
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -139,10 +133,10 @@ func TestWebRegisterLoginAndAttendanceFlow(t *testing.T) {
 func TestLoginFailureUsesGenericMessage(t *testing.T) {
 	store := repository.NewTestRepository()
 	now := time.Now()
-	auth := service.NewAuthService(store, time.Local, func() time.Time { return now }).WithHashCost(bcrypt.MinCost)
-	attendance := service.NewAttendanceService(store, time.Local, func() time.Time { return now })
-	webSessions := session.NewManager(time.Hour, false)
-	server, err := NewServer(auth, attendance, service.NewUnitDTService(store, time.Local, func() time.Time { return now }), service.NewProduksiService(store, time.Local, func() time.Time { return now }), service.NewOverviewService(store, time.Local, func() time.Time { return now }), service.NewUnitA2BService(store, time.Local, func() time.Time { return now }), service.NewNotaService(store, time.Local, func() time.Time { return now }), service.NewLeaveService(store, time.Local, func() time.Time { return now }), service.NewUnitOverviewService(store, time.Local, func() time.Time { return now }), service.NewFuelMasukService(store, time.Local, func() time.Time { return now }), service.NewFuelKeluarService(store, time.Local, func() time.Time { return now }), service.NewHourMeterService(store, time.Local, func() time.Time { return now }), webSessions, time.Local, func() time.Time { return now }, 2*1024*1024, photo.MaxOutputChars, Branding{})
+	nowFunc := func() time.Time { return now }
+	deps := testDeps(t, store, time.Local, nowFunc, Branding{})
+	auth := deps.Auth
+	server, err := NewServer(deps)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}

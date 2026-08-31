@@ -27,6 +27,7 @@ const (
 	fuelKeluarSheet   = "Fuel Keluar"
 	hourMeterSheet    = "Input HM"
 	produksiScanSheet = "Produksi Scan"
+	projectSheet      = "Project"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -37,15 +38,29 @@ var userHeaders = []string{
 	// Maintained from the profile dialog. punya_foto is read with the rest of
 	// the row; foto_profil is a base64 image and is fetched only by ReadUserPhoto.
 	"no_telp", "tanggal_lahir", "punya_foto", "foto_profil",
+	// The project this account works in, or "*" for an account that reaches
+	// every one of them.
+	"project",
 }
 
 // userReadColumn stops one short of the photo. Every listing and every lookup
 // uses it: the session user is loaded on each authenticated request, and
 // dragging one base64 image per row through that would cost megabytes an hour.
+//
+// The project column sits on the far side of the photo, because appending a
+// column costs an existing sheet nothing while inserting one in the middle
+// means moving every row's data. Reads fetch the two sides in one request and
+// stitch them, which is what the fuel sheets already do for the same reason.
 const (
-	userReadColumn  = "N"
-	userPhotoColumn = "O"
+	userReadColumn    = "N"
+	userPhotoColumn   = "O"
+	userProjectColumn = "P"
 )
+
+// userPhotoIndex is where the photo sits in a stitched user row: the column the
+// read deliberately skips, left blank so the indexes after it still line up
+// with the header.
+const userPhotoIndex = 14
 
 var activityHeaders = []string{
 	"activity_id", "user_id", "nrp", "email", "activity_type", "activity_time",
@@ -84,6 +99,20 @@ var produksiPlanHeaders = []string{
 var produksiScanHeaders = []string{
 	"scan_id", "sidik_sha256", "baris_masuk", "baris_ditolak",
 	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "foto_lembar",
+}
+
+// The project sheet lives in the master spreadsheet only. It is the one sheet
+// that says where the others are: every row names a spreadsheet of its own, and
+// the first project's row names the master itself.
+//
+// The settings columns are all optional. A blank cell means "use the deployment
+// default", so a project added with nothing but a name and a spreadsheet id
+// behaves exactly as the app did before it had settings.
+var projectHeaders = []string{
+	"project_id", "nama", "spreadsheet_id", "menu_aktif", "status",
+	"work_start", "work_end", "late_tolerance_minutes", "a2b_work_minutes",
+	"company", "signatory_name", "signatory_title", "signatory_place",
+	"created_at", "updated_at",
 }
 
 var unitA2BHeaders = []string{
@@ -231,7 +260,54 @@ const (
 	fuelUpdatedColumn    = "U"
 )
 
+// sheetDefinition pairs a sheet with the header it must carry.
+type sheetDefinition struct {
+	name    string
+	headers []string
+}
+
+// masterSheets hold identity and the list of projects. They live in one
+// spreadsheet no matter how many projects there are: an account has to be
+// recognised before anybody knows which project the person belongs to.
+var masterSheets = []sheetDefinition{
+	{name: userSheet, headers: userHeaders},
+	{name: activitySheet, headers: activityHeaders},
+	{name: projectSheet, headers: projectHeaders},
+}
+
+// projectSheets hold the books of one project. Every project has its own
+// spreadsheet of these, which is what keeps one project's rows away from
+// another's: they are never in the same file, so no filter has to hold.
+var projectSheets = []sheetDefinition{
+	{name: attendanceSheet, headers: attendanceHeaders},
+	{name: unitDTSheet, headers: unitDTHeaders},
+	{name: produksiSheet, headers: produksiHeaders},
+	{name: planSheet, headers: produksiPlanHeaders},
+	{name: produksiScanSheet, headers: produksiScanHeaders},
+	{name: unitA2BSheet, headers: unitA2BHeaders},
+	{name: notaSheet, headers: notaHeaders},
+	{name: notaItemSheet, headers: notaItemHeaders},
+	{name: leaveSheet, headers: leaveHeaders},
+	{name: fuelMasukSheet, headers: fuelMasukHeaders},
+	{name: fuelKeluarSheet, headers: fuelKeluarHeaders},
+	{name: hourMeterSheet, headers: hourMeterHeaders},
+}
+
+// EnsureSchema prepares the sheets one project's books need. It is what a
+// freshly created spreadsheet is handed to become a project store, and it is
+// safe to run against one that is already set up.
 func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
+	return r.ensureSheets(ctx, projectSheets)
+}
+
+// EnsureMasterSchema prepares the sheets that are not any one project's. The
+// first project's spreadsheet is usually also the master, in which case both
+// calls run against the same file and between them cover all of it.
+func (r *GoogleSheetsRepository) EnsureMasterSchema(ctx context.Context) error {
+	return r.ensureSheets(ctx, masterSheets)
+}
+
+func (r *GoogleSheetsRepository) ensureSheets(ctx context.Context, definitions []sheetDefinition) error {
 	spreadsheet, err := r.service.Spreadsheets.Get(r.spreadsheetID).Fields("sheets.properties").Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("get spreadsheet metadata: %w", err)
@@ -244,14 +320,13 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	missing := []string{userSheet, activitySheet, attendanceSheet, unitDTSheet, produksiSheet, planSheet, produksiScanSheet, unitA2BSheet, notaSheet, notaItemSheet, leaveSheet, fuelMasukSheet, fuelKeluarSheet, hourMeterSheet}
-	requests := make([]*sheets.Request, 0, len(missing))
-	for _, name := range missing {
-		if existing[name] {
+	requests := make([]*sheets.Request, 0, len(definitions))
+	for _, definition := range definitions {
+		if existing[definition.name] {
 			continue
 		}
 		requests = append(requests, &sheets.Request{
-			AddSheet: &sheets.AddSheetRequest{Properties: &sheets.SheetProperties{Title: name}},
+			AddSheet: &sheets.AddSheetRequest{Properties: &sheets.SheetProperties{Title: definition.name}},
 		})
 	}
 	if len(requests) > 0 {
@@ -260,68 +335,250 @@ func (r *GoogleSheetsRepository) EnsureSchema(ctx context.Context) error {
 		}
 	}
 
-	for _, definition := range []struct {
-		name    string
-		headers []string
-	}{
-		{name: userSheet, headers: userHeaders},
-		{name: activitySheet, headers: activityHeaders},
-		{name: attendanceSheet, headers: attendanceHeaders},
-		{name: unitDTSheet, headers: unitDTHeaders},
-		{name: produksiSheet, headers: produksiHeaders},
-		{name: planSheet, headers: produksiPlanHeaders},
-		{name: produksiScanSheet, headers: produksiScanHeaders},
-		{name: unitA2BSheet, headers: unitA2BHeaders},
-		{name: notaSheet, headers: notaHeaders},
-		{name: notaItemSheet, headers: notaItemHeaders},
-		{name: leaveSheet, headers: leaveHeaders},
-		{name: fuelMasukSheet, headers: fuelMasukHeaders},
-		{name: fuelKeluarSheet, headers: fuelKeluarHeaders},
-		{name: hourMeterSheet, headers: hourMeterHeaders},
-	} {
-		if err := r.ensureHeader(ctx, definition.name, definition.headers); err != nil {
+	return r.ensureHeaders(ctx, definitions)
+}
+
+// ensureHeaders reads every header row in one request and writes back only the
+// ones that need it, in one more.
+//
+// It used to be a read and a write per sheet, which on a brand new project
+// spreadsheet was two dozen round trips to Google - long enough that somebody
+// naming a project sat watching a button, and close enough to the server's write
+// deadline to be worth not finding out about the hard way.
+func (r *GoogleSheetsRepository) ensureHeaders(ctx context.Context, definitions []sheetDefinition) error {
+	if len(definitions) == 0 {
+		return nil
+	}
+	ranges := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		ranges = append(ranges, fmt.Sprintf("%s!1:1", quoteSheet(definition.name)))
+	}
+	response, err := r.service.Spreadsheets.Values.BatchGet(r.spreadsheetID).
+		Ranges(ranges...).ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("read headers: %w", err)
+	}
+	// The API answers in the order the ranges were asked for.
+	if len(response.ValueRanges) != len(definitions) {
+		return fmt.Errorf("read headers: asked for %d ranges, got %d", len(definitions), len(response.ValueRanges))
+	}
+
+	writes := make([]*sheets.ValueRange, 0, len(definitions))
+	for i, definition := range definitions {
+		var actual []interface{}
+		if values := response.ValueRanges[i].Values; len(values) > 0 {
+			actual = values[0]
+		}
+		write, err := headerNeedsWriting(definition.name, actual, definition.headers)
+		if err != nil {
 			return err
 		}
+		if write {
+			writes = append(writes, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!A1", quoteSheet(definition.name)),
+				Values: [][]interface{}{stringsToInterfaces(definition.headers)},
+			})
+		}
+	}
+	if len(writes) == 0 {
+		return nil
+	}
+	_, err = r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             writes,
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("write headers: %w", err)
 	}
 	return nil
 }
 
-func (r *GoogleSheetsRepository) ensureHeader(ctx context.Context, sheetName string, expected []string) error {
-	rangeName := fmt.Sprintf("%s!1:1", quoteSheet(sheetName))
-	values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID, rangeName).ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("read header for %s: %w", sheetName, err)
+// headerNeedsWriting compares one header row against the one the code expects
+// and reports whether it has to be written. A header that disagrees is an error
+// rather than something to overwrite: the columns are read by position, and
+// rewriting the row would leave every existing value under the wrong name.
+func headerNeedsWriting(sheetName string, actual []interface{}, expected []string) (bool, error) {
+	if len(actual) == 0 {
+		return true, nil
 	}
-
-	if len(values.Values) == 0 || len(values.Values[0]) == 0 {
-		if err := r.writeRange(ctx, sheetName, "A1", expected); err != nil {
-			return fmt.Errorf("write header for %s: %w", sheetName, err)
-		}
-		return nil
-	}
-
-	actual := values.Values[0]
 	if len(actual) > len(expected) {
-		return fmt.Errorf("header mismatch in sheet %q: expected %d columns, got %d", sheetName, len(expected), len(actual))
+		return false, fmt.Errorf("header mismatch in sheet %q: expected %d columns, got %d", sheetName, len(expected), len(actual))
 	}
 	for i, header := range actual {
 		if cellString(header) != expected[i] {
-			return fmt.Errorf("header mismatch in sheet %q at column %d: expected %q, got %q", sheetName, i+1, expected[i], cellString(header))
+			return false, fmt.Errorf("header mismatch in sheet %q at column %d: expected %q, got %q", sheetName, i+1, expected[i], cellString(header))
 		}
 	}
 	// A sheet written before a column existed is short, not wrong: the new
 	// columns are appended rather than treated as a schema conflict, so an
 	// existing spreadsheet keeps working across a release that adds one.
-	if len(actual) < len(expected) {
-		if err := r.writeRange(ctx, sheetName, "A1", expected); err != nil {
-			return fmt.Errorf("extend header for %s: %w", sheetName, err)
+	return len(actual) < len(expected), nil
+}
+
+// ListProjects reads every project, in the order the sheet holds them. That
+// order is the order the switcher offers, so a site can be moved up the list by
+// moving its row.
+func (r *GoogleSheetsRepository) ListProjects(ctx context.Context) ([]model.Project, error) {
+	rows, err := r.readRows(ctx, projectSheet, "O")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.Project, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, len(projectHeaders))
+		projectID := strings.TrimSpace(cellString(row[0]))
+		if projectID == "" {
+			continue
 		}
+		// The audit stamps are read leniently: a row typed straight into the
+		// sheet has no timestamps, and refusing it would hide a real project.
+		createdAt, _ := parseDateTime(cellString(row[13]), r.location)
+		updatedAt, _ := parseDateTime(cellString(row[14]), r.location)
+		result = append(result, model.Project{
+			ProjectID:     projectID,
+			Nama:          strings.TrimSpace(cellString(row[1])),
+			SpreadsheetID: strings.TrimSpace(cellString(row[2])),
+			MenuAktif:     splitMenus(cellString(row[3])),
+			Status:        strings.TrimSpace(cellString(row[4])),
+			Settings: model.ProjectSettings{
+				WorkStart:            strings.TrimSpace(cellString(row[5])),
+				WorkEnd:              strings.TrimSpace(cellString(row[6])),
+				LateToleranceMinutes: int(parseFloatCell(row[7])),
+				A2BWorkMinutes:       int(parseFloatCell(row[8])),
+				Company:              strings.TrimSpace(cellString(row[9])),
+				SignatoryName:        strings.TrimSpace(cellString(row[10])),
+				SignatoryTitle:       strings.TrimSpace(cellString(row[11])),
+				SignatoryPlace:       strings.TrimSpace(cellString(row[12])),
+			},
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		})
+	}
+	return result, nil
+}
+
+func (r *GoogleSheetsRepository) CreateProject(ctx context.Context, project *model.Project) error {
+	return r.appendRow(ctx, projectSheet, projectToRow(project))
+}
+
+// FindProjectRow locates a project and reports the row it sits on, so the
+// settings screen can write back to it.
+func (r *GoogleSheetsRepository) FindProjectRow(ctx context.Context, projectID string) (*model.Project, int, error) {
+	rows, err := r.readRows(ctx, projectSheet, "O")
+	if err != nil {
+		return nil, 0, err
+	}
+	projectID = strings.TrimSpace(projectID)
+	for _, row := range dataRowsWithIndex(rows) {
+		values := padRow(row.values, len(projectHeaders))
+		if !strings.EqualFold(strings.TrimSpace(cellString(values[0])), projectID) {
+			continue
+		}
+		projects, err := r.ListProjects(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+		for i := range projects {
+			if strings.EqualFold(projects[i].ProjectID, projectID) {
+				return &projects[i], row.rowNumber, nil
+			}
+		}
+	}
+	return nil, 0, fmt.Errorf("project %s not found", projectID)
+}
+
+// UpdateProject rewrites everything the settings screen owns. The spreadsheet
+// id is written too but the screen does not offer it for editing: repointing a
+// project at another file would orphan every row already in this one.
+func (r *GoogleSheetsRepository) UpdateProject(ctx context.Context, rowNumber int, project *model.Project) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, projectSheet)
+	}
+	rangeName := fmt.Sprintf("%s!B%d:O%d", quoteSheet(projectSheet), rowNumber, rowNumber)
+	_, err := r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName,
+		&sheets.ValueRange{Values: [][]interface{}{projectToRow(project)[1:]}}).
+		ValueInputOption("RAW").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update project row %d: %w", rowNumber, err)
 	}
 	return nil
 }
 
+func (r *GoogleSheetsRepository) MaxProjectSequence(ctx context.Context, prefix string) (int, error) {
+	rows, err := r.readRows(ctx, projectSheet, "A")
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, row := range dataRows(rows) {
+		if len(row) == 0 {
+			continue
+		}
+		if sequence, ok := unitSequence(cellString(row[0]), prefix); ok && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+// UpdateUserProject writes the one cell that says which project an account
+// belongs to. It is its own call because assigning somebody to a site must not
+// rewrite their password hash or blank their photo.
+func (r *GoogleSheetsRepository) UpdateUserProject(ctx context.Context, rowNumber int, project string, at time.Time) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, userSheet)
+	}
+	sheet := quoteSheet(userSheet)
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data: []*sheets.ValueRange{
+			{Range: fmt.Sprintf("%s!%s%d", sheet, userProjectColumn, rowNumber), Values: [][]interface{}{{project}}},
+			{Range: fmt.Sprintf("%s!J%d", sheet, rowNumber), Values: [][]interface{}{{formatDateTime(at)}}},
+		},
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update user project row %d: %w", rowNumber, err)
+	}
+	return nil
+}
+
+func projectToRow(project *model.Project) []interface{} {
+	return []interface{}{
+		project.ProjectID, project.Nama, project.SpreadsheetID,
+		strings.Join(project.MenuAktif, ","), project.Status,
+		project.Settings.WorkStart, project.Settings.WorkEnd,
+		formatOptionalInt(project.Settings.LateToleranceMinutes),
+		formatOptionalInt(project.Settings.A2BWorkMinutes),
+		project.Settings.Company, project.Settings.SignatoryName,
+		project.Settings.SignatoryTitle, project.Settings.SignatoryPlace,
+		formatDateTime(project.CreatedAt), formatDateTime(project.UpdatedAt),
+	}
+}
+
+// formatOptionalInt writes an unset figure as an empty cell rather than a zero,
+// because zero and "not configured" mean different things here: one is a
+// tolerance of no minutes, the other is the deployment default.
+func formatOptionalInt(value int) interface{} {
+	if value <= 0 {
+		return ""
+	}
+	return value
+}
+
+// splitMenus reads the comma-separated menu list. An empty cell yields no
+// entries, which model.Project reads as every menu.
+func splitMenus(value string) []string {
+	var menus []string
+	for _, part := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			menus = append(menus, trimmed)
+		}
+	}
+	return menus
+}
+
 func (r *GoogleSheetsRepository) FindUserByID(ctx context.Context, userID string) (*model.User, error) {
-	rows, err := r.readRows(ctx, userSheet, userReadColumn)
+	rows, err := r.readUserRows(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +596,7 @@ func (r *GoogleSheetsRepository) FindUserByID(ctx context.Context, userID string
 
 func (r *GoogleSheetsRepository) FindUserByIdentifier(ctx context.Context, identifier string) (*model.User, error) {
 	identifier = strings.ToLower(strings.TrimSpace(identifier))
-	rows, err := r.readRows(ctx, userSheet, userReadColumn)
+	rows, err := r.readUserRows(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +613,7 @@ func (r *GoogleSheetsRepository) FindUserByIdentifier(ctx context.Context, ident
 }
 
 func (r *GoogleSheetsRepository) ListUsers(ctx context.Context) ([]model.User, error) {
-	rows, err := r.readRows(ctx, userSheet, userReadColumn)
+	rows, err := r.readUserRows(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +632,7 @@ func (r *GoogleSheetsRepository) ListUsers(ctx context.Context) ([]model.User, e
 }
 
 func (r *GoogleSheetsRepository) UserExists(ctx context.Context, nrp, email string) (bool, error) {
-	rows, err := r.readRows(ctx, userSheet, userReadColumn)
+	rows, err := r.readUserRows(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -398,7 +655,7 @@ func (r *GoogleSheetsRepository) CreateUser(ctx context.Context, user *model.Use
 }
 
 func (r *GoogleSheetsRepository) UpdateLastLogin(ctx context.Context, userID string, at time.Time) error {
-	rows, err := r.readRows(ctx, userSheet, userReadColumn)
+	rows, err := r.readUserRows(ctx)
 	if err != nil {
 		return err
 	}
@@ -421,7 +678,7 @@ func (r *GoogleSheetsRepository) UpdateLastLogin(ctx context.Context, userID str
 // FindUserRow locates a user and reports the row it sits on. Like every other
 // user read it stops before the photo.
 func (r *GoogleSheetsRepository) FindUserRow(ctx context.Context, userID string) (*model.User, int, error) {
-	rows, err := r.readRows(ctx, userSheet, userReadColumn)
+	rows, err := r.readUserRows(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1957,6 +2214,38 @@ func (r *GoogleSheetsRepository) readRows(ctx context.Context, sheetName, endCol
 	return values.Values, nil
 }
 
+// readUserRows reads the user sheet either side of the photo and stitches the
+// two halves back into whole rows, with the photo left blank. It is one request
+// rather than two: the session user is loaded on every authenticated request,
+// and a second round trip there would be felt on every page.
+func (r *GoogleSheetsRepository) readUserRows(ctx context.Context) ([][]interface{}, error) {
+	sheet := quoteSheet(userSheet)
+	response, err := r.service.Spreadsheets.Values.BatchGet(r.spreadsheetID).
+		Ranges(sheet+"!A:"+userReadColumn, sheet+"!"+userProjectColumn+":"+userProjectColumn).
+		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("read rows from %s: %w", userSheet, err)
+	}
+	if len(response.ValueRanges) != 2 {
+		return nil, fmt.Errorf("read rows from %s: expected 2 ranges, got %d", userSheet, len(response.ValueRanges))
+	}
+	head, tail := response.ValueRanges[0], response.ValueRanges[1]
+
+	rows := make([][]interface{}, 0, len(head.Values))
+	// Both ranges start at row 1, so one index walks them together.
+	for index := 0; index < len(head.Values); index++ {
+		merged := padRow(head.Values[index], userPhotoIndex)[:userPhotoIndex]
+		// The photo column is skipped, not missing: leaving the slot in keeps
+		// every index after it lined up with userHeaders.
+		merged = append(merged, "")
+		if index < len(tail.Values) && len(tail.Values[index]) > 0 {
+			merged = append(merged, tail.Values[index][0])
+		}
+		rows = append(rows, padRow(merged, len(userHeaders)))
+	}
+	return rows, nil
+}
+
 // appendRows writes several rows in one request. One request per row would
 // spend a round trip per line of a nota and burn the per-minute write quota.
 func (r *GoogleSheetsRepository) appendRows(ctx context.Context, sheetName string, rows [][]interface{}) error {
@@ -2069,7 +2358,7 @@ func userToRow(user *model.User) []interface{} {
 	return []interface{}{
 		user.UserID, user.TanggalGabung, user.NamaLengkap, user.NRP, user.Jabatan, user.Email,
 		user.PasswordHash, user.StatusPengguna, formatDateTime(user.CreatedAt), formatDateTime(user.UpdatedAt), lastLogin,
-		user.NoTelp, user.TanggalLahir, user.PunyaFoto, user.FotoProfil,
+		user.NoTelp, user.TanggalLahir, user.PunyaFoto, user.FotoProfil, user.Project,
 	}
 }
 
@@ -2132,6 +2421,7 @@ func rowToUser(row []interface{}, location *time.Location) (*model.User, error) 
 		// Left empty by every read that stops at userReadColumn, which is all
 		// of them; ReadUserPhoto fetches the image on its own.
 		FotoProfil: cellString(row[14]),
+		Project:    strings.TrimSpace(cellString(row[15])),
 	}, nil
 }
 

@@ -169,12 +169,12 @@ func TestCreateProduksiRejectsUnknownNopol(t *testing.T) {
 }
 
 // The pickers are creatable, so every one of them still has to be filled in,
-// but an unfamiliar value is no longer a reason to refuse the row.
+// but an unfamiliar value is no longer a reason to refuse the row. Project is
+// not among them: it is stamped from the project the request is working in.
 func TestCreateProduksiRequiresEveryPicker(t *testing.T) {
 	produksi, _, user := newProduksiFixture(t)
 
 	for name, mutate := range map[string]func(*ProduksiInput){
-		"project":  func(in *ProduksiInput) { in.Project = "" },
 		"supplier": func(in *ProduksiInput) { in.Supplier = "  " },
 		"quary":    func(in *ProduksiInput) { in.Quary = "" },
 		"kategori": func(in *ProduksiInput) { in.Kategori = " " },

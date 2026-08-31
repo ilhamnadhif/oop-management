@@ -136,8 +136,13 @@ func TestProduksiScanCommitKeepsTheSampleHeights(t *testing.T) {
 	if stored[0].Tanggal != "2026-08-23" {
 		t.Fatalf("row dated %q, want the typed date", stored[0].Tanggal)
 	}
-	if stored[0].Project != "" || stored[0].Lokasi != "" || stored[0].Layer != "" {
+	if stored[0].Lokasi != "" || stored[0].Layer != "" {
 		t.Fatalf("a blank column was filled in: %+v", stored[0])
+	}
+	// The project is the exception: it is not read off the paper at all, but
+	// stamped from the project this sheet is being filed into.
+	if stored[0].Project != testProjectName {
+		t.Fatalf("Project = %q, want %q", stored[0].Project, testProjectName)
 	}
 	// What the register holds is filled in regardless.
 	if stored[0].Driver != "Slamet" || stored[0].JenisDT != "DT KECIL" || stored[0].Panjang != 375 {

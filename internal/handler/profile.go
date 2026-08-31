@@ -41,6 +41,12 @@ func (s *Server) handleProfilePage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The profile page belongs to no project, but its sidebar does: it is drawn
+	// with the menu of whatever project the session is working in.
+	s, sessionValue, ok = s.bindProject(w, r, user, sessionValue)
+	if !ok {
+		return
+	}
 	success := ""
 	if r.URL.Query().Get("tersimpan") == "1" {
 		success = "Data pribadi tersimpan."
@@ -60,6 +66,10 @@ func (s *Server) handleProfileSave(w http.ResponseWriter, r *http.Request) {
 	if err != nil || user.StatusPengguna != model.StatusAktif {
 		s.sessions.Delete(r, w)
 		redirect(w, r, "/login")
+		return
+	}
+	s, sessionValue, ok = s.bindProject(w, r, user, sessionValue)
+	if !ok {
 		return
 	}
 

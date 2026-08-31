@@ -136,7 +136,7 @@ func (s *Server) handleLeaveRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLeaveRequestPage(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "leave-request")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "leave-request")
 	if !ok {
 		return
 	}
@@ -185,7 +185,8 @@ func (s *Server) handleLeaveRequestPost(w http.ResponseWriter, r *http.Request) 
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "leave-request") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "leave-request")
+	if !okProject {
 		return
 	}
 
@@ -350,10 +351,18 @@ func (s *Server) renderLeaveRequest(w http.ResponseWriter, r *http.Request, user
 }
 
 func (s *Server) handleLeaveAttachment(w http.ResponseWriter, r *http.Request) {
-	user, _, ok := s.requireUser(w, r)
+	user, sessionValue, ok := s.requireUser(w, r)
 	if !ok {
 		return
 	}
+	// The attachment lives in the project's own spreadsheet, so the project is
+	// settled before it is looked for. A file is served here rather than a
+	// page, so a project problem is a plain not-found.
+	bound, _, ok := s.bindProject(w, r, user, sessionValue)
+	if !ok {
+		return
+	}
+	s = bound
 	leaveID := strings.TrimSpace(r.URL.Query().Get("leave_id"))
 	canHR := CanAccess(user.Jabatan, "hr-approval-leave")
 	dataURL, err := s.leave.Attachment(r.Context(), user, leaveID, canHR)
@@ -380,7 +389,7 @@ func (s *Server) handleLeaveAttachment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHROverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "hr-overview")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "hr-overview")
 	if !ok {
 		return
 	}
@@ -430,7 +439,7 @@ func (s *Server) handleLeaveApproval(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLeaveApprovalPage(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "hr-approval-leave")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "hr-approval-leave")
 	if !ok {
 		return
 	}
@@ -451,7 +460,8 @@ func (s *Server) handleLeaveApprovalPost(w http.ResponseWriter, r *http.Request)
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "hr-approval-leave") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "hr-approval-leave")
+	if !okProject {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 96*1024)

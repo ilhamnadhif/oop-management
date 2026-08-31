@@ -1,0 +1,14 @@
+{{/* fieldHelp turns a note about one field into a mark beside its label. The
+     note is worth having and worth keeping out of the way: printed under every
+     input it becomes a wall of grey the eye stops reading, and it is only ever
+     wanted once, the first time somebody meets the field.
+
+     The bubble shows on hover and on focus. Focus is what makes it work by
+     keyboard and by touch, where there is no hover to have: tapping the mark
+     focuses it. No script is involved. */}}
+{{define "fieldHelp"}}
+<span class="field-help">
+  <button class="field-help-mark" type="button" aria-label="Penjelasan: {{.}}">{{template "icon" "alert"}}</button>
+  <span class="field-help-bubble" role="tooltip">{{.}}</span>
+</span>
+{{end}}

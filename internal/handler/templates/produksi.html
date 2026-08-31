@@ -83,19 +83,16 @@
           <p class="eyebrow">{{template "icon" "info"}}INFORMASI UMUM &amp; LOKASI</p>
           <h2>Detail pekerjaan</h2>
         </div>
+        {{/* The project is not a field any more: this page writes into one
+             project's books and no other. It is shown so the operator can see
+             which. */}}
+        {{if .Project}}<p class="panel-tag">{{template "icon" "pin"}}{{.Project}}</p>{{end}}
       </div>
 
       <div class="form-grid form-grid-3">
         <div>
           <label for="tanggal">{{template "icon" "calendar"}}Tanggal</label>
           <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
-        </div>
-        <div>
-          <label for="project">{{template "icon" "tag"}}Project</label>
-          <input id="project" name="project" type="text" list="projectList" value="{{.Form.Project}}" placeholder="Pilih atau ketik…" autocomplete="off" required>
-          <datalist id="projectList">
-            {{range .Options.Project}}<option value="{{.}}"></option>{{end}}
-          </datalist>
         </div>
         <div>
           <label for="supplier">{{template "icon" "tag"}}Supplier</label>

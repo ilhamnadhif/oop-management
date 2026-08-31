@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -14,7 +15,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"opp-management/internal/export"
@@ -41,21 +41,21 @@ type aiScanRateEntry struct {
 	count       int
 }
 
+// Server has two halves. The fields above the line belong to the deployment and
+// are the same for everybody; the ones below belong to one project and are
+// empty until a request says which project it is working in.
+//
+// They are nil on purpose. A handler that forgets to bind a project panics on
+// its first service call rather than quietly serving another project's books,
+// which is the failure worth being loud about.
 type Server struct {
-	auth           *service.AuthService
-	attendance     *service.AttendanceService
-	unitDT         *service.UnitDTService
-	produksi       *service.ProduksiService
-	overview       *service.OverviewService
-	unitA2B        *service.UnitA2BService
-	nota           *service.NotaService
-	leave          *service.LeaveService
-	unitOverview   *service.UnitOverviewService
-	fuelMasuk      *service.FuelMasukService
-	fuelKeluar     *service.FuelKeluarService
-	hourMeter      *service.HourMeterService
-	company        string
-	signatory      export.Signatory
+	auth     *service.AuthService
+	projects *service.ProjectService
+	bundles  *projectCache
+	// provision writes the sheets into a spreadsheet a new project names. Nil
+	// in the tests, where there is no spreadsheet to prepare.
+	provision      service.Provisioner
+	defaults       Branding
 	sessions       *session.Manager
 	location       *time.Location
 	now            service.NowFunc
@@ -67,10 +67,58 @@ type Server struct {
 	// needs it too: the server's write deadline is shorter, and the page has to
 	// tell the browser how long to wait.
 	scanTimeout time.Duration
-	scanRateMu  sync.Mutex
-	scanRates   map[string]aiScanRateEntry
-	scanSlots   chan struct{}
-	templates   *template.Template
+	// scan is held by pointer because a Server is copied per request to bind a
+	// project, and the AI budget is the deployment's, not one project's. A
+	// copied mutex would guard a copy of nothing.
+	scan      *scanGate
+	templates *template.Template
+
+	// Bound per request by forProject. Nil until then.
+	project model.Project
+	// reachable is what the project switcher offers this person, in sheet
+	// order. One entry means there is nothing to switch between and the
+	// control is not drawn.
+	reachable    []model.Project
+	attendance   *service.AttendanceService
+	unitDT       *service.UnitDTService
+	produksi     *service.ProduksiService
+	overview     *service.OverviewService
+	unitA2B      *service.UnitA2BService
+	nota         *service.NotaService
+	leave        *service.LeaveService
+	unitOverview *service.UnitOverviewService
+	fuelMasuk    *service.FuelMasukService
+	fuelKeluar   *service.FuelKeluarService
+	hourMeter    *service.HourMeterService
+	company      string
+	signatory    export.Signatory
+}
+
+// forProject returns a copy of the server bound to one project's services. The
+// copy is cheap - the struct is pointers and a few strings - and it means a
+// request never has to thread a project through every call it makes.
+func (s *Server) forProject(ctx context.Context, project model.Project, reachable []model.Project) (*Server, error) {
+	services, err := s.bundles.get(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	bound := *s
+	bound.project = project
+	bound.reachable = reachable
+	bound.attendance = services.Attendance
+	bound.unitDT = services.UnitDT
+	bound.produksi = services.Produksi
+	bound.overview = services.Overview
+	bound.unitA2B = services.UnitA2B
+	bound.nota = services.Nota
+	bound.leave = services.Leave
+	bound.unitOverview = services.UnitOverview
+	bound.fuelMasuk = services.FuelMasuk
+	bound.fuelKeluar = services.FuelKeluar
+	bound.hourMeter = services.HourMeter
+	bound.company = services.Company
+	bound.signatory = services.Signatory
+	return &bound, nil
 }
 
 type AuthPageData struct {
@@ -104,6 +152,11 @@ type ShellPageData struct {
 	CSRFToken  string
 	NavItems   []NavItem
 	ActiveNav  string
+	// Project is the project this page is showing, and Projects is what the
+	// switcher offers. Projects holds one entry when there is nothing to switch
+	// between, and the control is left out.
+	Project    string
+	Projects   []string
 	PageTitle  string
 	Breadcrumb string
 	// Section names the group the page sits in; empty for an ungrouped page.
@@ -159,7 +212,6 @@ type UnitA2BPageData struct {
 
 type ProduksiFormData struct {
 	Tanggal  string
-	Project  string
 	Supplier string
 	Quary    string
 	Kategori string
@@ -239,9 +291,41 @@ type Branding struct {
 	Signatory export.Signatory
 }
 
-func NewServer(auth *service.AuthService, attendance *service.AttendanceService, unitDT *service.UnitDTService, produksi *service.ProduksiService, overview *service.OverviewService, unitA2B *service.UnitA2BService, nota *service.NotaService, leave *service.LeaveService, unitOverview *service.UnitOverviewService, fuelMasuk *service.FuelMasukService, fuelKeluar *service.FuelKeluarService, hourMeter *service.HourMeterService, sessions *session.Manager, location *time.Location, now service.NowFunc, maxUploadBytes int64, maxPhotoChars int, branding Branding) (*Server, error) {
+// Deps is what a server is built from. It is a struct rather than a parameter
+// list because the list had reached eighteen arguments, and half of them were
+// the same type.
+type Deps struct {
+	// Auth and Projects answer from the master spreadsheet, which holds the
+	// accounts and the list of projects. Both are the same for every project.
+	Auth     *service.AuthService
+	Projects *service.ProjectService
+	// Services builds one project's own services, the first time that project
+	// is opened.
+	Services ServiceFactory
+	// Provision prepares the spreadsheet a newly added project names, so a file
+	// that cannot be written to is reported on the screen that named it rather
+	// than the first time somebody tries to open the project.
+	Provision service.Provisioner
+	Sessions  *session.Manager
+	Location  *time.Location
+	Now       service.NowFunc
+	// Branding is the deployment default, used by the pages that belong to no
+	// project - login, and the project settings screen itself.
+	Branding       Branding
+	MaxUploadBytes int64
+	MaxPhotoChars  int
+}
+
+func NewServer(deps Deps) (*Server, error) {
+	auth, sessions := deps.Auth, deps.Sessions
+	location, now := deps.Location, deps.Now
+	maxUploadBytes, maxPhotoChars := deps.MaxUploadBytes, deps.MaxPhotoChars
+	branding := deps.Branding
 	if strings.TrimSpace(branding.Company) == "" {
 		branding.Company = "PT Orecon Putra Perkasa"
+	}
+	if deps.Services == nil {
+		return nil, fmt.Errorf("server needs a service factory")
 	}
 	if location == nil {
 		location = time.Local
@@ -275,17 +359,10 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 	}
 	return &Server{
 		auth:           auth,
-		attendance:     attendance,
-		unitDT:         unitDT,
-		produksi:       produksi,
-		overview:       overview,
-		unitA2B:        unitA2B,
-		nota:           nota,
-		leave:          leave,
-		unitOverview:   unitOverview,
-		fuelMasuk:      fuelMasuk,
-		fuelKeluar:     fuelKeluar,
-		hourMeter:      hourMeter,
+		projects:       deps.Projects,
+		bundles:        newProjectCache(deps.Services),
+		provision:      deps.Provision,
+		defaults:       branding,
 		sessions:       sessions,
 		location:       location,
 		now:            now,
@@ -293,9 +370,11 @@ func NewServer(auth *service.AuthService, attendance *service.AttendanceService,
 		maxPhotoChars:  maxPhotoChars,
 		company:        branding.Company,
 		signatory:      branding.Signatory,
-		scanRates:      make(map[string]aiScanRateEntry),
-		scanSlots:      make(chan struct{}, aiScanConcurrentLimit),
-		templates:      templates,
+		scan: &scanGate{
+			rates: make(map[string]aiScanRateEntry),
+			slots: make(chan struct{}, aiScanConcurrentLimit),
+		},
+		templates: templates,
 	}, nil
 }
 
@@ -326,6 +405,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/absensi", s.handleAbsensi)
 	mux.HandleFunc("/leave/request", s.handleLeaveRequest)
 	mux.HandleFunc("/leave/attachment", s.handleLeaveAttachment)
+	mux.HandleFunc("/project/switch", s.handleProjectSwitch)
+	mux.HandleFunc("/project/settings", s.handleProjectSettings)
 	mux.HandleFunc("/profile", s.handleProfile)
 	mux.HandleFunc("/profile/photo", s.handleProfilePhoto)
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
@@ -528,26 +609,92 @@ func (s *Server) requireUser(w http.ResponseWriter, r *http.Request) (*model.Use
 // requireAccess is requireUser plus the authorisation check. Hiding a menu is a
 // courtesy; this is what actually keeps a page out of reach, since a URL can be
 // typed, bookmarked or shared.
-func (s *Server) requireAccess(w http.ResponseWriter, r *http.Request, navKey string) (*model.User, session.Session, bool) {
+// The first return is the server bound to the project this request works in.
+// Handlers reassign their receiver to it, so every service call after this line
+// reaches that project's spreadsheet and no other.
+func (s *Server) requireAccess(w http.ResponseWriter, r *http.Request, navKey string) (*Server, *model.User, session.Session, bool) {
 	user, sessionValue, ok := s.requireUser(w, r)
 	if !ok {
-		return nil, session.Session{}, false
+		return nil, nil, session.Session{}, false
 	}
-	if !CanAccess(user.Jabatan, navKey) {
-		s.renderForbidden(w, user, sessionValue)
-		return nil, session.Session{}, false
+	bound, sessionValue, ok := s.bindProject(w, r, user, sessionValue)
+	if !ok {
+		return nil, nil, session.Session{}, false
 	}
-	return user, sessionValue, true
+	if !CanReach(user.Jabatan, bound.project, navKey) {
+		bound.renderForbidden(w, user, sessionValue)
+		return nil, nil, session.Session{}, false
+	}
+	return bound, user, sessionValue, true
 }
 
-// allowed guards the handlers that load the user themselves because they parse
-// a form first.
-func (s *Server) allowed(w http.ResponseWriter, user *model.User, sessionValue session.Session, navKey string) bool {
-	if CanAccess(user.Jabatan, navKey) {
-		return true
+// bindProject settles which project this request is working in and returns the
+// server bound to it. The settled project is written back to the session, so the
+// choice survives the next request without being asked again.
+func (s *Server) bindProject(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session) (*Server, session.Session, bool) {
+	reachable, err := s.projects.Reachable(r.Context(), user)
+	if err != nil {
+		log.Printf("read projects: %v", err)
+		s.renderProjectProblem(w, user, sessionValue, "Daftar project gagal dimuat.")
+		return nil, sessionValue, false
 	}
-	s.renderForbidden(w, user, sessionValue)
-	return false
+	if len(reachable) == 0 {
+		s.renderProjectProblem(w, user, sessionValue,
+			"Akun ini belum ditugaskan ke project mana pun. Hubungi Management.")
+		return nil, sessionValue, false
+	}
+
+	project := reachable[0]
+	for _, candidate := range reachable {
+		if strings.EqualFold(strings.TrimSpace(candidate.Nama), strings.TrimSpace(sessionValue.Project)) {
+			project = candidate
+			break
+		}
+	}
+	if !strings.EqualFold(sessionValue.Project, project.Nama) {
+		if updated, ok := s.sessions.SetProject(r, project.Nama); ok {
+			sessionValue = updated
+		}
+	}
+
+	bound, err := s.forProject(r.Context(), project, reachable)
+	if err != nil {
+		log.Printf("bind project %s: %v", project.Nama, err)
+		s.renderProjectProblem(w, user, sessionValue,
+			fmt.Sprintf("Project %s tidak bisa dibuka saat ini.", project.Nama))
+		return nil, sessionValue, false
+	}
+	return bound, sessionValue, true
+}
+
+// allowedIn is requireAccess for the handlers that cannot use it: they parse a
+// form before they know who is asking, so they load the user themselves and
+// arrive here with a server that has no project bound yet.
+//
+// Like requireAccess it returns the bound server, and callers reassign their
+// receiver to it.
+func (s *Server) allowedIn(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, navKey string) (*Server, session.Session, bool) {
+	bound, sessionValue, ok := s.bindProject(w, r, user, sessionValue)
+	if !ok {
+		return nil, sessionValue, false
+	}
+	if !CanReach(user.Jabatan, bound.project, navKey) {
+		bound.renderForbidden(w, user, sessionValue)
+		return nil, sessionValue, false
+	}
+	return bound, sessionValue, true
+}
+
+// renderProjectProblem says why there is nothing to show. It draws the shell
+// with no project bound, which leaves the sidebar holding only the pages that
+// belong to nobody in particular.
+func (s *Server) renderProjectProblem(w http.ResponseWriter, user *model.User, sessionValue session.Session, message string) {
+	data := s.shellData(user, sessionValue, "beranda")
+	data.PageTitle = "Project tidak tersedia"
+	data.Breadcrumb = "Project tidak tersedia"
+	data.Section = ""
+	data.Lede = message
+	s.render(w, "forbidden", ForbiddenPageData{ShellPageData: data}, http.StatusForbidden)
 }
 
 func (s *Server) renderForbidden(w http.ResponseWriter, user *model.User, sessionValue session.Session) {
@@ -576,7 +723,9 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		TodayShort:  formatShortIndonesianDate(now),
 		ClockNow:    now.Format("15:04"),
 		CSRFToken:   sessionValue.CSRFToken,
-		NavItems:    navItemsFor(user.Jabatan),
+		NavItems:    navItemsFor(user.Jabatan, s.project),
+		Project:     s.project.Nama,
+		Projects:    projectNames(s.reachable),
 		ActiveNav:   navKey,
 		PageTitle:   item.Label,
 		Breadcrumb:  item.Label,
@@ -611,7 +760,7 @@ type BerandaPageData struct {
 // handleDashboard shows the signed-in person their own attendance. It answers
 // "how am I doing", which is why it never reads anyone else's rows.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "beranda")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "beranda")
 	if !ok {
 		return
 	}
@@ -647,7 +796,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAbsensi(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "absensi")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "absensi")
 	if !ok {
 		return
 	}
@@ -683,7 +832,7 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 		s.handleProduksiCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireAccess(w, r, "produksi-input")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "produksi-input")
 	if !ok {
 		return
 	}
@@ -693,7 +842,7 @@ func (s *Server) handleProduksi(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "produksi-export")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "produksi-export")
 	if !ok {
 		return
 	}
@@ -729,7 +878,8 @@ func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
 
 // handleProduksiDownload streams the report itself.
 func (s *Server) handleProduksiDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireAccess(w, r, "produksi-export"); !ok {
+	s, _, _, ok := s.requireAccess(w, r, "produksi-export")
+	if !ok {
 		return
 	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
@@ -796,7 +946,7 @@ type NotaOverviewPageData struct {
 }
 
 func (s *Server) handleNotaOverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "nota-overview")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "nota-overview")
 	if !ok {
 		return
 	}
@@ -871,7 +1021,7 @@ func (s *Server) handleRekonsiliasi(w http.ResponseWriter, r *http.Request) {
 		s.handleRekonsiliasiSettle(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireAccess(w, r, "nota-rekonsiliasi")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "nota-rekonsiliasi")
 	if !ok {
 		return
 	}
@@ -892,7 +1042,8 @@ func (s *Server) handleRekonsiliasiSettle(w http.ResponseWriter, r *http.Request
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "nota-rekonsiliasi") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "nota-rekonsiliasi")
+	if !okProject {
 		return
 	}
 
@@ -983,7 +1134,7 @@ func (s *Server) renderRekonsiliasi(w http.ResponseWriter, r *http.Request, user
 }
 
 func (s *Server) handleNotaExport(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "nota-export")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "nota-export")
 	if !ok {
 		return
 	}
@@ -1034,7 +1185,8 @@ func countNotaItems(rows []model.Nota) int {
 }
 
 func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireAccess(w, r, "nota-export"); !ok {
+	s, _, _, ok := s.requireAccess(w, r, "nota-export")
+	if !ok {
 		return
 	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
@@ -1150,7 +1302,7 @@ type UnitOverviewPageData struct {
 }
 
 func (s *Server) handleUnitOverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "unit-overview")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "unit-overview")
 	if !ok {
 		return
 	}
@@ -1190,7 +1342,7 @@ type DelaySlice struct {
 }
 
 func (s *Server) handleA2BOverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "a2b-overview")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "a2b-overview")
 	if !ok {
 		return
 	}
@@ -1282,7 +1434,7 @@ type RegisterExportPageData struct {
 }
 
 func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "unit-export")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "unit-export")
 	if !ok {
 		return
 	}
@@ -1303,7 +1455,7 @@ func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "a2b-export")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "a2b-export")
 	if !ok {
 		return
 	}
@@ -1325,7 +1477,8 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 
 // handleUnitDownload streams the dump truck register.
 func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireAccess(w, r, "unit-export"); !ok {
+	s, _, _, ok := s.requireAccess(w, r, "unit-export")
+	if !ok {
 		return
 	}
 	format, ok := downloadFormat(w, r)
@@ -1354,7 +1507,8 @@ func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
 // two registers describe different machines with different columns, and merging
 // them would leave half of every row empty.
 func (s *Server) handleA2BDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireAccess(w, r, "a2b-export"); !ok {
+	s, _, _, ok := s.requireAccess(w, r, "a2b-export")
+	if !ok {
 		return
 	}
 	format, ok := downloadFormat(w, r)
@@ -1412,7 +1566,7 @@ func (s *Server) handleUnitA2B(w http.ResponseWriter, r *http.Request) {
 		s.handleUnitA2BCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireAccess(w, r, "a2b-unit")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "a2b-unit")
 	if !ok {
 		return
 	}
@@ -1431,7 +1585,8 @@ func (s *Server) handleUnitA2BCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "a2b-unit") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "a2b-unit")
+	if !okProject {
 		return
 	}
 
@@ -1534,7 +1689,7 @@ func (s *Server) renderUnitA2B(w http.ResponseWriter, r *http.Request, user *mod
 }
 
 func (s *Server) handleProduksiOverview(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "produksi-overview")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "produksi-overview")
 	if !ok {
 		return
 	}
@@ -1650,7 +1805,8 @@ func (s *Server) handleProduksiCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "produksi-input") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "produksi-input")
+	if !okProject {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -1664,7 +1820,6 @@ func (s *Server) handleProduksiCreate(w http.ResponseWriter, r *http.Request) {
 
 	form := ProduksiFormData{
 		Tanggal:  strings.TrimSpace(r.FormValue("tanggal")),
-		Project:  strings.TrimSpace(r.FormValue("project")),
 		Supplier: strings.TrimSpace(r.FormValue("supplier")),
 		Quary:    strings.TrimSpace(r.FormValue("quary")),
 		Kategori: strings.TrimSpace(r.FormValue("kategori")),
@@ -1675,8 +1830,10 @@ func (s *Server) handleProduksiCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	produksi, err := s.produksi.Create(r.Context(), user, service.ProduksiInput{
-		Tanggal:  form.Tanggal,
-		Project:  form.Project,
+		Tanggal: form.Tanggal,
+		// Stamped from the project this request is working in, not read off the
+		// form: the row is going into that project's spreadsheet either way.
+		Project:  s.project.Nama,
 		Supplier: form.Supplier,
 		Quary:    form.Quary,
 		Kategori: form.Kategori,
@@ -1744,7 +1901,7 @@ func (s *Server) handleUnitDT(w http.ResponseWriter, r *http.Request) {
 		s.handleUnitDTCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireAccess(w, r, "unit-dt")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "unit-dt")
 	if !ok {
 		return
 	}
@@ -1791,7 +1948,8 @@ func (s *Server) handleUnitDTCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "unit-dt") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "unit-dt")
+	if !okProject {
 		return
 	}
 
@@ -1923,7 +2081,7 @@ func (s *Server) handleNota(w http.ResponseWriter, r *http.Request) {
 		s.handleNotaCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireAccess(w, r, "nota-input")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "nota-input")
 	if !ok {
 		return
 	}
@@ -1968,8 +2126,8 @@ func (s *Server) handleNotaReceiptScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	select {
-	case s.scanSlots <- struct{}{}:
-		defer func() { <-s.scanSlots }()
+	case s.scan.slots <- struct{}{}:
+		defer func() { <-s.scan.slots }()
 	default:
 		writeScanLimit(w, time.Second, "Layanan scan struk sedang memproses permintaan lain. Silakan coba lagi.")
 		return
@@ -2044,13 +2202,13 @@ func (s *Server) allowAIScan(userID string) (bool, time.Duration) {
 		now = s.now()
 	}
 
-	s.scanRateMu.Lock()
-	defer s.scanRateMu.Unlock()
-	if s.scanRates == nil {
-		s.scanRates = make(map[string]aiScanRateEntry)
+	s.scan.mu.Lock()
+	defer s.scan.mu.Unlock()
+	if s.scan.rates == nil {
+		s.scan.rates = make(map[string]aiScanRateEntry)
 	}
 
-	entry, exists := s.scanRates[userID]
+	entry, exists := s.scan.rates[userID]
 	if exists && (now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(aiScanRateWindow))) {
 		entry = aiScanRateEntry{windowStart: now}
 	}
@@ -2066,29 +2224,29 @@ func (s *Server) allowAIScan(userID string) (bool, time.Duration) {
 		return false, retryAfter
 	}
 	entry.count++
-	s.scanRates[userID] = entry
+	s.scan.rates[userID] = entry
 	return true, 0
 }
 
 // makeScanRateRoom is only called for a new user. It first removes expired
 // windows, then evicts the oldest remaining entry if the hard cap is full.
 func (s *Server) makeScanRateRoom(now time.Time) {
-	if len(s.scanRates) < aiScanRateMaxUsers {
+	if len(s.scan.rates) < aiScanRateMaxUsers {
 		return
 	}
-	for userID, entry := range s.scanRates {
+	for userID, entry := range s.scan.rates {
 		if now.Before(entry.windowStart) || !now.Before(entry.windowStart.Add(aiScanRateWindow)) {
-			delete(s.scanRates, userID)
+			delete(s.scan.rates, userID)
 		}
 	}
-	if len(s.scanRates) < aiScanRateMaxUsers {
+	if len(s.scan.rates) < aiScanRateMaxUsers {
 		return
 	}
 
 	oldestUserID := ""
 	var oldestWindow time.Time
 	oldestFound := false
-	for userID, entry := range s.scanRates {
+	for userID, entry := range s.scan.rates {
 		if !oldestFound || entry.windowStart.Before(oldestWindow) {
 			oldestUserID = userID
 			oldestWindow = entry.windowStart
@@ -2096,7 +2254,7 @@ func (s *Server) makeScanRateRoom(now time.Time) {
 		}
 	}
 	if oldestFound {
-		delete(s.scanRates, oldestUserID)
+		delete(s.scan.rates, oldestUserID)
 	}
 }
 
@@ -2136,7 +2294,8 @@ func (s *Server) handleNotaCreate(w http.ResponseWriter, r *http.Request) {
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "nota-input") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "nota-input")
+	if !okProject {
 		return
 	}
 
@@ -2332,6 +2491,13 @@ func (s *Server) handleAttendanceAction(w http.ResponseWriter, r *http.Request, 
 	}
 	if !CanAccess(user.Jabatan, "absensi") {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "jabatan Anda tidak berhak mengakses absensi"})
+		return
+	}
+	// Attendance is written into the project's own spreadsheet, so the project
+	// has to be settled before the clock is punched. This endpoint answers in
+	// JSON, so it cannot use the binder that renders a page.
+	s, err = s.forProjectJSON(w, r, user, sessionValue)
+	if err != nil {
 		return
 	}
 

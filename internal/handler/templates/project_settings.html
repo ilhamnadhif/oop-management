@@ -1,0 +1,294 @@
+{{define "project_settings"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+{{if .Selected.ProjectID}}
+  {{/* ── One project ─────────────────────────────────────────────────────
+       Reached from the list. Everything here is about this project alone, so
+       the way back out is the first thing on the page. */}}
+  <a class="back-link" href="/project/settings">{{template "icon" "arrow-left"}}Semua project</a>
+
+  <form method="post" action="/project/settings" class="stack-form" data-loading-form>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="aksi" value="simpan">
+    <input type="hidden" name="project_id" value="{{.Selected.ProjectID}}">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "info"}}{{.Selected.ProjectID}}</p>
+          <h2>{{.Selected.Nama}}</h2>
+        </div>
+        <span class="status-chip {{if .Selected.Aktif}}approved{{else}}cancelled{{end}}">{{if .Selected.Aktif}}Aktif{{else}}Tidak aktif{{end}}</span>
+      </div>
+      <div class="form-grid form-grid-2">
+        <div>
+          <label for="nama">{{template "icon" "pin"}}Nama project</label>
+          <input id="nama" name="nama" type="text" value="{{.Selected.Nama}}" autocomplete="off" required>
+        </div>
+        <div>
+          <div class="field-head">
+            <label for="status">{{template "icon" "check"}}Status</label>
+            {{template "fieldHelp" "Project tidak aktif hilang dari switcher dan tidak bisa dibuka siapa pun."}}
+          </div>
+          <select id="status" name="status">
+            <option value="AKTIF"{{if .Selected.Aktif}} selected{{end}}>Aktif</option>
+            <option value="TIDAK_AKTIF"{{if not .Selected.Aktif}} selected{{end}}>Tidak aktif</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-readonly">
+        <span class="field-readonly-label">{{template "icon" "list"}}Spreadsheet
+          {{template "fieldHelp" "Tidak bisa diubah. Memindahkan project ke file lain akan meninggalkan seluruh baris yang sudah ditulis di sini."}}
+        </span>
+        <code>{{.Selected.SpreadsheetID}}</code>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "layers"}}MENU</p>
+          <h2>Modul yang dijalankan</h2>
+        </div>
+      </div>
+      <p class="hint">Modul yang dimatikan hilang dari sidebar semua orang di project ini, Management termasuk — tidak ada datanya di sini. Kosongkan semuanya untuk menjalankan seluruh modul.</p>
+      <div class="menu-picker-grid">
+        {{range .Menus}}
+        <label class="menu-option{{if .Locked}} menu-option-locked{{end}}">
+          <input type="checkbox" name="menu" value="{{.Key}}"{{if .Aktif}} checked{{end}}{{if .Locked}} disabled{{end}}>
+          <span><strong>{{.Label}}</strong><small>{{if .Locked}}Selalu aktif — ini halaman pengaturannya sendiri.{{else}}{{.Lede}}{{end}}</small></span>
+        </label>
+        {{end}}
+      </div>
+    </section>
+
+    {{/* Every field below may be left blank. Blank means the project follows
+         whatever the deployment is configured with, which is how a project
+         that has never been touched keeps behaving as before. */}}
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "clock"}}JAM KERJA</p>
+          <h2>Absensi dinilai terhadap ini</h2>
+        </div>
+      </div>
+      <p class="hint">Kosongkan untuk mengikuti setelan bawaan aplikasi.</p>
+      <div class="form-grid form-grid-4">
+        <div>
+          <label for="work_start">{{template "icon" "clock"}}Jam masuk</label>
+          <input id="work_start" name="work_start" type="time" value="{{.Selected.Settings.WorkStart}}">
+        </div>
+        <div>
+          <label for="work_end">{{template "icon" "clock"}}Jam pulang</label>
+          <input id="work_end" name="work_end" type="time" value="{{.Selected.Settings.WorkEnd}}">
+        </div>
+        <div>
+          <div class="field-head">
+            <label for="late_tolerance">{{template "icon" "clock"}}Toleransi telat (menit)</label>
+            {{template "fieldHelp" "Keterlambatan sampai sekian menit masih dihitung tepat waktu."}}
+          </div>
+          <input id="late_tolerance" name="late_tolerance" type="number" min="0" step="1" value="{{.Selected.Settings.LateToleranceMinutes}}">
+        </div>
+        <div>
+          <div class="field-head">
+            <label for="a2b_work_minutes">{{template "icon" "cube"}}Menit kerja A2B</label>
+            {{template "fieldHelp" "Satu shift penuh dalam menit. Pembacaan hour meter alat berat diukur terhadap angka ini."}}
+          </div>
+          <input id="a2b_work_minutes" name="a2b_work_minutes" type="number" min="0" step="1" value="{{.Selected.Settings.A2BWorkMinutes}}">
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "save"}}LAPORAN</p>
+          <h2>Kop dan tanda tangan export</h2>
+        </div>
+      </div>
+      <div class="form-grid form-grid-2">
+        <div>
+          <label for="company">{{template "icon" "info"}}Nama perusahaan</label>
+          <input id="company" name="company" type="text" value="{{.Selected.Settings.Company}}" autocomplete="off">
+        </div>
+        <div>
+          <label for="signatory_name">{{template "icon" "user"}}Penandatangan</label>
+          <input id="signatory_name" name="signatory_name" type="text" value="{{.Selected.Settings.SignatoryName}}" autocomplete="off">
+        </div>
+        <div>
+          <label for="signatory_title">{{template "icon" "tag"}}Jabatan penandatangan</label>
+          <input id="signatory_title" name="signatory_title" type="text" value="{{.Selected.Settings.SignatoryTitle}}" autocomplete="off">
+        </div>
+        <div>
+          <label for="signatory_place">{{template "icon" "pin"}}Tempat tanda tangan</label>
+          <input id="signatory_place" name="signatory_place" type="text" value="{{.Selected.Settings.SignatoryPlace}}" autocomplete="off">
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+          <span class="spinner" aria-hidden="true" hidden></span>
+          {{template "icon" "check"}}<span data-submit-label>Simpan setelan</span>
+        </button>
+      </div>
+    </section>
+  </form>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "users"}}PENGGUNA</p>
+        <h2>{{len .Members}} anggota</h2>
+      </div>
+    </div>
+    <p class="hint">Akun bertanda <strong>Semua project</strong> bisa membuka setiap project, dan muncul di daftar semuanya.</p>
+    {{if .Members}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Nama</th>
+            <th scope="col">Jabatan</th>
+            <th scope="col">Ditugaskan ke</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Members}}
+          <tr>
+            <th scope="row" class="wrap">{{.NamaLengkap}}<br><span class="table-subtext">{{.NRP}}</span></th>
+            <td>{{.Jabatan}}</td>
+            <td>
+              {{/* One tiny form per row: changing one person's project must not
+                   resubmit everybody else's. */}}
+              {{$assigned := .Assigned}}
+              <form method="post" action="/project/settings" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="aksi" value="tugaskan">
+                <input type="hidden" name="project_nama" value="{{$.Selected.Nama}}">
+                <input type="hidden" name="user_id" value="{{.UserID}}">
+                <label class="sr-only" for="assign-{{.UserID}}">Project untuk {{.NamaLengkap}}</label>
+                <select id="assign-{{.UserID}}" name="user_project" onchange="this.form.submit()">
+                  {{range $.Assignable}}<option value="{{.}}"{{if eq . $assigned}} selected{{end}}>{{if eq . $.SemuaProyek}}Semua project{{else}}{{.}}{{end}}</option>{{end}}
+                </select>
+                <noscript><button class="button subtle" type="submit">Simpan</button></noscript>
+              </form>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada pengguna di project ini.</p>
+    {{end}}
+  </section>
+
+{{else}}
+  {{/* ── The list ────────────────────────────────────────────────────────
+       What opening this page shows: what exists, and the one button that adds
+       to it. Everything else is a click away rather than stacked here. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "pin"}}PROJECT</p>
+        <h2>{{len .Cards}} project terdaftar</h2>
+      </div>
+      <button class="button primary" type="button" data-open-dialog="newProjectDialog">{{template "icon" "plus"}}Tambah project</button>
+    </div>
+
+    {{if .Cards}}
+    <ul class="project-list">
+      {{range .Cards}}
+      <li class="project-card{{if not .Aktif}} project-card-off{{end}}">
+        <div class="project-card-head">
+          <div class="project-card-name">
+            <h3>{{.Nama}}</h3>
+            <p>{{.ProjectID}}{{if .Active}} · sedang dibuka{{end}}</p>
+          </div>
+          <span class="status-chip {{if .Aktif}}approved{{else}}cancelled{{end}}">{{if .Aktif}}Aktif{{else}}Tidak aktif{{end}}</span>
+        </div>
+
+        <div class="project-card-menus">
+          {{if .SemuaMenu}}
+          <span class="tag tag-all">Semua modul</span>
+          {{else if .MenuLabels}}
+          {{range .MenuLabels}}<span class="tag">{{.}}</span>{{end}}
+          {{else}}
+          <span class="tag tag-none">Tidak ada modul</span>
+          {{end}}
+        </div>
+
+        <dl class="project-card-facts">
+          <div>
+            <dt>Anggota</dt>
+            <dd>{{.Anggota}}</dd>
+          </div>
+          <div class="project-card-sheet">
+            <dt>Spreadsheet</dt>
+            <dd><code>{{.SpreadsheetID}}</code></dd>
+          </div>
+        </dl>
+
+        <a class="button subtle project-card-action" href="/project/settings?project={{.Nama}}">Atur{{template "icon" "arrow-right"}}</a>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="panel-empty">Belum ada project. Tambahkan satu untuk mulai.</p>
+    {{end}}
+  </section>
+
+  {{/* Short enough for a dialog. It opens by itself when a submission came
+       back refused, so the message and the form stay together. */}}
+  <dialog class="modal" id="newProjectDialog" aria-labelledby="newProjectTitle"{{if .OpenNew}} open{{end}}>
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">{{template "icon" "pin"}}PROJECT BARU</p>
+        <h2 id="newProjectTitle">Tambah project</h2>
+      </div>
+      <button class="icon-button" type="button" data-close-dialog aria-label="Tutup">{{template "icon" "close"}}</button>
+    </div>
+
+    {{/* stack-form is what gives the labels their icon spacing; without it the
+         glyphs sit jammed against the text. */}}
+    {{if .NewError}}<div class="alert error" role="alert">{{.NewError}}</div>{{end}}
+
+    <form method="post" action="/project/settings" class="stack-form" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="aksi" value="tambah">
+
+      <ol class="steps">
+        <li>Buat satu spreadsheet kosong di Google Drive.</li>
+        <li>Bagikan ke service account aplikasi sebagai Editor.</li>
+        <li>Tempel ID-nya di bawah.</li>
+      </ol>
+
+      <div class="field-head">
+        <label for="nama_baru">{{template "icon" "pin"}}Nama project</label>
+        {{template "fieldHelp" "Nama ini muncul di switcher dan tersimpan di setiap baris produksi project ini."}}
+      </div>
+      <input id="nama_baru" name="nama_baru" type="text" value="{{.NewNama}}" placeholder="Mis. KENDAL" autocomplete="off" required>
+
+      <div class="field-head">
+        <label for="spreadsheet_id">{{template "icon" "list"}}Spreadsheet ID</label>
+        {{template "fieldHelp" "Bagian di antara /d/ dan /edit pada URL spreadsheet. Sheet dan headernya dibuat otomatis saat project pertama kali dibuka."}}
+      </div>
+      <input id="spreadsheet_id" name="spreadsheet_id" type="text" value="{{.NewSpreadsheetID}}" placeholder="1AbC…" autocomplete="off" required>
+
+      <div class="dialog-actions">
+        <button class="button subtle" type="button" data-close-dialog>Batal</button>
+        <button class="button primary" type="submit" data-submit-button data-loading-label="Menyiapkan spreadsheet…">
+          <span class="spinner" aria-hidden="true" hidden></span>
+          {{template "icon" "plus"}}<span data-submit-label>Tambah project</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+{{end}}
+{{template "appShellClose" .}}
+{{/* Carries the submit-button loading state: adding a project waits on Google
+     to write a dozen sheets, which is long enough that a button doing nothing
+     reads as a page that ignored the click. */}}
+<script src="/static/js/auth.js" defer></script>
+{{end}}

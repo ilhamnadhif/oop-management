@@ -88,3 +88,22 @@ type Store interface {
 	UpdateLeaveDecision(ctx context.Context, rowNumber int, leave *model.Leave) error
 	ReadLeaveAttachment(ctx context.Context, rowNumber int) (string, error)
 }
+
+// MasterStore is the one store that is not any project's. It holds the accounts,
+// the login trail, and the list of projects saying where every other store is.
+//
+// It is a superset of Store because the first project's books live in the same
+// spreadsheet as the accounts: that file is both the master and a project store,
+// and splitting the two types apart would mean wrapping it twice to say so.
+type MasterStore interface {
+	Store
+	EnsureMasterSchema(ctx context.Context) error
+	ListProjects(ctx context.Context) ([]model.Project, error)
+	CreateProject(ctx context.Context, project *model.Project) error
+	FindProjectRow(ctx context.Context, projectID string) (*model.Project, int, error)
+	UpdateProject(ctx context.Context, rowNumber int, project *model.Project) error
+	MaxProjectSequence(ctx context.Context, prefix string) (int, error)
+	// UpdateUserProject writes only the cell naming somebody's project, so
+	// assigning a person to a site cannot disturb the rest of their account.
+	UpdateUserProject(ctx context.Context, rowNumber int, project string, at time.Time) error
+}

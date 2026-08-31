@@ -121,7 +121,9 @@ type ProduksiService struct {
 }
 
 type ProduksiInput struct {
-	Tanggal  string
+	Tanggal string
+	// Project is stamped by the caller from the project this request is working
+	// in, never read off the form.
 	Project  string
 	Supplier string
 	Quary    string
@@ -228,10 +230,10 @@ func (s *ProduksiService) Create(ctx context.Context, user *model.User, input Pr
 	if err != nil {
 		return nil, err
 	}
-	project, err := adoptOption("Project", input.Project, options.Project)
-	if err != nil {
-		return nil, err
-	}
+	// The project is not asked for: this store is one project's, so a row
+	// written into it can belong to no other. It is stamped rather than typed,
+	// which also means it cannot be typed wrong.
+	project := strings.Join(strings.Fields(input.Project), " ")
 	supplier, err := adoptOption("Supplier", input.Supplier, options.Supplier)
 	if err != nil {
 		return nil, err

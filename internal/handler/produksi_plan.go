@@ -13,7 +13,6 @@ import (
 
 type ProduksiPlanFormData struct {
 	Tanggal  string
-	Project  string
 	Supplier string
 	Lokasi   string
 	Volume   string
@@ -41,7 +40,7 @@ func (s *Server) handleProduksiPlan(w http.ResponseWriter, r *http.Request) {
 		s.handleProduksiPlanCreate(w, r)
 		return
 	}
-	user, sessionValue, ok := s.requireAccess(w, r, "produksi-plan")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "produksi-plan")
 	if !ok {
 		return
 	}
@@ -62,7 +61,8 @@ func (s *Server) handleProduksiPlanCreate(w http.ResponseWriter, r *http.Request
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "produksi-plan") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "produksi-plan")
+	if !okProject {
 		return
 	}
 
@@ -77,15 +77,15 @@ func (s *Server) handleProduksiPlanCreate(w http.ResponseWriter, r *http.Request
 	}
 
 	form := ProduksiPlanFormData{
-		Tanggal:  strings.TrimSpace(r.FormValue("tanggal")),
-		Project:  strings.TrimSpace(r.FormValue("project")),
+		Tanggal: strings.TrimSpace(r.FormValue("tanggal")),
+
 		Supplier: strings.TrimSpace(r.FormValue("supplier")),
 		Lokasi:   strings.TrimSpace(r.FormValue("lokasi")),
 		Volume:   strings.TrimSpace(r.FormValue("volume")),
 	}
 	plan, err := s.produksi.CreatePlan(r.Context(), user, service.ProduksiPlanInput{
 		Tanggal:  form.Tanggal,
-		Project:  form.Project,
+		Project:  s.project.Nama,
 		Supplier: form.Supplier,
 		Lokasi:   form.Lokasi,
 		Volume:   form.Volume,
@@ -107,7 +107,7 @@ func (s *Server) handleProduksiPlanCreate(w http.ResponseWriter, r *http.Request
 	}
 
 	s.renderProduksiPlan(w, r, user, sessionValue,
-		ProduksiPlanFormData{Tanggal: plan.Tanggal, Project: plan.Project, Supplier: plan.Supplier},
+		ProduksiPlanFormData{Tanggal: plan.Tanggal, Supplier: plan.Supplier},
 		"", "Rencana "+plan.PlanID+" tersimpan untuk "+plan.Lokasi+".", http.StatusOK)
 }
 

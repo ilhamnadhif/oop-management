@@ -40,7 +40,7 @@ func (s *Server) scanBudget() time.Duration {
 // the whole thing.
 func (s *Server) handleProduksiScan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	release, ok := s.beginScanRequest(w, r, "Scan lembar produksi")
+	s, release, ok := s.beginScanRequest(w, r, "Scan lembar produksi")
 	if !ok {
 		return
 	}
@@ -122,7 +122,8 @@ func (s *Server) handleProduksiScanCommit(w http.ResponseWriter, r *http.Request
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "produksi-input") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "produksi-input")
+	if !okProject {
 		return
 	}
 	// The token travels in the body, because a form submit cannot set a header.
@@ -146,6 +147,9 @@ func (s *Server) handleProduksiScanCommit(w http.ResponseWriter, r *http.Request
 
 	result, err := s.produksi.CommitScan(r.Context(), user, service.ScanCommit{
 		Rows: rows, Foto: raw,
+		// Stamped from the project this request is working in, the same way the
+		// entry form does it.
+		Project: s.project.Nama,
 		// Typed on the confirmation dialog, not read off the paper.
 		Tanggal:  strings.TrimSpace(r.FormValue("tanggal")),
 		Supplier: strings.TrimSpace(r.FormValue("supplier")),
@@ -199,45 +203,72 @@ func scanResultMessage(result service.ScanResult) string {
 // image is decoded: session, authorisation, CSRF, configuration, rate, and
 // concurrency. It returns holding a concurrency slot, which the returned
 // function releases.
-func (s *Server) beginScanRequest(w http.ResponseWriter, r *http.Request, label string) (func(), bool) {
+//
+// The first return is the server bound to this request's project, because a
+// sheet is read against that project's own option lists and unit register.
+func (s *Server) beginScanRequest(w http.ResponseWriter, r *http.Request, label string) (*Server, func(), bool) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "method not allowed"})
-		return nil, false
+		return nil, nil, false
 	}
 	sessionValue, ok := s.currentSession(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "Sesi tidak valid. Silakan masuk kembali."})
-		return nil, false
+		return nil, nil, false
 	}
 	user, err := s.auth.LoadUser(r.Context(), sessionValue.UserID)
 	if err != nil || user.StatusPengguna != model.StatusAktif {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "Sesi tidak valid. Silakan masuk kembali."})
-		return nil, false
+		return nil, nil, false
 	}
 	if !CanAccess(user.Jabatan, "produksi-input") {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Jabatan Anda tidak berhak mengakses input Produksi."})
-		return nil, false
+		return nil, nil, false
+	}
+	// The project is bound here rather than through bindProject: that one
+	// answers with a rendered page, and this endpoint answers in JSON.
+	reachable, err := s.projects.Reachable(r.Context(), user)
+	if err != nil || len(reachable) == 0 {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Akun ini belum ditugaskan ke project mana pun."})
+		return nil, nil, false
+	}
+	project := reachable[0]
+	for _, candidate := range reachable {
+		if strings.EqualFold(strings.TrimSpace(candidate.Nama), strings.TrimSpace(sessionValue.Project)) {
+			project = candidate
+			break
+		}
+	}
+	if !projectRuns(project, "produksi-input") {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Menu Produksi tidak aktif di project " + project.Nama + "."})
+		return nil, nil, false
+	}
+	bound, err := s.forProject(r.Context(), project, reachable)
+	if err != nil {
+		log.Printf("bind project %s: %v", project.Nama, err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"ok": false, "error": "Project " + project.Nama + " tidak bisa dibuka saat ini."})
+		return nil, nil, false
 	}
 	if !s.sessions.ValidCSRF(r, sessionValue) {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "CSRF token tidak valid"})
-		return nil, false
+		return nil, nil, false
 	}
 	if s.tallyScanner == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"ok": false, "error": label + " belum dikonfigurasi. Anda tetap dapat mengisi form secara manual."})
-		return nil, false
+		return nil, nil, false
 	}
 	if allowed, retryAfter := s.allowAIScan(sessionValue.UserID); !allowed {
 		writeScanLimit(w, retryAfter, "Batas scan tercapai. Silakan coba lagi sebentar.")
-		return nil, false
+		return nil, nil, false
 	}
 	select {
-	case s.scanSlots <- struct{}{}:
+	case s.scan.slots <- struct{}{}:
 	default:
 		writeScanLimit(w, time.Second, "Layanan scan sedang memproses permintaan lain. Silakan coba lagi.")
-		return nil, false
+		return nil, nil, false
 	}
-	return func() { <-s.scanSlots }, true
+	return bound, func() { <-s.scan.slots }, true
 }
 
 // readSheetPhoto reads exactly one image out of the request, and says in plain

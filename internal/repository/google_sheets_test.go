@@ -302,3 +302,131 @@ func TestHourMeterHeaderLayoutMatchesItsOffsets(t *testing.T) {
 		}
 	}
 }
+
+// The project column sits past the photo, so a row that reaches it has a gap in
+// the middle where the photo was skipped. Every index after that gap has to
+// still line up with the header.
+func TestRowToUserReadsTheProjectPastTheSkippedPhoto(t *testing.T) {
+	row := []interface{}{
+		"user-1", "2026-08-07", "Budi", "12345", "Management", "budi@example.com",
+		"hash", "aktif", "2026-08-07 10:00:00", "2026-08-07 10:00:00", "",
+		"0812", "1990-01-01", false, "", " KENDAL ",
+	}
+
+	user, err := rowToUser(row, testLocation(t))
+	if err != nil {
+		t.Fatalf("rowToUser: %v", err)
+	}
+	if user.Project != "KENDAL" {
+		t.Fatalf("Project = %q, want KENDAL", user.Project)
+	}
+	if user.NoTelp != "0812" || user.TanggalLahir != "1990-01-01" {
+		t.Fatalf("the columns before the photo shifted: %+v", user)
+	}
+}
+
+// A row written before the column existed comes back short, which must read as
+// "no project named" rather than as an error.
+func TestRowToUserAcceptsARowWrittenBeforeProjectsExisted(t *testing.T) {
+	row := []interface{}{
+		"user-1", "2026-08-07", "Budi", "12345", "Produksi", "budi@example.com",
+		"hash", "aktif", "2026-08-07 10:00:00", "2026-08-07 10:00:00",
+	}
+
+	user, err := rowToUser(row, testLocation(t))
+	if err != nil {
+		t.Fatalf("rowToUser: %v", err)
+	}
+	if user.Project != "" {
+		t.Fatalf("Project = %q, want empty", user.Project)
+	}
+}
+
+// userToRow must stay the same width as the header, or a row appended today
+// would put the project under the wrong column tomorrow.
+func TestUserRowMatchesItsHeaderWidth(t *testing.T) {
+	row := userToRow(&model.User{UserID: "user-1", Project: model.ProjectSemua})
+	if len(row) != len(userHeaders) {
+		t.Fatalf("userToRow wrote %d cells, header has %d", len(row), len(userHeaders))
+	}
+	if got := row[len(row)-1]; got != model.ProjectSemua {
+		t.Fatalf("last cell = %v, want the project", got)
+	}
+}
+
+// A project row survives the trip to the sheet and back, settings included. The
+// figures left at zero are written blank on purpose: zero and "not configured"
+// mean different things, and only one of them should follow the deployment.
+func TestProjectRowRoundTrip(t *testing.T) {
+	project := &model.Project{
+		ProjectID: "PRJ-0002", Nama: "KENDAL", SpreadsheetID: "sheet-kendal",
+		MenuAktif: []string{"produksi", "unit"}, Status: model.StatusAktif,
+		Settings: model.ProjectSettings{
+			WorkStart: "07:00", WorkEnd: "16:00", LateToleranceMinutes: 10,
+			Company: "PT Contoh", SignatoryName: "Sari",
+		},
+	}
+	row := projectToRow(project)
+	if len(row) != len(projectHeaders) {
+		t.Fatalf("projectToRow wrote %d cells, header has %d", len(row), len(projectHeaders))
+	}
+	if row[3] != "produksi,unit" {
+		t.Fatalf("menu_aktif = %v, want the list joined", row[3])
+	}
+	// A2BWorkMinutes was never set, so the cell must be empty rather than 0.
+	if row[8] != "" {
+		t.Fatalf("a2b_work_minutes = %v, want an empty cell", row[8])
+	}
+	if row[7] != 10 {
+		t.Fatalf("late_tolerance_minutes = %v, want 10", row[7])
+	}
+}
+
+func TestSplitMenusIgnoresBlanksAndSpacing(t *testing.T) {
+	got := splitMenus(" produksi , ,unit ,  ")
+	if len(got) != 2 || got[0] != "produksi" || got[1] != "unit" {
+		t.Fatalf("splitMenus = %v", got)
+	}
+	if menus := splitMenus("   "); menus != nil {
+		t.Fatalf("an empty cell yielded %v, want nothing so every menu runs", menus)
+	}
+}
+
+// The header row is read by position, so a row that disagrees with the code is
+// a conflict to report rather than something to overwrite: rewriting it would
+// leave every existing value sitting under the wrong name.
+func TestHeaderNeedsWriting(t *testing.T) {
+	expected := []string{"a", "b", "c"}
+
+	// An empty sheet gets the header written.
+	if write, err := headerNeedsWriting("s", nil, expected); err != nil || !write {
+		t.Fatalf("empty sheet: write=%v err=%v, want write with no error", write, err)
+	}
+
+	// A header that already matches is left alone.
+	full := []interface{}{"a", "b", "c"}
+	if write, err := headerNeedsWriting("s", full, expected); err != nil || write {
+		t.Fatalf("matching header: write=%v err=%v, want no write and no error", write, err)
+	}
+
+	// A sheet written before a column existed is short, not wrong.
+	short := []interface{}{"a", "b"}
+	if write, err := headerNeedsWriting("s", short, expected); err != nil || !write {
+		t.Fatalf("short header: write=%v err=%v, want write with no error", write, err)
+	}
+
+	// A different name in a column is a conflict.
+	wrong := []interface{}{"a", "x", "c"}
+	if _, err := headerNeedsWriting("s", wrong, expected); err == nil {
+		t.Fatal("a renamed column was accepted")
+	} else if !strings.Contains(err.Error(), "column 2") {
+		t.Fatalf("err = %v, want it to name the column", err)
+	}
+
+	// So is a sheet holding more columns than the code knows about: writing the
+	// shorter header would leave the extra ones orphaned.
+	long := []interface{}{"a", "b", "c", "d"}
+	if _, err := headerNeedsWriting("s", long, expected); err == nil {
+		t.Fatal("an unexpected extra column was accepted")
+	}
+}

@@ -28,6 +28,7 @@ type TestRepository struct {
 	fuelMasuk  []*model.FuelMasuk
 	fuelKeluar []*model.FuelKeluar
 	hourMeters []*model.HourMeter
+	projects   []*model.Project
 }
 
 func NewTestRepository() *TestRepository {
@@ -35,6 +36,94 @@ func NewTestRepository() *TestRepository {
 }
 
 func (r *TestRepository) EnsureSchema(context.Context) error { return nil }
+
+func (r *TestRepository) EnsureMasterSchema(context.Context) error { return nil }
+
+func (r *TestRepository) ListProjects(context.Context) ([]model.Project, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	projects := make([]model.Project, 0, len(r.projects))
+	for _, project := range r.projects {
+		projects = append(projects, cloneProject(project))
+	}
+	return projects, nil
+}
+
+func (r *TestRepository) CreateProject(_ context.Context, project *model.Project) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := cloneProject(project)
+	r.projects = append(r.projects, &stored)
+	return nil
+}
+
+func (r *TestRepository) FindProjectRow(_ context.Context, projectID string) (*model.Project, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for i, project := range r.projects {
+		if strings.EqualFold(strings.TrimSpace(project.ProjectID), strings.TrimSpace(projectID)) {
+			stored := cloneProject(project)
+			// Row 1 is the header in the sheet, so the first record sits on row 2.
+			return &stored, i + 2, nil
+		}
+	}
+	return nil, 0, ErrNotFound
+}
+
+func (r *TestRepository) UpdateProject(_ context.Context, rowNumber int, project *model.Project) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.projects) {
+		return fmt.Errorf("invalid project row number %d", rowNumber)
+	}
+	stored := cloneProject(project)
+	// The identifier is not the settings screen's to change.
+	stored.ProjectID = r.projects[index].ProjectID
+	r.projects[index] = &stored
+	return nil
+}
+
+func (r *TestRepository) MaxProjectSequence(_ context.Context, prefix string) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	highest := 0
+	for _, project := range r.projects {
+		trimmed := strings.TrimSpace(project.ProjectID)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		sequence, err := strconv.Atoi(strings.TrimPrefix(trimmed, prefix))
+		if err == nil && sequence > highest {
+			highest = sequence
+		}
+	}
+	return highest, nil
+}
+
+func (r *TestRepository) UpdateUserProject(_ context.Context, rowNumber int, project string, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.users) {
+		return fmt.Errorf("invalid user row number %d", rowNumber)
+	}
+	r.users[index].Project = project
+	r.users[index].UpdatedAt = at
+	return nil
+}
+
+// ProjectList exposes stored projects to tests.
+func (r *TestRepository) ProjectList() []model.Project {
+	projects, _ := r.ListProjects(context.Background())
+	return projects
+}
+
+func cloneProject(project *model.Project) model.Project {
+	stored := *project
+	stored.MenuAktif = append([]string(nil), project.MenuAktif...)
+	return stored
+}
 
 func (r *TestRepository) UnitDTExists(_ context.Context, nopol string) (bool, error) {
 	r.mu.RLock()

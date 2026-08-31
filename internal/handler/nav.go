@@ -1,6 +1,10 @@
 package handler
 
-import "strings"
+import (
+	"strings"
+
+	"opp-management/internal/model"
+)
 
 // NavItem is one entry in the dashboard sidebar. An item with children is a
 // group heading: it has no page of its own, only the pages beneath it. Icon
@@ -26,6 +30,12 @@ var navItems = []NavItem{
 		Lede: "Catat kehadiran hari ini lengkap dengan lokasi dan foto."},
 	{Key: "leave-request", Label: "Request Leave", Path: "/leave/request", Icon: "clock",
 		Lede: "Ajukan cuti atau izin dan pantau proses persetujuannya."},
+	// Project settings belongs to no project: it is where projects are set up,
+	// and it is the one menu whose visibility a project cannot switch off. It
+	// sits with the ungrouped pages rather than among the modules, because it
+	// configures them rather than being one of them.
+	{Key: "project-settings", Label: "Project", Path: "/project/settings", Icon: "pin",
+		Lede: "Kelola project, menu yang aktif di masing-masing, dan penugasan penggunanya."},
 	{Key: "hr", Label: "HR", Icon: "users", Children: []NavItem{
 		{Key: "hr-overview", Label: "Overview", Path: "/hr/overview", Icon: "activity",
 			Lede: "Ringkasan karyawan, kehadiran, dan pengajuan leave."},
@@ -84,7 +94,7 @@ var navItems = []NavItem{
 
 // JabatanManagement sees every menu. It is the one position defined by what it
 // may reach rather than by what it does.
-const JabatanManagement = "Management"
+const JabatanManagement = model.JabatanManagement
 
 // menuAccess lists the positions that may open each top-level menu. A menu
 // missing from this map is open to everyone, which is how Dashboard and Absensi
@@ -100,6 +110,9 @@ var menuAccess = map[string][]string{
 	// the same positions as the unit register.
 	"a2b":  {"Surveyor", "Produksi", "SPV", "Logistik"},
 	"nota": {"HR"},
+	// Nobody but Management, which CanAccess lets through before this map is
+	// consulted. An empty list is how a menu is closed to every other position.
+	"project-settings": {},
 }
 
 // menuKeyFor reports which top-level menu a page belongs to, since permission
@@ -118,9 +131,17 @@ func menuKeyFor(key string) string {
 	return key
 }
 
-// CanAccess reports whether a position may open a page. An unknown page is
-// refused rather than allowed: a route added without a rule should be
-// unreachable, not open to everyone.
+// projectSettingsKey is the one page that belongs to no project. It is the
+// screen projects are configured from, so gating it behind a project's own menu
+// list would let a project switch off the way back to its settings.
+const projectSettingsKey = "project-settings"
+
+// CanAccess reports whether a position may open a page, ignoring the project.
+// It is the jabatan half of the rule and exists on its own because the sidebar
+// and the guards both need it; almost every caller wants CanReach instead.
+//
+// An unknown page is refused rather than allowed: a route added without a rule
+// should be unreachable, not open to everyone.
 func CanAccess(jabatan, key string) bool {
 	if strings.EqualFold(strings.TrimSpace(jabatan), JabatanManagement) {
 		return true
@@ -137,6 +158,37 @@ func CanAccess(jabatan, key string) bool {
 	return positionListed(jabatan, allowed)
 }
 
+// CanReach is the whole rule: a page opens when the position may see it and the
+// project it is being opened in actually runs that module.
+//
+// The project half binds everyone, Management included. A menu switched off has
+// no rows behind it, so showing it would only lead to pages that are empty by
+// construction.
+func CanReach(jabatan string, project model.Project, key string) bool {
+	if !CanAccess(jabatan, key) {
+		return false
+	}
+	return projectRuns(project, key)
+}
+
+// projectRuns reports whether a project has the module a page belongs to.
+//
+// Only modules are gated. Dashboard, Absensi and Request Leave are open to
+// every position and belong to no module, so a project that lists its modules
+// does not thereby switch off the pages every employee has to reach. The
+// settings screen is exempt for a different reason: it is how the list is
+// edited, and a project that switched it off could never switch anything on.
+func projectRuns(project model.Project, key string) bool {
+	menu := menuKeyFor(key)
+	if menu == projectSettingsKey {
+		return true
+	}
+	if _, isModule := menuAccess[menu]; !isModule {
+		return true
+	}
+	return project.HasMenu(menu)
+}
+
 func positionListed(jabatan string, allowed []string) bool {
 	for _, position := range allowed {
 		if strings.EqualFold(strings.TrimSpace(jabatan), position) {
@@ -149,18 +201,18 @@ func positionListed(jabatan string, allowed []string) bool {
 // navItemsFor returns the menu a position may see. A group whose pages are all
 // out of reach is dropped entirely rather than shown as a heading that opens
 // onto nothing.
-func navItemsFor(jabatan string) []NavItem {
+func navItemsFor(jabatan string, project model.Project) []NavItem {
 	visible := make([]NavItem, 0, len(navItems))
 	for _, item := range navItems {
 		if len(item.Children) == 0 {
-			if CanAccess(jabatan, item.Key) {
+			if CanReach(jabatan, project, item.Key) {
 				visible = append(visible, item)
 			}
 			continue
 		}
 		children := make([]NavItem, 0, len(item.Children))
 		for _, child := range item.Children {
-			if CanAccess(jabatan, child.Key) {
+			if CanReach(jabatan, project, child.Key) {
 				children = append(children, child)
 			}
 		}

@@ -50,6 +50,92 @@ type User struct {
 	// it is read one row at a time and never as part of a listing.
 	PunyaFoto  bool
 	FotoProfil string
+
+	// Project is the one project this account works in. Management is the
+	// exception and carries ProjectSemua, because the position is defined by
+	// reaching everything rather than by belonging somewhere.
+	//
+	// An account written before projects existed has this empty. It is read as
+	// the first project rather than as "none": the alternative locks out
+	// everybody who already had an account.
+	Project string
+}
+
+// ProjectSemua is what a user row carries instead of a project name when the
+// account reaches every project.
+const ProjectSemua = "*"
+
+// JabatanManagement is the position defined by what it may reach rather than by
+// what it does. It reaches every project whatever its row says, so an account
+// created before the column existed - or one somebody assigned to a single site
+// by mistake - still gets there.
+const JabatanManagement = "Management"
+
+// ReachesEveryProject reports whether this account is not tied to one project.
+func (u User) ReachesEveryProject() bool {
+	if strings.TrimSpace(u.Project) == ProjectSemua {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(u.Jabatan), JabatanManagement)
+}
+
+// Project is one site the app is keeping books for. Each has a spreadsheet of
+// its own, so no filter stands between one project's rows and another's: they
+// are never in the same file to begin with.
+//
+// SpreadsheetID may name the same spreadsheet the users live in. That is how
+// the first project carries on unchanged: the file it has always written to
+// becomes both the master and its own project store.
+type Project struct {
+	ProjectID     string
+	Nama          string
+	SpreadsheetID string
+	// MenuAktif lists the top-level menu keys this project has. Empty means
+	// every menu, which is what an unconfigured project gets.
+	MenuAktif []string
+	Status    string
+	Settings  ProjectSettings
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Aktif reports whether the project may be opened at all.
+func (p Project) Aktif() bool {
+	return strings.EqualFold(strings.TrimSpace(p.Status), StatusAktif)
+}
+
+// HasMenu reports whether a top-level menu is switched on here. A project that
+// lists no menus has them all: a row added with the column left blank should
+// open, not lock its own operators out.
+func (p Project) HasMenu(key string) bool {
+	if len(p.MenuAktif) == 0 {
+		return true
+	}
+	for _, menu := range p.MenuAktif {
+		if strings.EqualFold(strings.TrimSpace(menu), strings.TrimSpace(key)) {
+			return true
+		}
+	}
+	return false
+}
+
+// ProjectSettings are the figures that used to come from the environment, now
+// answered per project. Every field may be empty or zero, and an empty field
+// means "use the deployment default": a project that has never been configured
+// must behave exactly as the app did before it had settings at all.
+type ProjectSettings struct {
+	// The working day attendance is judged against.
+	WorkStart            string
+	WorkEnd              string
+	LateToleranceMinutes int
+	// One shift's worth of minutes for an A2B machine, which hour meter
+	// readings are measured against.
+	A2BWorkMinutes int
+	// What the letterhead and the signature block of every export say.
+	Company        string
+	SignatoryName  string
+	SignatoryTitle string
+	SignatoryPlace string
 }
 
 type LoginActivity struct {

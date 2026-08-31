@@ -74,7 +74,7 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 	from := start.Format("2006-01-02")
 	to := end.Format("2006-01-02")
 
-	users, err := s.store.ListUsers(ctx)
+	users, err := s.listUsers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read users: %w", err)
 	}

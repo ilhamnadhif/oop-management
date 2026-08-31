@@ -17,14 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
-	"opp-management/internal/export"
 	"opp-management/internal/photo"
 	"opp-management/internal/receipt"
 	"opp-management/internal/repository"
-	"opp-management/internal/service"
-	"opp-management/internal/session"
 )
 
 type fakeReceiptScanner struct {
@@ -60,23 +55,7 @@ func newReceiptScanServer(t *testing.T, scanner receipt.Scanner) (*httptest.Serv
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
-	server, err := NewServer(
-		service.NewAuthService(store, location, nowFunc).WithHashCost(bcrypt.MinCost),
-		service.NewAttendanceService(store, location, nowFunc),
-		service.NewUnitDTService(store, location, nowFunc),
-		service.NewProduksiService(store, location, nowFunc),
-		service.NewOverviewService(store, location, nowFunc),
-		service.NewUnitA2BService(store, location, nowFunc),
-		service.NewNotaService(store, location, nowFunc),
-		service.NewLeaveService(store, location, nowFunc),
-		service.NewUnitOverviewService(store, location, nowFunc),
-		service.NewFuelMasukService(store, location, nowFunc),
-		service.NewFuelKeluarService(store, location, nowFunc),
-		service.NewHourMeterService(store, location, nowFunc),
-		session.NewManager(24*time.Hour, false),
-		location, nowFunc, 2*1024*1024, photo.MaxOutputChars,
-		Branding{Company: "PT Orecon Putra Perkasa", Signatory: export.Signatory{Title: "Direktur"}},
-	)
+	server, err := NewServer(testDeps(t, store, location, nowFunc, defaultTestBranding()))
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -568,15 +547,15 @@ func TestNotaReceiptScanRejectsWhenGlobalScannerSlotsAreFull(t *testing.T) {
 func TestReceiptScanRateStateIsBoundedAndCleansExpiredWindows(t *testing.T) {
 	now := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
 	server := &Server{
-		now:       func() time.Time { return now },
-		scanRates: make(map[string]aiScanRateEntry),
+		now:  func() time.Time { return now },
+		scan: &scanGate{rates: make(map[string]aiScanRateEntry)},
 	}
 	for i := 0; i < aiScanRateMaxUsers+100; i++ {
 		if allowed, _ := server.allowAIScan(fmt.Sprintf("user-%d", i)); !allowed {
 			t.Fatalf("new user %d was unexpectedly rate limited", i)
 		}
 	}
-	if got := len(server.scanRates); got != aiScanRateMaxUsers {
+	if got := len(server.scan.rates); got != aiScanRateMaxUsers {
 		t.Fatalf("rate state size: %d, want %d", got, aiScanRateMaxUsers)
 	}
 
@@ -584,7 +563,7 @@ func TestReceiptScanRateStateIsBoundedAndCleansExpiredWindows(t *testing.T) {
 	if allowed, _ := server.allowAIScan("fresh-user"); !allowed {
 		t.Fatal("fresh user was unexpectedly rate limited")
 	}
-	if got := len(server.scanRates); got != 1 {
+	if got := len(server.scan.rates); got != 1 {
 		t.Fatalf("expired rate state was not cleaned: %d entries remain", got)
 	}
 }

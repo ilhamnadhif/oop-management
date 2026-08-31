@@ -59,7 +59,7 @@ func (s *Server) handleFuelKeluar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFuelKeluarPage(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "a2b-fuel-keluar")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "a2b-fuel-keluar")
 	if !ok {
 		return
 	}
@@ -78,7 +78,8 @@ func (s *Server) handleFuelKeluarCreate(w http.ResponseWriter, r *http.Request) 
 		redirect(w, r, "/login")
 		return
 	}
-	if !s.allowed(w, user, sessionValue, "a2b-fuel-keluar") {
+	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "a2b-fuel-keluar")
+	if !okProject {
 		return
 	}
 
@@ -198,7 +199,7 @@ func (s *Server) renderFuelKeluar(w http.ResponseWriter, r *http.Request, user *
 }
 
 func (s *Server) handleFuelKeluarPhoto(w http.ResponseWriter, r *http.Request) {
-	_, _, ok := s.requireAccess(w, r, "a2b-fuel-keluar")
+	s, _, _, ok := s.requireAccess(w, r, "a2b-fuel-keluar")
 	if !ok {
 		return
 	}

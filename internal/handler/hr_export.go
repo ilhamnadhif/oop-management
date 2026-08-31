@@ -27,7 +27,7 @@ type AbsensiExportPageData struct {
 }
 
 func (s *Server) handleAbsensiExportPage(w http.ResponseWriter, r *http.Request) {
-	user, sessionValue, ok := s.requireAccess(w, r, "hr-export")
+	s, user, sessionValue, ok := s.requireAccess(w, r, "hr-export")
 	if !ok {
 		return
 	}
@@ -66,7 +66,8 @@ func (s *Server) handleAbsensiExportPage(w http.ResponseWriter, r *http.Request)
 
 // handleAbsensiExportDownload streams the XLSX or the PDF itself.
 func (s *Server) handleAbsensiExportDownload(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireAccess(w, r, "hr-export"); !ok {
+	s, _, _, ok := s.requireAccess(w, r, "hr-export")
+	if !ok {
 		return
 	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))

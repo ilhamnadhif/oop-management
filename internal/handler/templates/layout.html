@@ -77,6 +77,22 @@
         <p class="topbar-title">{{.PageTitle}}</p>
       </div>
       <div class="topbar-meta">
+        {{/* The switcher is drawn only when there is somewhere to switch to.
+             One project means the control would be a dropdown with a single
+             entry, which reads as a choice nobody has. */}}
+        {{if gt (len .Projects) 1}}
+        <form class="project-switch" method="post" action="/project/switch">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <label class="sr-only" for="projectSwitch">Project aktif</label>
+          {{template "icon" "pin"}}
+          <select id="projectSwitch" name="project" onchange="this.form.submit()">
+            {{range .Projects}}<option value="{{.}}"{{if eq . $.Project}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+          <noscript><button class="button subtle" type="submit">Pindah</button></noscript>
+        </form>
+        {{else if .Project}}
+        <p class="project-badge">{{template "icon" "pin"}}<span>{{.Project}}</span></p>
+        {{end}}
         <p class="topbar-date">
           {{template "icon" "calendar"}}
           <span class="date-long">{{.Today}}</span>
@@ -149,6 +165,9 @@
 {{/* The profile dialog rides in the shell, so its script does too. Pages that
      carry dialogs of their own no longer load it themselves. */}}
 <script src="/static/js/dialog.js" defer></script>
+{{/* Field help marks appear on several pages, so their script rides in the
+     shell alongside the dialog one. */}}
+<script src="/static/js/field-help.js" defer></script>
 {{/* Every page with an upload gets the same camera-or-file sheet on a phone. */}}
 <script src="/static/js/upload.js" defer></script>
 {{/* The avatar is shown in a circle everywhere, so the profile form crops to

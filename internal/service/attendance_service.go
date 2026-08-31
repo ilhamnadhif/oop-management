@@ -18,6 +18,11 @@ type AttendanceService struct {
 	store    repository.Store
 	location *time.Location
 	now      NowFunc
+	// users is the account directory. A project's records live in its own
+	// spreadsheet while the accounts live in the master, so this is how the two
+	// are introduced. Left nil the service reads its own store, which is what
+	// the tests do.
+	users    UserLister
 	schedule Schedule
 	mu       sync.Mutex
 }
@@ -28,6 +33,22 @@ type AttendanceInput struct {
 	Accuracy  *float64
 	Photo     string
 	IPAddress string
+}
+
+// WithUsers points this service at the account directory. Accounts live in the
+// master spreadsheet, not in a project's, so without this the service falls
+// back to whatever its own store holds - which is what the tests rely on.
+func (s *AttendanceService) WithUsers(list UserLister) *AttendanceService {
+	s.users = list
+	return s
+}
+
+// listUsers reads the accounts this project's records belong to.
+func (s *AttendanceService) listUsers(ctx context.Context) ([]model.User, error) {
+	if s.users != nil {
+		return s.users(ctx)
+	}
+	return s.store.ListUsers(ctx)
 }
 
 func NewAttendanceService(store repository.Store, location *time.Location, now NowFunc) *AttendanceService {

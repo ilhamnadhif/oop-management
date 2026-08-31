@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"golang.org/x/crypto/bcrypt"
-
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -10,12 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"opp-management/internal/export"
 	"opp-management/internal/model"
-	"opp-management/internal/photo"
 	"opp-management/internal/repository"
-	"opp-management/internal/service"
-	"opp-management/internal/session"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -30,23 +24,7 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *repository.TestRep
 	location := time.FixedZone("WIB", 7*60*60)
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, location)
 	nowFunc := func() time.Time { return now }
-	server, err := NewServer(
-		service.NewAuthService(store, location, nowFunc).WithHashCost(bcrypt.MinCost),
-		service.NewAttendanceService(store, location, nowFunc),
-		service.NewUnitDTService(store, location, nowFunc),
-		service.NewProduksiService(store, location, nowFunc),
-		service.NewOverviewService(store, location, nowFunc),
-		service.NewUnitA2BService(store, location, nowFunc),
-		service.NewNotaService(store, location, nowFunc),
-		service.NewLeaveService(store, location, nowFunc),
-		service.NewUnitOverviewService(store, location, nowFunc),
-		service.NewFuelMasukService(store, location, nowFunc),
-		service.NewFuelKeluarService(store, location, nowFunc),
-		service.NewHourMeterService(store, location, nowFunc),
-		session.NewManager(24*time.Hour, false),
-		location, nowFunc, 2*1024*1024, photo.MaxOutputChars,
-		Branding{Company: "PT Orecon Putra Perkasa", Signatory: export.Signatory{Title: "Direktur"}},
-	)
+	server, err := NewServer(testDeps(t, store, location, nowFunc, defaultTestBranding()))
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
