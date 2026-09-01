@@ -1,0 +1,106 @@
+{{define "user_management"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "user"}}JABATAN KARYAWAN</p>
+        <h2>{{len .Members}} karyawan di {{.Project}}</h2>
+      </div>
+    </div>
+    {{if .Members}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Nama</th>
+            <th scope="col">Jabatan</th>
+            <th scope="col">Project</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Members}}
+          <tr>
+            <th scope="row" class="wrap">{{.NamaLengkap}}<br><span class="table-subtext">{{.NRP}}</span></th>
+            <td>
+              {{/* One tiny form per row: changing one person's position must not
+                   resubmit everybody else's. */}}
+              <form method="post" action="/hr/user-management" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="aksi" value="ubah-jabatan">
+                <input type="hidden" name="user_id" value="{{.UserID}}">
+                <label class="sr-only" for="jabatan-{{.UserID}}">Jabatan untuk {{.NamaLengkap}}</label>
+                {{$current := .Jabatan}}
+                <select id="jabatan-{{.UserID}}" name="jabatan" data-auto-submit>
+                  {{range .Options}}<option value="{{.}}"{{if eq . $current}} selected{{end}}>{{.}}</option>{{end}}
+                </select>
+                <button class="button subtle table-action" type="submit" data-auto-submit-fallback>Simpan</button>
+              </form>
+            </td>
+            <td>{{if eq .Assigned $.SemuaProyekMark}}Semua project{{else}}{{.Assigned}}{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada karyawan di project ini.</p>
+    {{end}}
+  </section>
+
+  <form method="post" action="/hr/user-management" class="stack-form" data-loading-form>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="aksi" value="simpan-akses">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "lock"}}AKSES MENU</p>
+          <h2>Menu yang bisa dibuka setiap jabatan</h2>
+        </div>
+      </div>
+      <p class="hint">Centang menu yang boleh dibuka jabatan itu. Kosongkan semuanya berarti jabatan itu hanya sampai Beranda, Absensi, dan Request Leave. Management selalu bisa membuka semua.</p>
+      {{if .AccessRows}}
+      <div class="table-scroll">
+        <table class="data-table access-matrix">
+          <thead>
+            <tr>
+              <th scope="col">Jabatan</th>
+              {{range .AccessMenus}}<th scope="col">{{.Label}}</th>{{end}}
+            </tr>
+          </thead>
+          <tbody>
+            {{range .AccessRows}}
+            {{$jabatan := .Jabatan}}
+            <tr>
+              <th scope="row">{{$jabatan}}</th>
+              {{range .Menus}}
+              <td>
+                <label class="menu-tick{{if .Locked}} menu-tick-locked{{end}}">
+                  <input type="checkbox" name="menu_{{$jabatan}}" value="{{.Key}}"
+                    {{if .Aktif}}checked{{end}}{{if .Locked}} disabled{{end}}>
+                  <span class="sr-only">{{$jabatan}} – {{.Label}}</span>
+                </label>
+              </td>
+              {{end}}
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">{{template "icon" "lock"}}Menu HR dan Project selalu terkunci: yang satu berisi halaman ini, yang lain dipakai Management mengatur aplikasi.</p>
+      <div class="action-row">
+        <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+          <span class="spinner" aria-hidden="true" hidden></span>
+          {{template "icon" "check"}}<span data-submit-label>Simpan akses</span>
+        </button>
+      </div>
+      {{else}}
+      <p class="panel-empty">Tidak ada jabatan untuk diatur.</p>
+      {{end}}
+    </section>
+  </form>
+{{template "appShellClose" .}}
+{{end}}

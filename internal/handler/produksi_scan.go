@@ -226,7 +226,7 @@ func (s *Server) beginScanRequest(w http.ResponseWriter, r *http.Request, label 
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Buat password baru dulu sebelum memakai aplikasi."})
 		return nil, nil, false
 	}
-	if !CanAccess(user.Jabatan, "produksi-input") {
+	if !CanAccess(s.accessRules(r.Context()), user.Jabatan, "produksi-input") {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Jabatan Anda tidak berhak mengakses input Produksi."})
 		return nil, nil, false
 	}

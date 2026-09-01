@@ -227,6 +227,14 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .menu-option-locked { background: #f6f8f9; cursor: default; }
 .menu-option-locked:hover { border-color: var(--line); background: #f6f8f9; }
 
+/* The access matrix: one checkbox per position-per-menu cell. A cell is just a
+   tick, so it stays small and centered; the row and column labels say what the
+   tick means. */
+.menu-tick { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; min-height: 1.8rem; cursor: pointer; }
+.menu-tick input[type="checkbox"] { width: 18px; min-width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; border-radius: 4px; box-shadow: none; accent-color: var(--danger); cursor: pointer; }
+.menu-tick-locked { cursor: default; }
+.menu-tick-locked input[type="checkbox"] { cursor: default; opacity: 0.55; }
+
 /* The project list. Cards rather than table rows: a project is a name, what it
    runs, and how many people are in it - more than a row reads well. */
 .project-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 0.9rem; margin: 0; padding: 0; list-style: none; }

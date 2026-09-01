@@ -24,6 +24,11 @@ type AuthService struct {
 	now      NowFunc
 	hashCost int
 	mu       sync.Mutex
+
+	// jabatanCached holds the configured menu rights between saves, guarded by
+	// the same mutex as account creation.
+	jabatanCached   []model.JabatanAccess
+	jabatanCachedAt time.Time
 }
 
 // PasswordHashCost is the work factor stored passwords are hashed with. It is
@@ -217,6 +222,96 @@ func (s *AuthService) HasAccounts(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("count users: %w", err)
 	}
 	return count > 0, nil
+}
+
+// jabatanAccessCacheTTL bounds how long the configured menu rights are kept in
+// memory. Rights are edited from the HR screen, so a minute of staleness costs
+// nothing; the screen clears the cache itself the moment it writes.
+const jabatanAccessCacheTTL = time.Minute
+
+// JabatanAccess returns every position's configured menu rights. It is the raw
+// sheet content: the handler merges these rows with the built-in defaults.
+// The result is cached because the sidebar consults it on every request.
+func (s *AuthService) JabatanAccess(ctx context.Context) ([]model.JabatanAccess, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.jabatanCachedAt.After(time.Time{}) && s.now().Sub(s.jabatanCachedAt) < jabatanAccessCacheTTL {
+		return cloneJabatanAccess(s.jabatanCached), nil
+	}
+	stored, err := s.store.ListJabatanAccess(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read jabatan access: %w", err)
+	}
+	s.jabatanCached = cloneJabatanAccess(stored)
+	s.jabatanCachedAt = s.now()
+	return cloneJabatanAccess(s.jabatanCached), nil
+}
+
+// SaveJabatanAccess writes one position's menu rights and drops the cache so
+// the new rule is in force on the very next request.
+func (s *AuthService) SaveJabatanAccess(ctx context.Context, jabatan string, menus []string) error {
+	if canonical, ok := canonicalJabatan(jabatan); ok {
+		jabatan = canonical
+	} else {
+		return fmt.Errorf("%w: jabatan tidak terdaftar", ErrValidation)
+	}
+	if strings.EqualFold(jabatan, model.JabatanManagement) {
+		return fmt.Errorf("%w: akses Management tidak bisa diubah", ErrValidation)
+	}
+	menus = cleanMenus(menus)
+	if err := s.store.SaveJabatanAccess(ctx, jabatan, menus); err != nil {
+		return fmt.Errorf("save jabatan access: %w", err)
+	}
+	s.invalidateJabatanAccess()
+	return nil
+}
+
+// ChangeJabatan moves one account to a different position. It mirrors the
+// guard AddEmployee applies: only somebody who already reaches everything may
+// create or demote a Management account.
+func (s *AuthService) ChangeJabatan(ctx context.Context, userID, newJabatan string, allowManagement bool) (*model.User, error) {
+	newJabatan, ok := canonicalJabatan(newJabatan)
+	if !ok {
+		return nil, fmt.Errorf("%w: jabatan tidak terdaftar", ErrValidation)
+	}
+	target, rowNumber, err := s.store.FindUserRow(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("read user %s: %w", userID, err)
+	}
+	if !allowManagement {
+		current, _ := canonicalJabatan(target.Jabatan)
+		if current == model.JabatanManagement || newJabatan == model.JabatanManagement {
+			return nil, fmt.Errorf("%w: hanya Management yang bisa mengubah jabatan Management", ErrValidation)
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(target.Jabatan), newJabatan) {
+		return target, nil
+	}
+	now := s.now().In(s.location)
+	if err := s.store.UpdateUserJabatan(ctx, rowNumber, newJabatan, now); err != nil {
+		return nil, fmt.Errorf("update user jabatan: %w", err)
+	}
+	target.Jabatan = newJabatan
+	target.UpdatedAt = now
+	return target, nil
+}
+
+func cloneJabatanAccess(stored []model.JabatanAccess) []model.JabatanAccess {
+	result := make([]model.JabatanAccess, 0, len(stored))
+	for _, access := range stored {
+		result = append(result, model.JabatanAccess{
+			Jabatan:   access.Jabatan,
+			MenuAktif: append([]string(nil), access.MenuAktif...),
+		})
+	}
+	return result
+}
+
+// invalidateJabatanAccess drops the cache after a save.
+func (s *AuthService) invalidateJabatanAccess() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jabatanCachedAt = time.Time{}
 }
 
 func (s *AuthService) Authenticate(ctx context.Context, identifier, password string, meta ActivityMeta) (*model.User, error) {

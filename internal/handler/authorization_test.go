@@ -12,7 +12,7 @@ var menuPaths = map[string][]string{
 	"beranda":  {"/dashboard"},
 	"absensi":  {"/absensi"},
 	"leave":    {"/leave/request"},
-	"hr":       {"/hr/overview", "/hr/approval-leave", "/hr/export"},
+	"hr":       {"/hr/overview", "/hr/karyawan", "/hr/user-management", "/hr/approval-leave", "/hr/export"},
 	"produksi": {"/produksi", "/produksi/overview", "/produksi/export"},
 	"unit":     {"/unit/overview", "/unit-dt", "/unit/export"},
 	// The fuel masuk approval page is deliberately absent: it is narrower than
@@ -163,10 +163,10 @@ func TestRefusalNamesThePositionAndOffersAWayBack(t *testing.T) {
 // A page nobody listed in the menu is refused rather than left open: a route
 // added without a rule should be unreachable, not public.
 func TestUnknownPagesAreRefusedByDefault(t *testing.T) {
-	if CanAccess("Produksi", "menu-yang-belum-ada") {
+	if CanAccess(defaultMenuRules(), "Produksi", "menu-yang-belum-ada") {
 		t.Fatal("a page with no rule is open to everyone")
 	}
-	if !CanAccess("Management", "menu-yang-belum-ada") {
+	if !CanAccess(defaultMenuRules(), "Management", "menu-yang-belum-ada") {
 		t.Fatal("Management lost its blanket access")
 	}
 }

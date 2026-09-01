@@ -364,7 +364,7 @@ func (s *Server) handleLeaveAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	s = bound
 	leaveID := strings.TrimSpace(r.URL.Query().Get("leave_id"))
-	canHR := CanAccess(user.Jabatan, "hr-approval-leave")
+	canHR := CanAccess(s.accessRules(r.Context()), user.Jabatan, "hr-approval-leave")
 	dataURL, err := s.leave.Attachment(r.Context(), user, leaveID, canHR)
 	if err != nil {
 		if errors.Is(err, service.ErrForbidden) || errors.Is(err, repository.ErrNotFound) {

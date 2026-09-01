@@ -165,7 +165,7 @@ func (s *Server) handleProfilePhoto(w http.ResponseWriter, r *http.Request) {
 	if wanted == "" {
 		wanted = user.UserID
 	}
-	if wanted != user.UserID && !CanAccess(user.Jabatan, "hr-overview") {
+	if wanted != user.UserID && !CanAccess(s.accessRules(r.Context()), user.Jabatan, "hr-overview") {
 		http.NotFound(w, r)
 		return
 	}

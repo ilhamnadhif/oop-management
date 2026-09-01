@@ -20,6 +20,9 @@ type Store interface {
 	UpdateLastLogin(ctx context.Context, userID string, at time.Time) error
 	FindUserRow(ctx context.Context, userID string) (*model.User, int, error)
 	UpdateUserProfile(ctx context.Context, rowNumber int, user *model.User, updatePhoto bool) error
+	// UpdateUserJabatan writes only the position cell, so reassigning somebody's
+	// role cannot disturb the rest of the account.
+	UpdateUserJabatan(ctx context.Context, rowNumber int, jabatan string, at time.Time) error
 	// UpdateUserPassword writes only the password cell, so changing a password
 	// cannot disturb the rest of the account.
 	UpdateUserPassword(ctx context.Context, rowNumber int, passwordHash string, at time.Time) error
@@ -27,6 +30,11 @@ type Store interface {
 	CountUsers(ctx context.Context) (int, error)
 	ReadUserPhoto(ctx context.Context, rowNumber int) (string, error)
 	AppendActivity(ctx context.Context, activity *model.LoginActivity) error
+	// ListJabatanAccess returns every position's configured menu rights. A
+	// position missing from the list follows the built-in defaults.
+	ListJabatanAccess(ctx context.Context) ([]model.JabatanAccess, error)
+	// SaveJabatanAccess upserts one position's menu rights by its name.
+	SaveJabatanAccess(ctx context.Context, jabatan string, menus []string) error
 	UnitDTExists(ctx context.Context, nopol string) (bool, error)
 	MaxUnitDTSequence(ctx context.Context, prefix string) (int, error)
 	CreateUnitDT(ctx context.Context, unit *model.UnitDT) error

@@ -14,21 +14,22 @@ import (
 // TestRepository is used only by automated tests.
 // The application runtime always uses Google Sheets.
 type TestRepository struct {
-	mu         sync.RWMutex
-	users      []*model.User
-	activities []*model.LoginActivity
-	attendance []*model.Attendance
-	unitDT     []*model.UnitDT
-	produksi   []*model.Produksi
-	plans      []*model.ProduksiPlan
-	scans      []*model.ProduksiScan
-	unitA2B    []*model.UnitA2B
-	nota       []*model.Nota
-	leaves     []*model.Leave
-	fuelMasuk  []*model.FuelMasuk
-	fuelKeluar []*model.FuelKeluar
-	hourMeters []*model.HourMeter
-	projects   []*model.Project
+	mu            sync.RWMutex
+	users         []*model.User
+	activities    []*model.LoginActivity
+	jabatanAccess []model.JabatanAccess
+	attendance    []*model.Attendance
+	unitDT        []*model.UnitDT
+	produksi      []*model.Produksi
+	plans         []*model.ProduksiPlan
+	scans         []*model.ProduksiScan
+	unitA2B       []*model.UnitA2B
+	nota          []*model.Nota
+	leaves        []*model.Leave
+	fuelMasuk     []*model.FuelMasuk
+	fuelKeluar    []*model.FuelKeluar
+	hourMeters    []*model.HourMeter
+	projects      []*model.Project
 }
 
 func NewTestRepository() *TestRepository {
@@ -111,6 +112,54 @@ func (r *TestRepository) UpdateUserPassword(_ context.Context, rowNumber int, pa
 	r.users[index].PasswordHash = passwordHash
 	r.users[index].UpdatedAt = at
 	return nil
+}
+
+func (r *TestRepository) UpdateUserJabatan(_ context.Context, rowNumber int, jabatan string, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index := rowNumber - 2
+	if index < 0 || index >= len(r.users) {
+		return fmt.Errorf("invalid user row number %d", rowNumber)
+	}
+	r.users[index].Jabatan = jabatan
+	r.users[index].UpdatedAt = at
+	return nil
+}
+
+func (r *TestRepository) ListJabatanAccess(context.Context) ([]model.JabatanAccess, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]model.JabatanAccess, 0, len(r.jabatanAccess))
+	for _, access := range r.jabatanAccess {
+		result = append(result, model.JabatanAccess{
+			Jabatan:   access.Jabatan,
+			MenuAktif: append([]string(nil), access.MenuAktif...),
+		})
+	}
+	return result, nil
+}
+
+func (r *TestRepository) SaveJabatanAccess(_ context.Context, jabatan string, menus []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	jabatan = strings.TrimSpace(jabatan)
+	for i := range r.jabatanAccess {
+		if strings.EqualFold(strings.TrimSpace(r.jabatanAccess[i].Jabatan), jabatan) {
+			r.jabatanAccess[i].MenuAktif = append([]string(nil), menus...)
+			return nil
+		}
+	}
+	r.jabatanAccess = append(r.jabatanAccess, model.JabatanAccess{
+		Jabatan:   jabatan,
+		MenuAktif: append([]string(nil), menus...),
+	})
+	return nil
+}
+
+// JabatanAccessList exposes stored jabatan access rows to tests.
+func (r *TestRepository) JabatanAccessList() []model.JabatanAccess {
+	access, _ := r.ListJabatanAccess(context.Background())
+	return access
 }
 
 func (r *TestRepository) CountUsers(context.Context) (int, error) {

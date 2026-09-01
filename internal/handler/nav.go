@@ -41,6 +41,8 @@ var navItems = []NavItem{
 			Lede: "Ringkasan karyawan, kehadiran, dan pengajuan leave."},
 		{Key: "hr-karyawan", Label: "Input Karyawan", Path: "/hr/karyawan", Icon: "users",
 			Lede: "Daftarkan karyawan baru ke project ini. Akun dibuat dengan password awal."},
+		{Key: "hr-user-management", Label: "User Management", Path: "/hr/user-management", Icon: "user",
+			Lede: "Ubah jabatan karyawan dan atur menu yang bisa dibuka setiap jabatan."},
 		{Key: "hr-approval-leave", Label: "Approval Leave", Path: "/hr/approval-leave", Icon: "check",
 			Lede: "Tinjau dan putuskan pengajuan cuti atau izin karyawan."},
 		{Key: "hr-export", Label: "Export Data", Path: "/hr/export", Icon: "save",
@@ -102,8 +104,10 @@ const JabatanManagement = model.JabatanManagement
 // missing from this map is open to everyone, which is how Dashboard and Absensi
 // stay reachable: attendance is the one thing every employee has to do.
 //
-// This is the whole authorisation rule in one place. When HR is given a screen
-// to tick these boxes themselves, it replaces this map and nothing else.
+// These are the defaults. JabatanAccess rows from the master spreadsheet
+// replace them for the positions they name, which is what the User Management
+// screen edits. defaultMenuRules is what a position gets when nothing stored
+// overrides it.
 var menuAccess = map[string][]string{
 	"hr":       {"HR"},
 	"produksi": {"Surveyor", "Produksi", "SPV"},
@@ -115,6 +119,70 @@ var menuAccess = map[string][]string{
 	// Nobody but Management, which CanAccess lets through before this map is
 	// consulted. An empty list is how a menu is closed to every other position.
 	"project-settings": {},
+}
+
+// menuRules is the effective per-menu position list, defaults overlaid with
+// whatever the User Management screen has stored.
+type menuRules map[string][]string
+
+// defaultMenuRules returns a copy of the built-in menuAccess, so callers can
+// never mutate the shared default.
+func defaultMenuRules() menuRules {
+	rules := make(menuRules, len(menuAccess))
+	for menu, positions := range menuAccess {
+		rules[menu] = append([]string(nil), positions...)
+	}
+	return rules
+}
+
+// effectiveMenuRules layers stored jabatan access over the defaults. A position
+// with a stored row gets exactly the menus that row lists, replacing its
+// defaults; a position without one keeps the defaults.
+//
+// Two menus are exempt from the stored rules. HR always keeps the hr menu, or
+// the screen that edits these very rights could lock itself out, and
+// project-settings stays Management-only, for the same reason it is locked in
+// its own editor.
+func effectiveMenuRules(stored []model.JabatanAccess) menuRules {
+	rules := defaultMenuRules()
+	for _, access := range stored {
+		jabatan := strings.TrimSpace(access.Jabatan)
+		if strings.EqualFold(jabatan, JabatanManagement) {
+			continue
+		}
+		allowed := make(map[string]bool, len(access.MenuAktif))
+		for _, menu := range access.MenuAktif {
+			allowed[strings.TrimSpace(menu)] = true
+		}
+		for menu := range rules {
+			rules[menu] = removePosition(rules[menu], jabatan)
+			if allowed[menu] {
+				rules[menu] = addPosition(rules[menu], jabatan)
+			}
+		}
+	}
+	rules["hr"] = addPosition(rules["hr"], "HR")
+	rules[projectSettingsKey] = nil
+	return rules
+}
+
+// removePosition drops one position from a list, case-insensitively.
+func removePosition(positions []string, jabatan string) []string {
+	result := make([]string, 0, len(positions))
+	for _, position := range positions {
+		if !strings.EqualFold(strings.TrimSpace(position), strings.TrimSpace(jabatan)) {
+			result = append(result, position)
+		}
+	}
+	return result
+}
+
+// addPosition appends one position when it is not already listed.
+func addPosition(positions []string, jabatan string) []string {
+	if positionListed(jabatan, positions) {
+		return positions
+	}
+	return append(positions, jabatan)
 }
 
 // menuKeyFor reports which top-level menu a page belongs to, since permission
@@ -144,12 +212,12 @@ const projectSettingsKey = "project-settings"
 //
 // An unknown page is refused rather than allowed: a route added without a rule
 // should be unreachable, not open to everyone.
-func CanAccess(jabatan, key string) bool {
+func CanAccess(rules menuRules, jabatan, key string) bool {
 	if strings.EqualFold(strings.TrimSpace(jabatan), JabatanManagement) {
 		return true
 	}
 	menu := menuKeyFor(key)
-	allowed, restricted := menuAccess[menu]
+	allowed, restricted := rules[menu]
 	if !restricted {
 		// Only pages that exist in the menu are open by default.
 		if _, _, found := navItemByKey(key); !found {
@@ -166,8 +234,8 @@ func CanAccess(jabatan, key string) bool {
 // The project half binds everyone, Management included. A menu switched off has
 // no rows behind it, so showing it would only lead to pages that are empty by
 // construction.
-func CanReach(jabatan string, project model.Project, key string) bool {
-	if !CanAccess(jabatan, key) {
+func CanReach(rules menuRules, jabatan string, project model.Project, key string) bool {
+	if !CanAccess(rules, jabatan, key) {
 		return false
 	}
 	return projectRuns(project, key)
@@ -203,18 +271,18 @@ func positionListed(jabatan string, allowed []string) bool {
 // navItemsFor returns the menu a position may see. A group whose pages are all
 // out of reach is dropped entirely rather than shown as a heading that opens
 // onto nothing.
-func navItemsFor(jabatan string, project model.Project) []NavItem {
+func navItemsFor(rules menuRules, jabatan string, project model.Project) []NavItem {
 	visible := make([]NavItem, 0, len(navItems))
 	for _, item := range navItems {
 		if len(item.Children) == 0 {
-			if CanReach(jabatan, project, item.Key) {
+			if CanReach(rules, jabatan, project, item.Key) {
 				visible = append(visible, item)
 			}
 			continue
 		}
 		children := make([]NavItem, 0, len(item.Children))
 		for _, child := range item.Children {
-			if CanReach(jabatan, project, child.Key) {
+			if CanReach(rules, jabatan, project, child.Key) {
 				children = append(children, child)
 			}
 		}

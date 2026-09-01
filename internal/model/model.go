@@ -79,6 +79,14 @@ func (u User) ReachesEveryProject() bool {
 	return strings.EqualFold(strings.TrimSpace(u.Jabatan), JabatanManagement)
 }
 
+// JabatanAccess is one position's menu rights as HR configures them. MenuAktif
+// lists the top-level menus the position may open, replacing the built-in
+// menuAccess rule for that position when a row exists.
+type JabatanAccess struct {
+	Jabatan   string
+	MenuAktif []string
+}
+
 // Project is one site the app is keeping books for. Each has a spreadsheet of
 // its own, so no filter stands between one project's rows and another's: they
 // are never in the same file to begin with.

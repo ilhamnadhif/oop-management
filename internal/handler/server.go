@@ -78,7 +78,10 @@ type Server struct {
 	// reachable is what the project switcher offers this person, in sheet
 	// order. One entry means there is nothing to switch between and the
 	// control is not drawn.
-	reachable    []model.Project
+	reachable []model.Project
+	// rules is the effective jabatan-to-menu rights for this request. It is
+	// bound per request like project, so the sidebar and the guards agree.
+	rules        menuRules
 	attendance   *service.AttendanceService
 	unitDT       *service.UnitDTService
 	produksi     *service.ProduksiService
@@ -105,6 +108,7 @@ func (s *Server) forProject(ctx context.Context, project model.Project, reachabl
 	bound := *s
 	bound.project = project
 	bound.reachable = reachable
+	bound.rules = s.accessRules(ctx)
 	bound.attendance = services.Attendance
 	bound.unitDT = services.UnitDT
 	bound.produksi = services.Produksi
@@ -412,6 +416,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/profile/photo", s.handleProfilePhoto)
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
 	mux.HandleFunc("/hr/karyawan", s.handleKaryawan)
+	mux.HandleFunc("/hr/user-management", s.handleUserManagement)
 	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
 	mux.HandleFunc("/hr/export", s.handleAbsensiExportPage)
 	mux.HandleFunc("/hr/export/download", s.handleAbsensiExportDownload)
@@ -660,7 +665,7 @@ func (s *Server) requireAccess(w http.ResponseWriter, r *http.Request, navKey st
 	if !ok {
 		return nil, nil, session.Session{}, false
 	}
-	if !CanReach(user.Jabatan, bound.project, navKey) {
+	if !CanReach(bound.rules, user.Jabatan, bound.project, navKey) {
 		bound.renderForbidden(w, user, sessionValue)
 		return nil, nil, session.Session{}, false
 	}
@@ -723,7 +728,7 @@ func (s *Server) allowedIn(w http.ResponseWriter, r *http.Request, user *model.U
 	if !ok {
 		return nil, sessionValue, false
 	}
-	if !CanReach(user.Jabatan, bound.project, navKey) {
+	if !CanReach(bound.rules, user.Jabatan, bound.project, navKey) {
 		bound.renderForbidden(w, user, sessionValue)
 		return nil, sessionValue, false
 	}
@@ -761,6 +766,10 @@ type ForbiddenPageData struct {
 func (s *Server) shellData(user *model.User, sessionValue session.Session, navKey string) ShellPageData {
 	now := s.now().In(s.location)
 	item, parent, _ := navItemByKey(navKey)
+	rules := s.rules
+	if rules == nil {
+		rules = defaultMenuRules()
+	}
 	return ShellPageData{
 		Title:       item.Label,
 		User:        user,
@@ -768,7 +777,7 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		TodayShort:  formatShortIndonesianDate(now),
 		ClockNow:    now.Format("15:04"),
 		CSRFToken:   sessionValue.CSRFToken,
-		NavItems:    navItemsFor(user.Jabatan, s.project),
+		NavItems:    navItemsFor(rules, user.Jabatan, s.project),
 		Project:     s.project.Nama,
 		Projects:    projectNames(s.reachable),
 		ActiveNav:   navKey,
@@ -780,6 +789,19 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		Company:     s.company,
 		Year:        now.Year(),
 	}
+}
+
+// accessRules is the effective jabatan-to-menu rights for one request. It is
+// read from the master spreadsheet, which also holds the accounts: a position's
+// rights are about who they are, not which site they work in. The result is
+// cached by the auth service and dropped when HR saves a change.
+func (s *Server) accessRules(ctx context.Context) menuRules {
+	stored, err := s.auth.JabatanAccess(ctx)
+	if err != nil {
+		log.Printf("read jabatan access: %v", err)
+		return defaultMenuRules()
+	}
+	return effectiveMenuRules(stored)
 }
 
 // firstLetter returns the avatar letter. It walks runes rather than bytes so a
@@ -2154,7 +2176,7 @@ func (s *Server) handleNotaReceiptScan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "Sesi tidak valid. Silakan masuk kembali."})
 		return
 	}
-	if !CanAccess(user.Jabatan, "nota-input") {
+	if !CanAccess(s.accessRules(r.Context()), user.Jabatan, "nota-input") {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "Jabatan Anda tidak berhak mengakses input Nota."})
 		return
 	}
@@ -2534,7 +2556,7 @@ func (s *Server) handleAttendanceAction(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "user tidak ditemukan"})
 		return
 	}
-	if !CanAccess(user.Jabatan, "absensi") {
+	if !CanAccess(s.accessRules(r.Context()), user.Jabatan, "absensi") {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "jabatan Anda tidak berhak mengakses absensi"})
 		return
 	}

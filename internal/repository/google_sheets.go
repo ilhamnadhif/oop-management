@@ -13,21 +13,22 @@ import (
 )
 
 const (
-	userSheet         = "user"
-	activitySheet     = "activity login"
-	attendanceSheet   = "absensi data"
-	unitDTSheet       = "Unit DT"
-	produksiSheet     = "Produksi"
-	planSheet         = "Produksi Plan"
-	unitA2BSheet      = "Unit A2B"
-	notaSheet         = "Nota"
-	notaItemSheet     = "Nota Item"
-	leaveSheet        = "Leave"
-	fuelMasukSheet    = "Fuel Masuk"
-	fuelKeluarSheet   = "Fuel Keluar"
-	hourMeterSheet    = "Input HM"
-	produksiScanSheet = "Produksi Scan"
-	projectSheet      = "Project"
+	userSheet          = "user"
+	activitySheet      = "activity login"
+	jabatanAccessSheet = "jabatan akses"
+	attendanceSheet    = "absensi data"
+	unitDTSheet        = "Unit DT"
+	produksiSheet      = "Produksi"
+	planSheet          = "Produksi Plan"
+	unitA2BSheet       = "Unit A2B"
+	notaSheet          = "Nota"
+	notaItemSheet      = "Nota Item"
+	leaveSheet         = "Leave"
+	fuelMasukSheet     = "Fuel Masuk"
+	fuelKeluarSheet    = "Fuel Keluar"
+	hourMeterSheet     = "Input HM"
+	produksiScanSheet  = "Produksi Scan"
+	projectSheet       = "Project"
 
 	datetimeLayout = "2006-01-02 15:04:05"
 )
@@ -65,6 +66,14 @@ const userPhotoIndex = 14
 var activityHeaders = []string{
 	"activity_id", "user_id", "nrp", "email", "activity_type", "activity_time",
 	"status", "ip_address", "user_agent", "message",
+}
+
+// jabatanAccessHeaders hold one row per position that has custom menu rights.
+// menu_aktif is the comma-separated list of top-level menu keys the position
+// may open; a row absent from the sheet means the position follows the
+// built-in defaults.
+var jabatanAccessHeaders = []string{
+	"jabatan", "menu_aktif",
 }
 
 var attendanceHeaders = []string{
@@ -272,6 +281,7 @@ type sheetDefinition struct {
 var masterSheets = []sheetDefinition{
 	{name: userSheet, headers: userHeaders},
 	{name: activitySheet, headers: activityHeaders},
+	{name: jabatanAccessSheet, headers: jabatanAccessHeaders},
 	{name: projectSheet, headers: projectHeaders},
 }
 
@@ -551,6 +561,81 @@ func (r *GoogleSheetsRepository) CountUsers(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return len(dataRows(rows)), nil
+}
+
+// UpdateUserJabatan writes the position cell and the audit stamp, and nothing
+// else. Like UpdateUserPassword it leaves the profile photo and password alone.
+func (r *GoogleSheetsRepository) UpdateUserJabatan(ctx context.Context, rowNumber int, jabatan string, at time.Time) error {
+	if rowNumber < 2 {
+		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, userSheet)
+	}
+	sheet := quoteSheet(userSheet)
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data: []*sheets.ValueRange{
+			{Range: fmt.Sprintf("%s!E%d", sheet, rowNumber), Values: [][]interface{}{{jabatan}}},
+			{Range: fmt.Sprintf("%s!J%d", sheet, rowNumber), Values: [][]interface{}{{formatDateTime(at)}}},
+		},
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update user jabatan row %d: %w", rowNumber, err)
+	}
+	return nil
+}
+
+// ListJabatanAccess reads every position's configured menu rights, in sheet
+// order. The sheet lives in the master spreadsheet beside the accounts: the
+// rights are about who a position is, not which site they work in.
+func (r *GoogleSheetsRepository) ListJabatanAccess(ctx context.Context) ([]model.JabatanAccess, error) {
+	rows, err := r.readRows(ctx, jabatanAccessSheet, "B")
+	if err != nil {
+		return nil, err
+	}
+	access := make([]model.JabatanAccess, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, 2)
+		jabatan := strings.TrimSpace(cellString(row[0]))
+		if jabatan == "" {
+			continue
+		}
+		access = append(access, model.JabatanAccess{
+			Jabatan:   jabatan,
+			MenuAktif: splitMenus(cellString(row[1])),
+		})
+	}
+	return access, nil
+}
+
+// SaveJabatanAccess writes one position's menu rights, creating the row when
+// it is new and replacing the list when it exists.
+func (r *GoogleSheetsRepository) SaveJabatanAccess(ctx context.Context, jabatan string, menus []string) error {
+	rows, err := r.readRows(ctx, jabatanAccessSheet, "A")
+	if err != nil {
+		return err
+	}
+	jabatan = strings.TrimSpace(jabatan)
+	rowNumber := 0
+	for _, row := range dataRowsWithIndex(rows) {
+		if len(row.values) == 0 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(cellString(row.values[0])), jabatan) {
+			rowNumber = row.rowNumber
+			break
+		}
+	}
+	value := strings.Join(menus, ",")
+	if rowNumber == 0 {
+		return r.appendRow(ctx, jabatanAccessSheet, []interface{}{jabatan, value})
+	}
+	rangeName := fmt.Sprintf("%s!B%d", quoteSheet(jabatanAccessSheet), rowNumber)
+	_, err = r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName,
+		&sheets.ValueRange{Values: [][]interface{}{{value}}}).
+		ValueInputOption("RAW").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update jabatan access row %d: %w", rowNumber, err)
+	}
+	return nil
 }
 
 // UpdateUserProject writes the one cell that says which project an account
