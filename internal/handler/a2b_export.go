@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"opp-management/internal/export"
+	"opp-management/internal/model"
 	"opp-management/internal/service"
 )
 
@@ -22,6 +23,10 @@ type A2BExportPageData struct {
 	BasePath string
 	Note     string
 	Company  string
+	// RegisterAktif and HMAktif say the project allows each report to be
+	// downloaded at all, since one page carries two exports.
+	RegisterAktif bool
+	HMAktif       bool
 	// HMMonth filters the hour meter report; empty means every month.
 	HMMonth string
 	HMRows  int
@@ -44,6 +49,8 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 		BasePath:      "/a2b/export",
 		Register:      "Unit A2B",
 		Note:          "Daftar alat berat lengkap dengan kapasitas tangki, konsumsi per jam, dan lokasinya.",
+		RegisterAktif: s.exportAktif(model.ExportUnitA2B),
+		HMAktif:       s.exportAktif(model.ExportInputHM),
 		HMMonth:       month,
 		HMNote: "Input hour meter: satu baris per pembacaan, berisi tanggal, HM awal, " +
 			"HM akhir, total HM, PA, dan UA.",
@@ -80,6 +87,9 @@ func (s *Server) handleA2BHMExportDownload(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	if !s.requireExportAktif(w, model.ExportInputHM) {
+		return
+	}
 	format, ok := downloadFormat(w, r)
 	if !ok {
 		return
@@ -96,7 +106,7 @@ func (s *Server) handleA2BHMExportDownload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	meta := s.exportMeta("Input HM", "", "")
+	meta := s.exportMetaFor(model.ExportInputHM, "Input HM", "", "")
 	if month != "" {
 		meta.Period = monthLabel(month)
 	}

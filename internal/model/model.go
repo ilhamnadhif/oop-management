@@ -103,8 +103,11 @@ type Project struct {
 	MenuAktif []string
 	Status    string
 	Settings  ProjectSettings
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// ExportConfigs holds one row per export type this project has configured.
+	// An export missing from the list uses the built-in defaults.
+	ExportConfigs []ExportConfig
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // Aktif reports whether the project may be opened at all.
@@ -144,6 +147,68 @@ type ProjectSettings struct {
 	SignatoryName  string
 	SignatoryTitle string
 	SignatoryPlace string
+}
+
+// ExportSlot is one signature position in an export's closing block: the name
+// that signs and the title printed under it.
+type ExportSlot struct {
+	Nama    string
+	Jabatan string
+}
+
+// ExportConfig is one project's settings for one export type. Aktif says the
+// report may be downloaded at all; TTDCount says how many signatures its PDF
+// prints (1 is right only, 2 is left and right, 3 is left, centre and right).
+// Slots hold the name and title per position: left is index 0, centre 1, right
+// 2. Positions beyond TTDCount are ignored.
+type ExportConfig struct {
+	ProjectID string
+	ExportKey string
+	Aktif     bool
+	TTDCount  int
+	Slots     [3]ExportSlot
+}
+
+// ExportTypeKey is one report a project may switch on or off.
+type ExportTypeKey string
+
+// The closed set of exports a project can configure. The keys travel in the
+// Export Config sheet and in the query of the settings screen; the labels live
+// in the handler, which is where the export pages and the settings form both
+// reach.
+const (
+	ExportProduksi ExportTypeKey = "produksi"
+	ExportNota     ExportTypeKey = "nota"
+	ExportUnitDT   ExportTypeKey = "unit-dt"
+	ExportUnitA2B  ExportTypeKey = "unit-a2b"
+	ExportInputHM  ExportTypeKey = "input-hm"
+	ExportAbsensi  ExportTypeKey = "absensi"
+)
+
+// ExportTypeKeys is every configurable export, in the order the settings form
+// lists them.
+var ExportTypeKeys = []ExportTypeKey{
+	ExportProduksi, ExportNota, ExportUnitDT, ExportUnitA2B, ExportInputHM, ExportAbsensi,
+}
+
+// ExportConfigFor returns one export's config, or the defaults when the
+// project has no row for it. A project that has never been configured behaves
+// exactly as the app did before export settings existed: everything may be
+// downloaded, with a single signature on the right.
+func (p Project) ExportConfigFor(export ExportTypeKey) ExportConfig {
+	for _, config := range p.ExportConfigs {
+		if strings.EqualFold(strings.TrimSpace(config.ExportKey), string(export)) {
+			return config
+		}
+	}
+	return ExportConfig{
+		ProjectID: p.ProjectID,
+		ExportKey: string(export),
+		Aktif:     true,
+		TTDCount:  1,
+		// The right-hand slot, because a single signature prints on the right.
+		Slots: [3]ExportSlot{2: {Nama: p.Settings.SignatoryName, Jabatan: p.Settings.SignatoryTitle}},
+	}
 }
 
 type LoginActivity struct {

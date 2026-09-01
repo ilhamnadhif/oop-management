@@ -116,6 +116,10 @@ type MasterStore interface {
 	FindProjectRow(ctx context.Context, projectID string) (*model.Project, int, error)
 	UpdateProject(ctx context.Context, rowNumber int, project *model.Project) error
 	MaxProjectSequence(ctx context.Context, prefix string) (int, error)
+	// ListExportConfigs returns every configured export setting across projects.
+	ListExportConfigs(ctx context.Context) ([]model.ExportConfig, error)
+	// SaveExportConfig upserts one project's setting for one export type.
+	SaveExportConfig(ctx context.Context, config model.ExportConfig) error
 	// UpdateUserProject writes only the cell naming somebody's project, so
 	// assigning a person to a site cannot disturb the rest of their account.
 	UpdateUserProject(ctx context.Context, rowNumber int, project string, at time.Time) error

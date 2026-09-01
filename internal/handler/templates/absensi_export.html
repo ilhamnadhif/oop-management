@@ -38,7 +38,9 @@
         <h2>{{.Rows}} karyawan siap diunduh</h2>
       </div>
     </div>
-    {{if .Rows}}
+    {{if not .Aktif}}
+    <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
+    {{else if .Rows}}
     <p class="panel-empty">{{.Note}}</p>
     <div class="action-row export-actions">
       <a class="button primary" href="/hr/export/download?format=xlsx&amp;month={{.Month}}{{if .Jabatan}}&amp;jabatan={{.Jabatan}}{{end}}">

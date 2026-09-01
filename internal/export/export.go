@@ -32,6 +32,22 @@ type Meta struct {
 	Generated time.Time
 	Logo      []byte
 	Signatory Signatory
+	// Signatories is the whole closing block, left to right. Empty keeps the
+	// single Signatory, printed on the right as before.
+	Signatories []Signatory
+}
+
+// signatories returns the blocks to print, defaulting to the single Signatory
+// so an export that predates the multi-signature setting reads the same as it
+// always did.
+func (m Meta) signatories() []Signatory {
+	if len(m.Signatories) > 0 {
+		return m.Signatories
+	}
+	if m.Signatory.Name != "" || m.Signatory.Title != "" {
+		return []Signatory{m.Signatory}
+	}
+	return nil
 }
 
 // Column describes one column of a report.

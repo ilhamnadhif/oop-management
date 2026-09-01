@@ -135,6 +135,77 @@
     </section>
   </form>
 
+  {{/* ── Export ──────────────────────────────────────────────────────────
+       One form per report: switching Produksi off must not resubmit the
+       signature block of every other export. The three slots are always shown;
+       the ones past the chosen count are marked as not printing rather than
+       hidden, so what is stored stays visible. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}EXPORT</p>
+        <h2>Laporan dan tanda tangannya</h2>
+      </div>
+    </div>
+    <p class="hint">Export yang dimatikan hilang tombol unduhnya dan ditolak walau tautannya ditebak. Nama dan jabatan yang dikosongkan mengikuti penandatangan project di atas.</p>
+    <div class="export-config-list">
+      {{range .Exports}}
+      <form method="post" action="/project/settings" class="export-config" data-loading-form>
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="aksi" value="export">
+        <input type="hidden" name="project_id" value="{{$.Selected.ProjectID}}">
+        <input type="hidden" name="project_nama" value="{{$.Selected.Nama}}">
+        <input type="hidden" name="export_key" value="{{.Key}}">
+
+        <div class="export-config-head">
+          <div>
+            <strong>{{.Label}}</strong>
+            <small>{{.Lede}}</small>
+          </div>
+          <label class="menu-option">
+            <input type="checkbox" name="export_aktif" value="1"{{if .Aktif}} checked{{end}}>
+            <span><strong>Aktif</strong><small>Boleh diunduh dari halaman export.</small></span>
+          </label>
+        </div>
+
+        <div class="form-grid form-grid-4">
+          <div>
+            <label for="ttd-{{.Key}}">{{template "icon" "user"}}Jumlah tanda tangan</label>
+            <select id="ttd-{{.Key}}" name="ttd_count">
+              {{$count := .TTDCount}}
+              <option value="1"{{if eq $count 1}} selected{{end}}>1 — kanan</option>
+              <option value="2"{{if eq $count 2}} selected{{end}}>2 — kiri dan kanan</option>
+              <option value="3"{{if eq $count 3}} selected{{end}}>3 — kiri, tengah, kanan</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid form-grid-2">
+          {{$key := .Key}}
+          {{range $slot := .Slots}}
+          {{$slotNo := $slot.Nomor}}
+          <div>
+            <label for="slot{{$slotNo}}-nama-{{$key}}">{{template "icon" "user"}}Nama {{$slot.Posisi}}{{if not $slot.Dipakai}} (tidak dicetak){{end}}</label>
+            <input id="slot{{$slotNo}}-nama-{{$key}}" name="slot{{$slotNo}}_nama" type="text" value="{{$slot.Nama}}" autocomplete="off">
+          </div>
+          <div>
+            <label for="slot{{$slotNo}}-jabatan-{{$key}}">{{template "icon" "tag"}}Jabatan {{$slot.Posisi}}{{if not $slot.Dipakai}} (tidak dicetak){{end}}</label>
+            <input id="slot{{$slotNo}}-jabatan-{{$key}}" name="slot{{$slotNo}}_jabatan" type="text" value="{{$slot.Jabatan}}" autocomplete="off">
+          </div>
+          {{end}}
+        </div>
+
+        <div class="action-row">
+          <button class="button subtle" type="submit" data-submit-button data-loading-label="Menyimpan…">
+            <span class="spinner" aria-hidden="true" hidden></span>
+            {{template "icon" "check"}}<span data-submit-label>Simpan {{.Label}}</span>
+          </button>
+        </div>
+      </form>
+      {{end}}
+    </div>
+  </section>
+
   <section class="panel">
     <div class="panel-heading">
       <div>

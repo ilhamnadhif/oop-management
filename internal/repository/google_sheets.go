@@ -16,6 +16,7 @@ const (
 	userSheet          = "user"
 	activitySheet      = "activity login"
 	jabatanAccessSheet = "jabatan akses"
+	exportConfigSheet  = "export config"
 	attendanceSheet    = "absensi data"
 	unitDTSheet        = "Unit DT"
 	produksiSheet      = "Produksi"
@@ -122,6 +123,15 @@ var projectHeaders = []string{
 	"work_start", "work_end", "late_tolerance_minutes", "a2b_work_minutes",
 	"company", "signatory_name", "signatory_title", "signatory_place",
 	"created_at", "updated_at",
+}
+
+// exportConfigHeaders hold one row per project-and-export setting. The three
+// slots are left, centre and right in sheet order; TTD count says how many of
+// them print.
+var exportConfigHeaders = []string{
+	"project_id", "export_key", "aktif", "ttd_count",
+	"slot1_nama", "slot1_jabatan", "slot2_nama", "slot2_jabatan",
+	"slot3_nama", "slot3_jabatan",
 }
 
 var unitA2BHeaders = []string{
@@ -282,6 +292,7 @@ var masterSheets = []sheetDefinition{
 	{name: userSheet, headers: userHeaders},
 	{name: activitySheet, headers: activityHeaders},
 	{name: jabatanAccessSheet, headers: jabatanAccessHeaders},
+	{name: exportConfigSheet, headers: exportConfigHeaders},
 	{name: projectSheet, headers: projectHeaders},
 }
 
@@ -636,6 +647,95 @@ func (r *GoogleSheetsRepository) SaveJabatanAccess(ctx context.Context, jabatan 
 		return fmt.Errorf("update jabatan access row %d: %w", rowNumber, err)
 	}
 	return nil
+}
+
+// ListExportConfigs reads every project-and-export setting, in sheet order.
+func (r *GoogleSheetsRepository) ListExportConfigs(ctx context.Context) ([]model.ExportConfig, error) {
+	rows, err := r.readRows(ctx, exportConfigSheet, "J")
+	if err != nil {
+		return nil, err
+	}
+	configs := make([]model.ExportConfig, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, len(exportConfigHeaders))
+		projectID := strings.TrimSpace(cellString(row[0]))
+		if projectID == "" {
+			continue
+		}
+		configs = append(configs, model.ExportConfig{
+			ProjectID: projectID,
+			ExportKey: strings.TrimSpace(cellString(row[1])),
+			Aktif:     parseBoolLoose(cellString(row[2])),
+			TTDCount:  parseIntCell(row[3]),
+			Slots: [3]model.ExportSlot{
+				{Nama: strings.TrimSpace(cellString(row[4])), Jabatan: strings.TrimSpace(cellString(row[5]))},
+				{Nama: strings.TrimSpace(cellString(row[6])), Jabatan: strings.TrimSpace(cellString(row[7]))},
+				{Nama: strings.TrimSpace(cellString(row[8])), Jabatan: strings.TrimSpace(cellString(row[9]))},
+			},
+		})
+	}
+	return configs, nil
+}
+
+// SaveExportConfig writes one project-and-export setting, creating the row when
+// it is new and replacing it when it exists. The row is keyed by both columns,
+// since one project configures several exports.
+func (r *GoogleSheetsRepository) SaveExportConfig(ctx context.Context, config model.ExportConfig) error {
+	rows, err := r.readRows(ctx, exportConfigSheet, "A")
+	if err != nil {
+		return err
+	}
+	rowNumber := 0
+	for _, row := range dataRowsWithIndex(rows) {
+		if len(row.values) < 2 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(cellString(row.values[0])), strings.TrimSpace(config.ProjectID)) &&
+			strings.EqualFold(strings.TrimSpace(cellString(row.values[1])), strings.TrimSpace(config.ExportKey)) {
+			rowNumber = row.rowNumber
+			break
+		}
+	}
+	values := exportConfigToRow(config)
+	if rowNumber == 0 {
+		return r.appendRow(ctx, exportConfigSheet, values)
+	}
+	rangeName := fmt.Sprintf("%s!A%d:J%d", quoteSheet(exportConfigSheet), rowNumber, rowNumber)
+	_, err = r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName,
+		&sheets.ValueRange{Values: [][]interface{}{values}}).
+		ValueInputOption("RAW").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update export config row %d: %w", rowNumber, err)
+	}
+	return nil
+}
+
+func exportConfigToRow(config model.ExportConfig) []interface{} {
+	return []interface{}{
+		config.ProjectID, config.ExportKey, boolCell(config.Aktif), strconv.Itoa(config.TTDCount),
+		config.Slots[0].Nama, config.Slots[0].Jabatan,
+		config.Slots[1].Nama, config.Slots[1].Jabatan,
+		config.Slots[2].Nama, config.Slots[2].Jabatan,
+	}
+}
+
+// boolCell writes a boolean the way the sheets in this app read them.
+func boolCell(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
+}
+
+// parseBoolLoose reads a boolean cell without rejecting an empty value, which
+// a row typed straight into the sheet may well have.
+func parseBoolLoose(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "ya", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // UpdateUserProject writes the one cell that says which project an account

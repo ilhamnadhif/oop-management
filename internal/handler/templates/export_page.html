@@ -44,7 +44,9 @@
         <h2>{{.Rows}} baris siap diunduh</h2>
       </div>
     </div>
-    {{if .Rows}}
+    {{if not .Aktif}}
+    <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
+    {{else if .Rows}}
     <p class="panel-empty">{{.Note}}</p>
     <div class="action-row export-actions">
       <a class="button primary" href="{{.BasePath}}/download?format=xlsx{{if .From}}&amp;from={{.From}}{{end}}{{if .To}}&amp;to={{.To}}{{end}}{{if .Metode}}&amp;metode={{.Metode}}{{end}}">

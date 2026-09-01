@@ -227,6 +227,20 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 .menu-option-locked { background: #f6f8f9; cursor: default; }
 .menu-option-locked:hover { border-color: var(--line); background: #f6f8f9; }
 
+/* Export settings: one card per report, each its own form so saving one does
+   not resubmit the rest. The card is bordered rather than panelled because it
+   sits inside a panel already. */
+.export-config-list { display: flex; flex-direction: column; gap: 0.9rem; }
+.export-config { padding: 0.95rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: #fcfdfd; }
+.export-config-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.85rem; }
+.export-config-head > div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.export-config-head strong { color: var(--navy-dark); font-size: 0.95rem; }
+.export-config-head small { color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+/* The tick sits beside the title rather than under it, so the state of the
+   report reads off the same line as its name. */
+.export-config-head .menu-option { flex: none; background: #fff; }
+.export-config .action-row { margin-top: 0.85rem; }
+
 /* The access matrix: one checkbox per position-per-menu cell. A cell is just a
    tick, so it stays small and centered; the row and column labels say what the
    tick means. */

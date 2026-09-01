@@ -242,6 +242,8 @@ type ExportPageData struct {
 	Error    string
 	Ready    bool
 	Company  string
+	// Aktif says the project allows this report to be downloaded at all.
+	Aktif bool
 }
 
 type OverviewPageData struct {
@@ -926,6 +928,7 @@ func (s *Server) handleProduksiExport(w http.ResponseWriter, r *http.Request) {
 			"tabelnya 20 kolom, dan halaman terakhir memuat blok tanda tangan.", s.company),
 		Ready:   true,
 		Company: s.company,
+		Aktif:   s.exportAktif(model.ExportProduksi),
 	}
 	rows, appliedFrom, appliedTo, err := s.produksi.RowsBetween(r.Context(), from, to)
 	if err != nil {
@@ -950,6 +953,9 @@ func (s *Server) handleProduksiDownload(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	if !s.requireExportAktif(w, model.ExportProduksi) {
+		return
+	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	if format != "xlsx" && format != "pdf" {
 		http.Error(w, "format tidak dikenal", http.StatusBadRequest)
@@ -968,7 +974,7 @@ func (s *Server) handleProduksiDownload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	meta := s.exportMeta("Laporan Produksi", from, to)
+	meta := s.exportMetaFor(model.ExportProduksi, "Laporan Produksi", from, to)
 	var payload []byte
 	var contentType, extension string
 	if format == "xlsx" {
@@ -1223,6 +1229,7 @@ func (s *Server) handleNotaExport(w http.ResponseWriter, r *http.Request) {
 			"nota, sehingga rinciannya tetap terlihat, dan halaman terakhir memuat blok tanda tangan.", s.company),
 		Ready:   true,
 		Company: s.company,
+		Aktif:   s.exportAktif(model.ExportNota),
 	}
 	rows, applied, err := s.nota.RowsBetween(r.Context(), filter)
 	if err != nil {
@@ -1257,6 +1264,9 @@ func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !s.requireExportAktif(w, model.ExportNota) {
+		return
+	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	if format != "xlsx" && format != "pdf" {
 		http.Error(w, "format tidak dikenal", http.StatusBadRequest)
@@ -1284,7 +1294,7 @@ func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
 	if applied.Metode != "" {
 		title += " - " + service.NotaMetodeLabel(applied.Metode)
 	}
-	meta := s.exportMeta(title, applied.From, applied.To)
+	meta := s.exportMetaFor(model.ExportNota, title, applied.From, applied.To)
 	var payload []byte
 	contentType := "application/pdf"
 	if format == "xlsx" {
@@ -1312,20 +1322,54 @@ func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(payload)
 }
 
-func (s *Server) exportMeta(title, from, to string) export.Meta {
+// exportMetaFor builds the letterhead for one export type, so the signature
+// block follows the project's setting for that report rather than the default.
+func (s *Server) exportMetaFor(exportKey model.ExportTypeKey, title, from, to string) export.Meta {
 	logo, err := assetFiles.ReadFile("static/img/opp-logo.png")
 	if err != nil {
 		// A missing logo costs the letterhead its mark, not the report.
 		log.Printf("read logo for export: %v", err)
 	}
+	config := s.project.ExportConfigFor(exportKey)
 	return export.Meta{
-		Company:   s.company,
-		Title:     title,
-		Period:    exportPeriodLabel(from, to),
-		Generated: s.now().In(s.location),
-		Logo:      logo,
-		Signatory: s.signatory,
+		Company:     s.company,
+		Title:       title,
+		Period:      exportPeriodLabel(from, to),
+		Generated:   s.now().In(s.location),
+		Logo:        logo,
+		Signatory:   s.signatory,
+		Signatories: signatoriesFor(config, s.signatory),
 	}
+}
+
+// signatoriesFor lays out the closing block for one export config. The project
+// may sign with one, two or three people; the slots are left, centre, right.
+// A slot the project left blank falls back to the project's own signatory,
+// which is also what every export printed before the setting existed.
+func signatoriesFor(config model.ExportConfig, fallback export.Signatory) []export.Signatory {
+	count := config.TTDCount
+	if count < 1 || count > 3 {
+		count = 1
+	}
+	// The positions fill from the edges: one signature sits on the right, two
+	// span left and right, three fill left, centre and right.
+	indexes := []int{2}
+	if count == 2 {
+		indexes = []int{0, 2}
+	}
+	if count == 3 {
+		indexes = []int{0, 1, 2}
+	}
+	signatories := make([]export.Signatory, 0, count)
+	for _, index := range indexes {
+		slot := config.Slots[index]
+		signatory := export.Signatory{Name: slot.Nama, Title: slot.Jabatan}
+		if strings.TrimSpace(signatory.Name) == "" && strings.TrimSpace(signatory.Title) == "" {
+			signatory = fallback
+		}
+		signatories = append(signatories, signatory)
+	}
+	return signatories
 }
 
 func exportPeriodLabel(from, to string) string {
@@ -1499,6 +1543,8 @@ type RegisterExportPageData struct {
 	Note     string
 	Error    string
 	Company  string
+	// Aktif says the project allows this register to be downloaded.
+	Aktif bool
 }
 
 func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
@@ -1512,6 +1558,7 @@ func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
 		BasePath:      "/unit/export",
 		Register:      "Unit DT",
 		Note:          "Daftar dump truck lengkap dengan ukuran bak dan drivernya.",
+		Aktif:         s.project.ExportConfigFor(model.ExportUnitDT).Aktif,
 	}
 	units, err := s.produksi.Units(r.Context())
 	if err != nil {
@@ -1528,6 +1575,9 @@ func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !s.requireExportAktif(w, model.ExportUnitDT) {
+		return
+	}
 	format, ok := downloadFormat(w, r)
 	if !ok {
 		return
@@ -1538,7 +1588,7 @@ func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
 		return
 	}
-	meta := s.exportMeta("Daftar Unit DT", "", "")
+	meta := s.exportMetaFor(model.ExportUnitDT, "Daftar Unit DT", "", "")
 	meta.Period = export.SnapshotLabel(meta.Generated)
 
 	var payload []byte
@@ -1558,6 +1608,9 @@ func (s *Server) handleA2BDownload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !s.requireExportAktif(w, model.ExportUnitA2B) {
+		return
+	}
 	format, ok := downloadFormat(w, r)
 	if !ok {
 		return
@@ -1568,7 +1621,7 @@ func (s *Server) handleA2BDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
 		return
 	}
-	meta := s.exportMeta("Daftar Unit A2B", "", "")
+	meta := s.exportMetaFor(model.ExportUnitA2B, "Daftar Unit A2B", "", "")
 	meta.Period = export.SnapshotLabel(meta.Generated)
 
 	var payload []byte

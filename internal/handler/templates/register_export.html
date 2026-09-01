@@ -9,7 +9,9 @@
         <h2>{{.Rows}} unit terdaftar</h2>
       </div>
     </div>
-    {{if .Rows}}
+    {{if not .Aktif}}
+    <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
+    {{else if .Rows}}
     <p class="panel-empty">
       {{.Note}} Kop laporan memakai logo dan nama {{.Company}}, dan halaman
       terakhir memuat blok tanda tangan.

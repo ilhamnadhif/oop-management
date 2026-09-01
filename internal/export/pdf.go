@@ -388,7 +388,20 @@ func drawAttachment(pdf *fpdf.Fpdf, attachment Attachment, index int, left, top,
 
 // drawSignature prints the closing block. It starts a page when the remaining
 // space is too small, so the signature never lands split across two pages.
+//
+// The block lays out one, two or three signatories. A single signature keeps
+// its place on the right, as every report has always signed; with more, the
+// columns spread evenly across the page with the place-and-date line centred
+// above them.
 func drawSignature(pdf *fpdf.Fpdf, meta Meta) {
+	signatories := meta.signatories()
+	if len(signatories) == 0 {
+		return
+	}
+	if len(signatories) > 3 {
+		signatories = signatories[:3]
+	}
+
 	_, pageHeight := pdf.GetPageSize()
 	_, _, _, bottomMargin := pdf.GetMargins()
 	if pageHeight-bottomMargin-pdf.GetY() < signatureMM {
@@ -396,37 +409,69 @@ func drawSignature(pdf *fpdf.Fpdf, meta Meta) {
 	}
 
 	pdf.Ln(8)
+
 	blockWidth := 70.0
-	pdf.SetX(pageWidth - pageMargin - blockWidth)
+	blockGap := 22.0
+
+	// One signature stays where every report has always put it: on the right.
+	var xPositions []float64
+	if len(signatories) == 1 {
+		xPositions = []float64{pageWidth - pageMargin - blockWidth}
+	} else {
+		total := float64(len(signatories))*blockWidth + float64(len(signatories)-1)*blockGap
+		start := (pageWidth - total) / 2
+		for i := range signatories {
+			xPositions = append(xPositions, start+float64(i)*(blockWidth+blockGap))
+		}
+	}
+
+	// The place-and-date line sits centred across the whole block, once: over
+	// the single column on the right, or over the span the columns cover.
+	headerX := xPositions[0]
+	headerWidth := xPositions[len(xPositions)-1] + blockWidth - headerX
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.SetTextColor(28, 40, 51)
-	pdf.CellFormat(blockWidth, 5, tr(meta.signedOn()), "", 2, "C", false, 0, "")
-	pdf.CellFormat(blockWidth, 5, tr("Tertanda,"), "", 2, "C", false, 0, "")
+	pdf.SetX(headerX)
+	pdf.CellFormat(headerWidth, 5, tr(meta.signedOn()), "", 2, "C", false, 0, "")
+	pdf.SetX(headerX)
+	pdf.CellFormat(headerWidth, 5, tr("Tertanda,"), "", 2, "C", false, 0, "")
 
-	// Room for a wet signature.
+	// Room for the wet signatures before any names are printed.
 	pdf.Ln(18)
 
-	pdf.SetX(pageWidth - pageMargin - blockWidth)
-	name := strings.TrimSpace(meta.Signatory.Name)
-	if name == "" {
-		// An unnamed line, never a guessed name: the wrong name on a signed
-		// document is worse than a blank one.
-		pdf.SetDrawColor(28, 40, 51)
-		pdf.SetLineWidth(0.2)
-		y := pdf.GetY()
-		pdf.Line(pageWidth-pageMargin-blockWidth+10, y, pageWidth-pageMargin-10, y)
-		pdf.Ln(1)
-		pdf.SetX(pageWidth - pageMargin - blockWidth)
-	} else {
-		pdf.SetFont("Helvetica", "BU", 9)
-		pdf.CellFormat(blockWidth, 5, tr(name), "", 2, "C", false, 0, "")
+	// Every column starts from the same line. Writing a cell moves the cursor
+	// down, so without putting it back each column would begin lower than the
+	// one before it and the block would walk down the page.
+	baseY := pdf.GetY()
+	lowestY := baseY
+	for i, signatory := range signatories {
+		x := xPositions[i]
+		pdf.SetY(baseY)
+		name := strings.TrimSpace(signatory.Name)
+		if name == "" {
+			// An unnamed line, never a guessed name: the wrong name on a signed
+			// document is worse than a blank one.
+			pdf.SetDrawColor(28, 40, 51)
+			pdf.SetLineWidth(0.2)
+			pdf.Line(x+10, baseY, x+blockWidth-10, baseY)
+			pdf.Ln(1)
+		} else {
+			pdf.SetX(x)
+			pdf.SetFont("Helvetica", "BU", 9)
+			pdf.CellFormat(blockWidth, 5, tr(name), "", 2, "C", false, 0, "")
+		}
+		if title := strings.TrimSpace(signatory.Title); title != "" {
+			pdf.SetX(x)
+			pdf.SetFont("Helvetica", "", 9)
+			pdf.CellFormat(blockWidth, 5, tr(title), "", 2, "C", false, 0, "")
+		}
+		if y := pdf.GetY(); y > lowestY {
+			lowestY = y
+		}
 	}
-
-	if title := strings.TrimSpace(meta.Signatory.Title); title != "" {
-		pdf.SetX(pageWidth - pageMargin - blockWidth)
-		pdf.SetFont("Helvetica", "", 9)
-		pdf.CellFormat(blockWidth, 5, tr(title), "", 2, "C", false, 0, "")
-	}
+	// Whatever follows starts below the tallest column, not below the last one
+	// drawn.
+	pdf.SetY(lowestY)
 }
 
 // tr keeps the output to characters the core PDF fonts can encode. Embedding a

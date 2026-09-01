@@ -26,7 +26,10 @@ type ProjectSettingsPageData struct {
 	// Menus is every module that exists, with a tick against the ones this
 	// project runs. It is built from the sidebar's own list, so a module added
 	// to the app appears here without this page being touched.
-	Menus   []MenuChoice
+	Menus []MenuChoice
+	// Exports is every configurable report with this project's setting against
+	// it: whether it may be downloaded, and how its signature block is laid out.
+	Exports []ExportChoice
 	Members []ProjectMember
 	// Assignable is what the member dropdown offers: every project by name,
 	// plus the entry that means all of them.
@@ -196,6 +199,18 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 			s.bundles.forget(updated)
 			view.success = "Setelan project " + updated.Nama + " tersimpan."
 		}
+	case "export":
+		config := exportConfigFromForm(r, strings.TrimSpace(r.FormValue("project_id")))
+		actionErr = s.projects.SaveExportConfig(r.Context(), config)
+		if actionErr == nil {
+			// Nothing to drop from the service cache: the closing block is read
+			// off the project on each request, and saving invalidated that list.
+			label := exportLabels[model.ExportTypeKey(config.ExportKey)]
+			if label == "" {
+				label = "Export"
+			}
+			view.success = "Setelan export " + label + " tersimpan."
+		}
 	case "tugaskan":
 		actionErr = s.projects.Assign(r.Context(), strings.TrimSpace(r.FormValue("user_id")), r.FormValue("user_project"))
 		if actionErr == nil {
@@ -273,6 +288,7 @@ func (s *Server) renderProjectSettings(w http.ResponseWriter, r *http.Request, u
 	}
 
 	page.Menus = menuChoicesFor(page.Selected)
+	page.Exports = exportChoicesFor(page.Selected)
 	page.Members = membersOf(users, page.Selected.Nama, firstProjectName(projects))
 	page.PageTitle = page.Selected.Nama
 	page.Breadcrumb = page.Selected.Nama

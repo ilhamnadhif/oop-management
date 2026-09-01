@@ -58,12 +58,28 @@ func (s *ProjectService) List(ctx context.Context) ([]model.Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read projects: %w", err)
 	}
+	configs, err := s.store.ListExportConfigs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read export configs: %w", err)
+	}
 	for i := range projects {
 		projects[i].Settings = s.merge(projects[i].Settings)
+		projects[i].ExportConfigs = configsFor(projects[i].ProjectID, configs)
 	}
 	s.cached = projects
 	s.cachedAt = s.now()
 	return append([]model.Project(nil), projects...), nil
+}
+
+// configsFor keeps only the rows belonging to one project.
+func configsFor(projectID string, configs []model.ExportConfig) []model.ExportConfig {
+	mine := make([]model.ExportConfig, 0, len(configs))
+	for _, config := range configs {
+		if strings.EqualFold(strings.TrimSpace(config.ProjectID), strings.TrimSpace(projectID)) {
+			mine = append(mine, config)
+		}
+	}
+	return mine
 }
 
 // Active returns the projects that may be opened, in sheet order.
@@ -337,6 +353,33 @@ func (s *ProjectService) Update(ctx context.Context, projectID string, update Pr
 	s.invalidate()
 	stored.Settings = s.merge(stored.Settings)
 	return *stored, nil
+}
+
+// ExportConfig is what the settings screen may change for one export type:
+// whether it may be downloaded, and how its signature block is laid out.
+func (s *ProjectService) SaveExportConfig(ctx context.Context, config model.ExportConfig) error {
+	if strings.TrimSpace(config.ProjectID) == "" {
+		return fmt.Errorf("%w: project tidak dikenal", ErrValidation)
+	}
+	known := false
+	for _, key := range model.ExportTypeKeys {
+		if strings.EqualFold(strings.TrimSpace(config.ExportKey), string(key)) {
+			config.ExportKey = string(key)
+			known = true
+			break
+		}
+	}
+	if !known {
+		return fmt.Errorf("%w: jenis export tidak terdaftar", ErrValidation)
+	}
+	if config.TTDCount < 1 || config.TTDCount > 3 {
+		return fmt.Errorf("%w: jumlah tanda tangan harus 1, 2, atau 3", ErrValidation)
+	}
+	if err := s.store.SaveExportConfig(ctx, config); err != nil {
+		return fmt.Errorf("save export config: %w", err)
+	}
+	s.invalidate()
+	return nil
 }
 
 // Assign puts one account into a project, or into every project when the name

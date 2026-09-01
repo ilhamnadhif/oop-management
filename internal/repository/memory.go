@@ -30,6 +30,7 @@ type TestRepository struct {
 	fuelKeluar    []*model.FuelKeluar
 	hourMeters    []*model.HourMeter
 	projects      []*model.Project
+	exportConfigs []model.ExportConfig
 }
 
 func NewTestRepository() *TestRepository {
@@ -100,6 +101,45 @@ func (r *TestRepository) MaxProjectSequence(_ context.Context, prefix string) (i
 		}
 	}
 	return highest, nil
+}
+
+func (r *TestRepository) ListExportConfigs(context.Context) ([]model.ExportConfig, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]model.ExportConfig, 0, len(r.exportConfigs))
+	for _, config := range r.exportConfigs {
+		result = append(result, cloneExportConfig(config))
+	}
+	return result, nil
+}
+
+func (r *TestRepository) SaveExportConfig(_ context.Context, config model.ExportConfig) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.exportConfigs {
+		if strings.EqualFold(strings.TrimSpace(r.exportConfigs[i].ProjectID), strings.TrimSpace(config.ProjectID)) &&
+			strings.EqualFold(strings.TrimSpace(r.exportConfigs[i].ExportKey), strings.TrimSpace(config.ExportKey)) {
+			r.exportConfigs[i] = cloneExportConfig(config)
+			return nil
+		}
+	}
+	r.exportConfigs = append(r.exportConfigs, cloneExportConfig(config))
+	return nil
+}
+
+// ExportConfigList exposes stored export configs to tests.
+func (r *TestRepository) ExportConfigList() []model.ExportConfig {
+	configs, _ := r.ListExportConfigs(context.Background())
+	return configs
+}
+
+func cloneExportConfig(config model.ExportConfig) model.ExportConfig {
+	config.Slots = [3]model.ExportSlot{
+		{Nama: config.Slots[0].Nama, Jabatan: config.Slots[0].Jabatan},
+		{Nama: config.Slots[1].Nama, Jabatan: config.Slots[1].Jabatan},
+		{Nama: config.Slots[2].Nama, Jabatan: config.Slots[2].Jabatan},
+	}
+	return config
 }
 
 func (r *TestRepository) UpdateUserPassword(_ context.Context, rowNumber int, passwordHash string, at time.Time) error {

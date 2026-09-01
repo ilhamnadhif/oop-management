@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"opp-management/internal/export"
+	"opp-management/internal/model"
 	"opp-management/internal/service"
 )
 
@@ -24,6 +25,8 @@ type AbsensiExportPageData struct {
 	Rows           int
 	Note           string
 	Error          string
+	// Aktif says the project allows this report to be downloaded at all.
+	Aktif bool
 }
 
 func (s *Server) handleAbsensiExportPage(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +45,7 @@ func (s *Server) handleAbsensiExportPage(w http.ResponseWriter, r *http.Request)
 		Month:          month,
 		Jabatan:        jabatan,
 		JabatanOptions: service.JabatanOptions,
+		Aktif:          s.exportAktif(model.ExportAbsensi),
 		Note: "Matriks absensi bulanan: satu baris per karyawan. Kolom tanggal 1 sampai akhir " +
 			"bulan berisi ✓ (hadir), S (sakit), I (izin), C (cuti), lalu total per minggu " +
 			"(M1-M4), total kehadiran, sakit, izin, cuti, tidak absen, dan presentase kehadiran.",
@@ -70,6 +74,9 @@ func (s *Server) handleAbsensiExportDownload(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
+	if !s.requireExportAktif(w, model.ExportAbsensi) {
+		return
+	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	if format == "" {
 		format = "xlsx"
@@ -95,7 +102,7 @@ func (s *Server) handleAbsensiExportDownload(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	meta := s.exportMeta("Rekap Absensi Bulanan", report.Month+"-01", report.Month+"-31")
+	meta := s.exportMetaFor(model.ExportAbsensi, "Rekap Absensi Bulanan", report.Month+"-01", report.Month+"-31")
 	meta.Period = monthLabel(report.Month)
 
 	var payload []byte
