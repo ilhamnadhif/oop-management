@@ -2,27 +2,55 @@
 {{template "appShellOpen" .}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
-  {{/* The machine register, as it has always downloaded here. */}}
+  {{/* Performance per unit: the overview's table, over the range and machine
+       asked for. Both filters left empty mean all of it. */}}
   <section class="panel">
     <div class="panel-heading">
       <div>
-        <p class="eyebrow">{{template "icon" "save"}}{{.Register}}</p>
-        <h2>{{.Rows}} unit terdaftar</h2>
+        <p class="eyebrow">{{template "icon" "chart"}}PERFORMANCE UNIT</p>
+        <h2>Export performance unit</h2>
       </div>
     </div>
-    {{if not .RegisterAktif}}
+    <form class="filter-form" method="get" action="/a2b/export">
+      <div>
+        <label for="perf-from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <input id="perf-from" name="from" type="date" value="{{.PerfFrom}}">
+      </div>
+      <div>
+        <label for="perf-to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <input id="perf-to" name="to" type="date" value="{{.PerfTo}}">
+      </div>
+      <div>
+        <label for="perf-unit">{{template "icon" "cube"}}Unit</label>
+        <select id="perf-unit" name="unit">
+          <option value=""{{if not .PerfUnit}} selected{{end}}>Semua unit</option>
+          {{range .UnitOptions}}
+          <option value="{{.ID}}"{{if eq $.PerfUnit .ID}} selected{{end}}>{{.ID}} — {{.Nama}}</option>
+          {{end}}
+        </select>
+      </div>
+      {{/* The month filter belongs to the card below, and a GET form sends only
+           its own fields. Carrying it here keeps that card where it was when
+           somebody changes the range up here. */}}
+      {{if .HMMonth}}<input type="hidden" name="month" value="{{.HMMonth}}">{{end}}
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/a2b/export">Reset</a>
+      <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
+    </form>
+    {{if not .PerfAktif}}
     <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
-    {{else if .Rows}}
+    {{else if .PerfRows}}
     <p class="panel-empty">
-      {{.Note}} Kop laporan memakai logo dan nama {{.Company}}, dan halaman
-      terakhir memuat blok tanda tangan.
+      {{.PerfRows}} unit siap diunduh{{if .PerfPeriod}} untuk {{.PerfPeriod}}{{end}}. {{.Note}}
+      Kop laporan memakai logo dan nama {{.Company}}, dan halaman terakhir memuat
+      blok tanda tangan.
     </p>
     <div class="action-row export-actions">
-      <a class="button primary" href="{{.BasePath}}/download?format=xlsx">{{template "icon" "save"}}Unduh XLSX</a>
-      <a class="button subtle" href="{{.BasePath}}/download?format=pdf">{{template "icon" "save"}}Unduh PDF</a>
+      <a class="button primary" href="{{.BasePath}}/download?format=xlsx{{if .PerfFrom}}&amp;from={{.PerfFrom}}{{end}}{{if .PerfTo}}&amp;to={{.PerfTo}}{{end}}{{if .PerfUnit}}&amp;unit={{.PerfUnit}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="{{.BasePath}}/download?format=pdf{{if .PerfFrom}}&amp;from={{.PerfFrom}}{{end}}{{if .PerfTo}}&amp;to={{.PerfTo}}{{end}}{{if .PerfUnit}}&amp;unit={{.PerfUnit}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
     </div>
     {{else}}
-    <p class="panel-empty">Belum ada unit yang terdaftar, jadi tidak ada yang bisa diunduh.</p>
+    <p class="panel-empty">Tidak ada pembacaan hour meter pada rentang ini, jadi tidak ada yang bisa diunduh. Catat lewat <a href="/a2b/hm">Input HM</a>.</p>
     {{end}}
   </section>
 
@@ -39,6 +67,9 @@
         <label for="hm-month">{{template "icon" "calendar"}}Bulan</label>
         <input id="hm-month" name="month" type="month" value="{{.HMMonth}}">
       </div>
+      {{if .PerfFrom}}<input type="hidden" name="from" value="{{.PerfFrom}}">{{end}}
+      {{if .PerfTo}}<input type="hidden" name="to" value="{{.PerfTo}}">{{end}}
+      {{if .PerfUnit}}<input type="hidden" name="unit" value="{{.PerfUnit}}">{{end}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
       <p class="hint filter-note">Default: semua bulan.</p>

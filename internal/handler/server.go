@@ -439,7 +439,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/unit/export", s.handleUnitExport)
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
 	mux.HandleFunc("/a2b/export", s.handleA2BExport)
-	mux.HandleFunc("/a2b/export/download", s.handleA2BDownload)
+	mux.HandleFunc("/a2b/export/download", s.handleA2BPerformanceDownload)
 	mux.HandleFunc("/a2b/export/hm/download", s.handleA2BHMExportDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
@@ -1598,39 +1598,6 @@ func (s *Server) handleUnitDownload(w http.ResponseWriter, r *http.Request) {
 		payload, err = export.UnitDTPDF(units, meta)
 	}
 	s.writeRegister(w, "unit-dt", format, payload, err)
-}
-
-// handleA2BDownload streams the machine register. It is a file of its own: the
-// two registers describe different machines with different columns, and merging
-// them would leave half of every row empty.
-func (s *Server) handleA2BDownload(w http.ResponseWriter, r *http.Request) {
-	s, _, _, ok := s.requireAccess(w, r, "a2b-export")
-	if !ok {
-		return
-	}
-	if !s.requireExportAktif(w, model.ExportUnitA2B) {
-		return
-	}
-	format, ok := downloadFormat(w, r)
-	if !ok {
-		return
-	}
-	units, err := s.unitA2B.List(r.Context())
-	if err != nil {
-		log.Printf("read unit a2b for export: %v", err)
-		http.Error(w, "Gagal memuat data unit", http.StatusInternalServerError)
-		return
-	}
-	meta := s.exportMetaFor(model.ExportUnitA2B, "Daftar Unit A2B", "", "")
-	meta.Period = export.SnapshotLabel(meta.Generated)
-
-	var payload []byte
-	if format == "xlsx" {
-		payload, err = export.UnitA2BXLSX(units, meta)
-	} else {
-		payload, err = export.UnitA2BPDF(units, meta)
-	}
-	s.writeRegister(w, "unit-a2b", format, payload, err)
 }
 
 func downloadFormat(w http.ResponseWriter, r *http.Request) (string, bool) {

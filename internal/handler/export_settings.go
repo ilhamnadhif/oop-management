@@ -14,7 +14,7 @@ var exportLabels = map[model.ExportTypeKey]string{
 	model.ExportProduksi: "Laporan Produksi",
 	model.ExportNota:     "Laporan Nota",
 	model.ExportUnitDT:   "Daftar Unit DT",
-	model.ExportUnitA2B:  "Daftar Unit A2B",
+	model.ExportUnitA2B:  "Performance Unit A2B",
 	model.ExportInputHM:  "Input Hour Meter",
 	model.ExportAbsensi:  "Rekap Absensi Bulanan",
 }
@@ -25,7 +25,7 @@ var exportLedes = map[model.ExportTypeKey]string{
 	model.ExportProduksi: "Ritase harian per unit, lengkap dengan tonase dan lokasinya.",
 	model.ExportNota:     "Rincian nota per item, dengan filter metode pembayaran.",
 	model.ExportUnitDT:   "Register dump truck: ukuran bak dan drivernya.",
-	model.ExportUnitA2B:  "Register alat berat: kapasitas tangki, konsumsi per jam, lokasi.",
+	model.ExportUnitA2B:  "Performance per alat berat: shift, total HM, fuel, fuel ratio, PA, UA.",
 	model.ExportInputHM:  "Pembacaan hour meter per bulan, dengan PA dan UA.",
 	model.ExportAbsensi:  "Matriks absensi bulanan per karyawan.",
 }

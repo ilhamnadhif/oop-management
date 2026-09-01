@@ -93,44 +93,32 @@ func TestRegisterExportsRejectAnUnknownFormat(t *testing.T) {
 	}
 }
 
-// Each page says how much it will produce, and offers no button at all when its
-// register is still empty.
+// The register page says how much it will produce, and offers no button at all
+// when the register is still empty.
 func TestRegisterExportPagesReportRowCounts(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	client := loggedInClient(t, testServer)
 
-	for _, base := range []string{"/unit/export", "/a2b/export"} {
-		empty := fetchAuthedPage(t, client, testServer.URL+base)
-		if strings.Contains(empty, base+"/download") {
-			t.Fatalf("%s offers a download for an empty register", base)
-		}
+	empty := fetchAuthedPage(t, client, testServer.URL+"/unit/export")
+	if strings.Contains(empty, "/unit/export/download") {
+		t.Fatal("/unit/export offers a download for an empty register")
 	}
 
 	seedUnit(t, store)
-	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 400, 18.5)
-	for base, register := range map[string]string{
-		"/unit/export": "Unit DT",
-		"/a2b/export":  "Unit A2B",
+	page := fetchAuthedPage(t, client, testServer.URL+"/unit/export")
+	for _, want := range []string{
+		"Unit DT", "1 unit terdaftar",
+		"/unit/export/download?format=xlsx", "/unit/export/download?format=pdf",
 	} {
-		page := fetchAuthedPage(t, client, testServer.URL+base)
-		for _, want := range []string{
-			register, "1 unit terdaftar",
-			base + "/download?format=xlsx", base + "/download?format=pdf",
-		} {
-			if !strings.Contains(page, want) {
-				t.Fatalf("%s is missing %q", base, want)
-			}
+		if !strings.Contains(page, want) {
+			t.Fatalf("/unit/export is missing %q", want)
 		}
-		// One page, one register. The menu names both, so the check looks at
-		// the content area rather than the whole page.
-		content := sectionBetween(t, page, `<main class="app-shell">`, "</main>")
-		other := "Unit A2B"
-		if register == "Unit A2B" {
-			other = "Unit DT"
-		}
-		if strings.Contains(content, other) {
-			t.Fatalf("%s also lists %q", base, other)
-		}
+	}
+	// One page, one register. The menu names the machines too, so the check
+	// looks at the content area rather than the whole page.
+	content := sectionBetween(t, page, `<main class="app-shell">`, "</main>")
+	if strings.Contains(content, "Unit A2B") {
+		t.Fatal("/unit/export also lists the machine register")
 	}
 }
 
