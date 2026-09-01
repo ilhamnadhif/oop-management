@@ -1,0 +1,58 @@
+{{define "a2b_export"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  {{/* The machine register, as it has always downloaded here. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}{{.Register}}</p>
+        <h2>{{.Rows}} unit terdaftar</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <p class="panel-empty">
+      {{.Note}} Kop laporan memakai logo dan nama {{.Company}}, dan halaman
+      terakhir memuat blok tanda tangan.
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="{{.BasePath}}/download?format=xlsx">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="{{.BasePath}}/download?format=pdf">{{template "icon" "save"}}Unduh PDF</a>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada unit yang terdaftar, jadi tidak ada yang bisa diunduh.</p>
+    {{end}}
+  </section>
+
+  {{/* The hour meter readings, filterable by month. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "clock"}}INPUT HM</p>
+        <h2>Export data hour meter</h2>
+      </div>
+    </div>
+    <form class="filter-form" method="get" action="/a2b/export">
+      <div>
+        <label for="hm-month">{{template "icon" "calendar"}}Bulan</label>
+        <input id="hm-month" name="month" type="month" value="{{.HMMonth}}">
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/a2b/export">Reset</a>
+      <p class="hint filter-note">Default: semua bulan.</p>
+    </form>
+    {{if .HMRows}}
+    <p class="panel-empty">
+      {{.HMRows}} pembacaan siap diunduh{{if .HMMonth}} untuk {{.HMMonth}}{{end}}. {{.HMNote}}
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="/a2b/export/hm/download?format=xlsx{{if .HMMonth}}&amp;month={{.HMMonth}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="/a2b/export/hm/download?format=pdf{{if .HMMonth}}&amp;month={{.HMMonth}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
+    </div>
+    {{else}}
+    <p class="panel-empty">Tidak ada pembacaan hour meter{{if .HMMonth}} pada bulan ini{{end}}, jadi tidak ada yang bisa diunduh.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

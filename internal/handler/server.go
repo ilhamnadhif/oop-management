@@ -438,6 +438,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
 	mux.HandleFunc("/a2b/export", s.handleA2BExport)
 	mux.HandleFunc("/a2b/export/download", s.handleA2BDownload)
+	mux.HandleFunc("/a2b/export/hm/download", s.handleA2BHMExportDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/nota", s.handleNota)
@@ -1515,27 +1516,6 @@ func (s *Server) handleUnitExport(w http.ResponseWriter, r *http.Request) {
 	units, err := s.produksi.Units(r.Context())
 	if err != nil {
 		log.Printf("count unit dt for export: %v", err)
-		data.Error = "Gagal memuat data unit"
-	}
-	data.Rows = len(units)
-	s.render(w, "register_export", data, http.StatusOK)
-}
-
-func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
-	s, user, sessionValue, ok := s.requireAccess(w, r, "a2b-export")
-	if !ok {
-		return
-	}
-	data := RegisterExportPageData{
-		ShellPageData: s.shellData(user, sessionValue, "a2b-export"),
-		Company:       s.company,
-		BasePath:      "/a2b/export",
-		Register:      "Unit A2B",
-		Note:          "Daftar alat berat lengkap dengan kapasitas tangki, konsumsi per jam, dan lokasinya.",
-	}
-	units, err := s.unitA2B.List(r.Context())
-	if err != nil {
-		log.Printf("count unit a2b for export: %v", err)
 		data.Error = "Gagal memuat data unit"
 	}
 	data.Rows = len(units)

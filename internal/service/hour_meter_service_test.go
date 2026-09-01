@@ -478,3 +478,44 @@ func TestHourMeterUseOfAvailabilityStopsAtFull(t *testing.T) {
 		})
 	}
 }
+
+// The export filters readings to one month, or returns every reading when the
+// month is left blank.
+func TestHourMeterExportRowsFiltersByMonth(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
+	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
+	user := fuelTestUser("Logistik")
+
+	input := hourMeterTestInput() // 2026-08-07
+	if _, err := service.Create(context.Background(), user, input); err != nil {
+		t.Fatalf("create august: %v", err)
+	}
+	september := hourMeterTestInput()
+	september.Tanggal = "2026-09-02"
+	september.HMAwal = "1208"
+	september.HMAkhir = "1216"
+	if _, err := service.Create(context.Background(), user, september); err != nil {
+		t.Fatalf("create september: %v", err)
+	}
+
+	all, err := service.ExportRows(context.Background(), "")
+	if err != nil {
+		t.Fatalf("export all: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("export all returned %d rows, want 2", len(all))
+	}
+
+	august, err := service.ExportRows(context.Background(), "2026-08")
+	if err != nil {
+		t.Fatalf("export august: %v", err)
+	}
+	if len(august) != 1 || august[0].Tanggal != "2026-08-07" {
+		t.Fatalf("export august returned %+v", august)
+	}
+
+	if _, err := service.ExportRows(context.Background(), "bukan-bulan"); !errors.Is(err, ErrValidation) {
+		t.Fatalf("an invalid month returned %v, want a validation error", err)
+	}
+}

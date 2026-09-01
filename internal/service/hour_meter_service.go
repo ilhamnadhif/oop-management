@@ -403,6 +403,30 @@ func (s *HourMeterService) List(ctx context.Context) ([]model.HourMeter, error) 
 	return rows, nil
 }
 
+// ExportRows returns the readings for a report, newest first, filtered to one
+// month when one is given. An empty month means every reading, which is how the
+// export page defaults to "all".
+func (s *HourMeterService) ExportRows(ctx context.Context, month string) ([]model.HourMeter, error) {
+	rows, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	month = strings.TrimSpace(month)
+	if month == "" {
+		return rows, nil
+	}
+	if _, err := time.Parse("2006-01", month); err != nil {
+		return nil, fmt.Errorf("%w: bulan tidak valid", ErrValidation)
+	}
+	filtered := make([]model.HourMeter, 0, len(rows))
+	for _, row := range rows {
+		if strings.HasPrefix(strings.TrimSpace(row.Tanggal), month) {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered, nil
+}
+
 func (s *HourMeterService) resolveUnit(ctx context.Context, idUnit string) (HourMeterUnitPick, error) {
 	idUnit = strings.Join(strings.Fields(idUnit), " ")
 	if idUnit == "" {
