@@ -9,7 +9,7 @@
        the way back out is the first thing on the page. */}}
   <a class="back-link" href="/project/settings">{{template "icon" "arrow-left"}}Semua project</a>
 
-  <form method="post" action="/project/settings" class="stack-form" data-loading-form>
+  <form method="post" action="/project/settings" class="stack-form" enctype="multipart/form-data" data-loading-form>
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="aksi" value="simpan">
     <input type="hidden" name="project_id" value="{{.Selected.ProjectID}}">
@@ -101,30 +101,56 @@
       </div>
     </section>
 
+    {{/* Who signs is decided per export, in the cards below. What is left here
+         is what the whole project answers to: its name, where its paperwork is
+         signed, and the marks it puts on the app and on that paperwork. */}}
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">{{template "icon" "save"}}LAPORAN</p>
-          <h2>Kop dan tanda tangan export</h2>
+          <p class="eyebrow">{{template "icon" "info"}}UMUM</p>
+          <h2>Identitas project</h2>
         </div>
       </div>
       <div class="form-grid form-grid-2">
         <div>
           <label for="company">{{template "icon" "info"}}Nama perusahaan</label>
           <input id="company" name="company" type="text" value="{{.Selected.Settings.Company}}" autocomplete="off">
-        </div>
-        <div>
-          <label for="signatory_name">{{template "icon" "user"}}Penandatangan</label>
-          <input id="signatory_name" name="signatory_name" type="text" value="{{.Selected.Settings.SignatoryName}}" autocomplete="off">
-        </div>
-        <div>
-          <label for="signatory_title">{{template "icon" "tag"}}Jabatan penandatangan</label>
-          <input id="signatory_title" name="signatory_title" type="text" value="{{.Selected.Settings.SignatoryTitle}}" autocomplete="off">
+          <p class="hint">Dipakai di kop setiap export, nama di sidebar, judul tab, dan baris hak cipta.</p>
         </div>
         <div>
           <label for="signatory_place">{{template "icon" "pin"}}Tempat tanda tangan</label>
           <input id="signatory_place" name="signatory_place" type="text" value="{{.Selected.Settings.SignatoryPlace}}" autocomplete="off">
+          <p class="hint">Kota di atas blok tanda tangan, misalnya “Balikpapan, 2 September 2026”.</p>
         </div>
+      </div>
+
+      <p class="hint">
+        Tiga gambar terpisah, masing-masing boleh dikosongkan. Yang dikosongkan
+        memakai gambar bawaan aplikasi. PNG disarankan karena latarnya bisa
+        transparan; favicon juga menerima ICO.
+      </p>
+      <div class="form-grid form-grid-3 mark-grid">
+        {{range .Marks}}
+        {{/* Each upload is one column: the field, what it is for, then what is
+             stored. The last part is pushed to the bottom so the three columns
+             line up however long the sentences above them run. */}}
+        <div class="mark-field">
+          <label for="{{.Field}}">{{template "icon" .Icon}}{{.Label}}</label>
+          <input id="{{.Field}}" name="{{.Field}}" type="file" accept="{{.Accept}}">
+          <p class="hint">{{.Lede}}</p>
+          <div class="mark-current">
+            {{if .Ada}}
+            <img class="mark-preview" src="{{.URL}}" alt="{{.Label}} saat ini">
+            <label class="menu-option">
+              <input type="checkbox" name="hapus_{{.Field}}" value="1">
+              <span><strong>Kembalikan ke bawaan</strong><small>Hapus gambar yang tersimpan.</small></span>
+            </label>
+            {{else}}
+            <p class="hint mark-empty">Belum ada — memakai gambar bawaan aplikasi.</p>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
       </div>
       <div class="action-row">
         <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">

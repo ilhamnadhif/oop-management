@@ -130,10 +130,10 @@ func TestExportStaysOnUntilAProjectSwitchesItOff(t *testing.T) {
 	}
 }
 
-// The positions fill from the edges, and a blank slot falls back to the
-// project's own signatory rather than printing an empty column.
+// The positions fill from the edges, and a slot left blank prints an unnamed
+// line: who signs is decided per export, so there is nowhere else to take a
+// name from and a guess on a signed document is worse than a blank.
 func TestSignatoriesFillFromTheEdges(t *testing.T) {
-	fallback := export.Signatory{Name: "Default", Title: "Kepala Teknik"}
 	config := model.ExportConfig{
 		TTDCount: 3,
 		Slots: [3]model.ExportSlot{
@@ -143,25 +143,25 @@ func TestSignatoriesFillFromTheEdges(t *testing.T) {
 		},
 	}
 
-	three := signatoriesFor(config, fallback)
+	three := signatoriesFor(config)
 	if len(three) != 3 {
 		t.Fatalf("printed %d signatures, want 3", len(three))
 	}
 	if three[0].Name != "Kiri" || three[2].Name != "Kanan" {
 		t.Fatalf("edges laid out wrong: %+v", three)
 	}
-	if three[1] != fallback {
-		t.Fatalf("blank centre = %+v, want the project's own signatory", three[1])
+	if three[1] != (export.Signatory{}) {
+		t.Fatalf("blank centre = %+v, want an unnamed line", three[1])
 	}
 
 	config.TTDCount = 2
-	two := signatoriesFor(config, fallback)
+	two := signatoriesFor(config)
 	if len(two) != 2 || two[0].Name != "Kiri" || two[1].Name != "Kanan" {
 		t.Fatalf("two signatures laid out wrong: %+v", two)
 	}
 
 	config.TTDCount = 1
-	one := signatoriesFor(config, fallback)
+	one := signatoriesFor(config)
 	if len(one) != 1 || one[0].Name != "Kanan" {
 		t.Fatalf("a single signature belongs on the right: %+v", one)
 	}

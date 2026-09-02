@@ -23,11 +23,8 @@ type Config struct {
 	MiMoModel             string
 	MiMoTimeout           time.Duration
 	MiMoSheetTimeout      time.Duration
-	// Signatory prints on exported reports. Left empty the report shows a blank
-	// signature line, which is the safe default: a guessed name on a signed
-	// document is worse than none.
-	SignatoryName  string
-	SignatoryTitle string
+	// SignatoryPlace is the town printed above the signature block. Who signs
+	// is decided per export, per project; this is only where.
 	SignatoryPlace string
 	CompanyName    string
 	// ProjectName names the project the app was already keeping books for. It
@@ -120,8 +117,6 @@ func Load() (Config, error) {
 		MiMoModel:             miMoModel,
 		MiMoTimeout:           miMoTimeout,
 		MiMoSheetTimeout:      miMoSheetTimeout,
-		SignatoryName:         strings.TrimSpace(os.Getenv("SIGNATORY_NAME")),
-		SignatoryTitle:        getenv("SIGNATORY_TITLE", "Direktur"),
 		SignatoryPlace:        strings.TrimSpace(os.Getenv("SIGNATORY_PLACE")),
 		CompanyName:           getenv("COMPANY_NAME", "PT Orecon Putra Perkasa"),
 		ProjectName:           getenv("PROJECT_NAME", "PCPM"),

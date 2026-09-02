@@ -131,6 +131,9 @@ var projectHeaders = []string{
 	"work_start", "work_end", "late_tolerance_minutes", "a2b_work_minutes",
 	"company", "signatory_name", "signatory_title", "signatory_place",
 	"created_at", "updated_at",
+	// The marks came after the rest, so they sit at the end: adding them in the
+	// middle would move every column an existing row already fills.
+	"logo_sistem", "logo_export", "favicon",
 }
 
 // exportConfigHeaders hold one row per project-and-export setting. The three
@@ -449,7 +452,7 @@ func headerNeedsWriting(sheetName string, actual []interface{}, expected []strin
 // order is the order the switcher offers, so a site can be moved up the list by
 // moving its row.
 func (r *GoogleSheetsRepository) ListProjects(ctx context.Context) ([]model.Project, error) {
-	rows, err := r.readRows(ctx, projectSheet, "O")
+	rows, err := r.readRows(ctx, projectSheet, "R")
 	if err != nil {
 		return nil, err
 	}
@@ -476,9 +479,10 @@ func (r *GoogleSheetsRepository) ListProjects(ctx context.Context) ([]model.Proj
 				LateToleranceMinutes: int(parseFloatCell(row[7])),
 				A2BWorkMinutes:       int(parseFloatCell(row[8])),
 				Company:              strings.TrimSpace(cellString(row[9])),
-				SignatoryName:        strings.TrimSpace(cellString(row[10])),
-				SignatoryTitle:       strings.TrimSpace(cellString(row[11])),
 				SignatoryPlace:       strings.TrimSpace(cellString(row[12])),
+				LogoSistem:           strings.TrimSpace(cellString(row[15])),
+				LogoExport:           strings.TrimSpace(cellString(row[16])),
+				Favicon:              strings.TrimSpace(cellString(row[17])),
 			},
 			CreatedAt: createdAt,
 			UpdatedAt: updatedAt,
@@ -494,7 +498,7 @@ func (r *GoogleSheetsRepository) CreateProject(ctx context.Context, project *mod
 // FindProjectRow locates a project and reports the row it sits on, so the
 // settings screen can write back to it.
 func (r *GoogleSheetsRepository) FindProjectRow(ctx context.Context, projectID string) (*model.Project, int, error) {
-	rows, err := r.readRows(ctx, projectSheet, "O")
+	rows, err := r.readRows(ctx, projectSheet, "R")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -524,7 +528,7 @@ func (r *GoogleSheetsRepository) UpdateProject(ctx context.Context, rowNumber in
 	if rowNumber < 2 {
 		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, projectSheet)
 	}
-	rangeName := fmt.Sprintf("%s!B%d:O%d", quoteSheet(projectSheet), rowNumber, rowNumber)
+	rangeName := fmt.Sprintf("%s!B%d:R%d", quoteSheet(projectSheet), rowNumber, rowNumber)
 	_, err := r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName,
 		&sheets.ValueRange{Values: [][]interface{}{projectToRow(project)[1:]}}).
 		ValueInputOption("RAW").Context(ctx).Do()
@@ -812,9 +816,12 @@ func projectToRow(project *model.Project) []interface{} {
 		project.Settings.WorkStart, project.Settings.WorkEnd,
 		formatOptionalInt(project.Settings.LateToleranceMinutes),
 		formatOptionalInt(project.Settings.A2BWorkMinutes),
-		project.Settings.Company, project.Settings.SignatoryName,
-		project.Settings.SignatoryTitle, project.Settings.SignatoryPlace,
+		// Columns 11 and 12 held the project's signatory. Who signs is decided
+		// per export now, so they are written blank rather than removed: taking
+		// a column out would shift every one after it.
+		project.Settings.Company, "", "", project.Settings.SignatoryPlace,
 		formatDateTime(project.CreatedAt), formatDateTime(project.UpdatedAt),
+		project.Settings.LogoSistem, project.Settings.LogoExport, project.Settings.Favicon,
 	}
 }
 

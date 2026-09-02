@@ -363,7 +363,7 @@ func TestProjectRowRoundTrip(t *testing.T) {
 		MenuAktif: []string{"produksi", "unit"}, Status: model.StatusAktif,
 		Settings: model.ProjectSettings{
 			WorkStart: "07:00", WorkEnd: "16:00", LateToleranceMinutes: 10,
-			Company: "PT Contoh", SignatoryName: "Sari",
+			Company: "PT Contoh", SignatoryPlace: "Balikpapan",
 		},
 	}
 	row := projectToRow(project)

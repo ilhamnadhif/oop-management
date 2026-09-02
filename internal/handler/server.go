@@ -174,6 +174,11 @@ type ShellPageData struct {
 	// have no way to work out on their own.
 	Company string
 	Year    int
+	// LogoURL and FaviconURL are where the page fetches this project's own
+	// marks. Both are empty when the project has uploaded none, and the
+	// template falls back to the app's own artwork.
+	LogoURL    string
+	FaviconURL string
 }
 
 type UnitDTFormData struct {
@@ -417,6 +422,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/project/settings", s.handleProjectSettings)
 	mux.HandleFunc("/profile", s.handleProfile)
 	mux.HandleFunc("/profile/photo", s.handleProfilePhoto)
+	mux.HandleFunc(brandLogoPath, s.handleBrandLogo)
+	mux.HandleFunc(brandExportLogoPath, s.handleBrandExportLogo)
+	mux.HandleFunc(brandFaviconPath, s.handleBrandFavicon)
 	mux.HandleFunc("/hr/overview", s.handleHROverview)
 	mux.HandleFunc("/hr/karyawan", s.handleKaryawan)
 	mux.HandleFunc("/hr/user-management", s.handleUserManagement)
@@ -800,6 +808,10 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 		UserInitial: firstLetter(user.NamaLengkap),
 		Company:     s.company,
 		Year:        now.Year(),
+		// The version is the project's own updated_at, so replacing a mark
+		// changes its URL and the new one is fetched at once.
+		LogoURL:    brandMarkURL(brandLogoPath, s.project.Settings.LogoSistem, s.project.UpdatedAt.Unix()),
+		FaviconURL: brandMarkURL(brandFaviconPath, s.project.Settings.Favicon, s.project.UpdatedAt.Unix()),
 	}
 }
 
@@ -1325,14 +1337,30 @@ func (s *Server) handleNotaDownload(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(payload)
 }
 
-// exportMetaFor builds the letterhead for one export type, so the signature
-// block follows the project's setting for that report rather than the default.
-func (s *Server) exportMetaFor(exportKey model.ExportTypeKey, title, from, to string) export.Meta {
+// exportLogo is the mark printed on the letterhead: the project's own where it
+// uploaded one, and the app's artwork where it did not.
+func (s *Server) exportLogo() []byte {
+	if mark := strings.TrimSpace(s.project.Settings.LogoExport); mark != "" {
+		decoded, err := photo.DecodeLogoDataURL(mark)
+		if err == nil {
+			return decoded
+		}
+		// A stored mark that will not decode is worth saying out loud, but it
+		// is not worth failing the report over.
+		log.Printf("read export logo for %s: %v", s.project.Nama, err)
+	}
 	logo, err := assetFiles.ReadFile("static/img/opp-logo.png")
 	if err != nil {
 		// A missing logo costs the letterhead its mark, not the report.
 		log.Printf("read logo for export: %v", err)
 	}
+	return logo
+}
+
+// exportMetaFor builds the letterhead for one export type, so the signature
+// block follows the project's setting for that report rather than the default.
+func (s *Server) exportMetaFor(exportKey model.ExportTypeKey, title, from, to string) export.Meta {
+	logo := s.exportLogo()
 	config := s.project.ExportConfigFor(exportKey)
 	return export.Meta{
 		Company:     s.company,
@@ -1341,15 +1369,18 @@ func (s *Server) exportMetaFor(exportKey model.ExportTypeKey, title, from, to st
 		Generated:   s.now().In(s.location),
 		Logo:        logo,
 		Signatory:   s.signatory,
-		Signatories: signatoriesFor(config, s.signatory),
+		Signatories: signatoriesFor(config),
 	}
 }
 
 // signatoriesFor lays out the closing block for one export config. The project
 // may sign with one, two or three people; the slots are left, centre, right.
-// A slot the project left blank falls back to the project's own signatory,
-// which is also what every export printed before the setting existed.
-func signatoriesFor(config model.ExportConfig, fallback export.Signatory) []export.Signatory {
+//
+// A slot left blank prints an unnamed line. It used to borrow the project's own
+// signatory instead, and that setting is gone: who signs is decided per export,
+// and a name printed from somewhere the screen no longer shows is a name nobody
+// can account for.
+func signatoriesFor(config model.ExportConfig) []export.Signatory {
 	count := config.TTDCount
 	if count < 1 || count > 3 {
 		count = 1
@@ -1366,11 +1397,7 @@ func signatoriesFor(config model.ExportConfig, fallback export.Signatory) []expo
 	signatories := make([]export.Signatory, 0, count)
 	for _, index := range indexes {
 		slot := config.Slots[index]
-		signatory := export.Signatory{Name: slot.Nama, Title: slot.Jabatan}
-		if strings.TrimSpace(signatory.Name) == "" && strings.TrimSpace(signatory.Title) == "" {
-			signatory = fallback
-		}
-		signatories = append(signatories, signatory)
+		signatories = append(signatories, export.Signatory{Name: slot.Nama, Title: slot.Jabatan})
 	}
 	return signatories
 }

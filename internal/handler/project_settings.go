@@ -27,6 +27,10 @@ type ProjectSettingsPageData struct {
 	// project runs. It is built from the sidebar's own list, so a module added
 	// to the app appears here without this page being touched.
 	Menus []MenuChoice
+	// Marks are the project's three uploads, worded for the form. They are
+	// built rather than written into the template so the field name the form
+	// posts and the column it lands in are named once.
+	Marks []ProjectMark
 	// Exports is every configurable report with this project's setting against
 	// it: whether it may be downloaded, and how its signature block is laid out.
 	Exports []ExportChoice
@@ -136,15 +140,28 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 		redirect(w, r, "/login")
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Form tidak valid", http.StatusUnprocessableEntity)
-		return
-	}
 	s, sessionValue, okProject := s.allowedIn(w, r, user, sessionValue, "project-settings")
 	if !okProject {
 		return
 	}
-	if !s.sessions.ValidCSRF(r, sessionValue) {
+
+	// The settings form carries the project's three marks, so it is multipart.
+	// The body is bounded before it is parsed, and the token is then read out
+	// of the parsed form the way every other upload form on this app does it.
+	maxBody := 3*s.maxUploadBytes + 64*1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseMultipartForm(maxBody); err != nil {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Form tidak valid atau gambar terlalu besar", http.StatusUnprocessableEntity)
+			return
+		}
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+	if !s.sessions.ValidCSRFToken(r.FormValue("csrf_token"), sessionValue) {
 		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
 		return
 	}
@@ -178,6 +195,12 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 		s.renderProjectSettings(w, r, user, sessionValue, view, http.StatusUnprocessableEntity)
 		return
 	case "simpan":
+		marks, markErr := s.readProjectMarks(r)
+		if markErr != nil {
+			view.errMsg = markErr.Error()
+			s.renderProjectSettings(w, r, user, sessionValue, view, http.StatusUnprocessableEntity)
+			return
+		}
 		updated, err := s.projects.Update(r.Context(), strings.TrimSpace(r.FormValue("project_id")), service.ProjectUpdate{
 			Nama:                 r.FormValue("nama"),
 			MenuAktif:            r.Form["menu"],
@@ -187,9 +210,13 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 			LateToleranceMinutes: optionalMinutes(r.FormValue("late_tolerance")),
 			A2BWorkMinutes:       optionalMinutes(r.FormValue("a2b_work_minutes")),
 			Company:              r.FormValue("company"),
-			SignatoryName:        r.FormValue("signatory_name"),
-			SignatoryTitle:       r.FormValue("signatory_title"),
 			SignatoryPlace:       r.FormValue("signatory_place"),
+			LogoSistem:           marks.LogoSistem,
+			LogoExport:           marks.LogoExport,
+			Favicon:              marks.Favicon,
+			ClearLogoSistem:      marks.ClearLogoSistem,
+			ClearLogoExport:      marks.ClearLogoExport,
+			ClearFavicon:         marks.ClearFavicon,
 		})
 		actionErr = err
 		if err == nil {
@@ -288,6 +315,7 @@ func (s *Server) renderProjectSettings(w http.ResponseWriter, r *http.Request, u
 	}
 
 	page.Menus = menuChoicesFor(page.Selected)
+	page.Marks = projectMarksFor(page.Selected)
 	page.Exports = exportChoicesFor(page.Selected)
 	page.Members = membersOf(users, page.Selected.Nama, firstProjectName(projects))
 	page.PageTitle = page.Selected.Nama

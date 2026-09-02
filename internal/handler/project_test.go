@@ -341,8 +341,11 @@ func TestProjectSettingsDetailCarriesTheFormsAndAWayBack(t *testing.T) {
 	page := fetchAuthedPage(t, client, testServer.URL+"/project/settings?project="+secondProjectName)
 	for _, fragment := range []string{
 		`class="back-link" href="/project/settings"`,
-		`name="work_start"`, `name="a2b_work_minutes"`, `name="signatory_name"`,
+		`name="work_start"`, `name="a2b_work_minutes"`, `name="signatory_place"`,
 		`name="menu"`, `name="status"`,
+		// Who signs is decided per export now, so the general settings carry
+		// the project's identity and its marks instead.
+		`name="company"`, `name="logo_sistem"`, `name="logo_export"`, `name="favicon"`,
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the detail view is missing %q", fragment)
@@ -355,6 +358,12 @@ func TestProjectSettingsDetailCarriesTheFormsAndAWayBack(t *testing.T) {
 	// project at another file would orphan everything already written.
 	if strings.Contains(page, `name="spreadsheet_id"`) {
 		t.Fatal("the detail view offered the spreadsheet id for editing")
+	}
+	// The signatory's name and title belong to each export's own card.
+	for _, gone := range []string{`name="signatory_name"`, `name="signatory_title"`} {
+		if strings.Contains(page, gone) {
+			t.Fatalf("the general settings still ask for %s", gone)
+		}
 	}
 	if !strings.Contains(page, "kendal-spreadsheet") {
 		t.Fatal("the detail view does not show which spreadsheet it writes to")

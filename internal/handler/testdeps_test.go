@@ -70,8 +70,6 @@ func testDepsWithStores(t *testing.T, stores *testStores, location *time.Locatio
 	master := stores.master
 	projects := service.NewProjectService(master, model.ProjectSettings{
 		Company:        branding.Company,
-		SignatoryName:  branding.Signatory.Name,
-		SignatoryTitle: branding.Signatory.Title,
 		SignatoryPlace: branding.Signatory.Place,
 	}, location, nowFunc)
 	if _, err := projects.EnsureFirst(context.Background(), testProjectName, "test-spreadsheet"); err != nil {
@@ -110,11 +108,7 @@ func testProjectServices(store repository.Store, location *time.Location, nowFun
 		FuelKeluar:   service.NewFuelKeluarService(store, location, nowFunc),
 		HourMeter:    service.NewHourMeterService(store, location, nowFunc),
 		Company:      project.Settings.Company,
-		Signatory: export.Signatory{
-			Name:  project.Settings.SignatoryName,
-			Title: project.Settings.SignatoryTitle,
-			Place: project.Settings.SignatoryPlace,
-		},
+		Signatory:    export.Signatory{Place: project.Settings.SignatoryPlace},
 	}
 }
 

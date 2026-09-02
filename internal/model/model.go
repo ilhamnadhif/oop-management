@@ -161,11 +161,22 @@ type ProjectSettings struct {
 	// One shift's worth of minutes for an A2B machine, which hour meter
 	// readings are measured against.
 	A2BWorkMinutes int
-	// What the letterhead and the signature block of every export say.
-	Company        string
-	SignatoryName  string
-	SignatoryTitle string
+	// Company is what this site calls itself. It is the letterhead of every
+	// export, the name under the sidebar mark, and the line in the footer.
+	Company string
+	// SignatoryPlace is the town printed above the signature block, as in
+	// "Balikpapan, 2 September 2026". Who signs is decided per export.
 	SignatoryPlace string
+	// The marks this project puts on the app and on its paperwork, each stored
+	// as a data URL. Every one may be empty, and an empty one means the app's
+	// own artwork - which is what a project that has uploaded nothing gets.
+	//
+	// The system logo and the export logo are separate uploads on purpose: a
+	// mark that reads well in a sidebar is not always the one a letterhead
+	// wants, and a site should not have to choose between them.
+	LogoSistem string
+	LogoExport string
+	Favicon    string
 }
 
 // ExportSlot is one signature position in an export's closing block: the name
@@ -225,8 +236,9 @@ func (p Project) ExportConfigFor(export ExportTypeKey) ExportConfig {
 		ExportKey: string(export),
 		Aktif:     true,
 		TTDCount:  1,
-		// The right-hand slot, because a single signature prints on the right.
-		Slots: [3]ExportSlot{2: {Nama: p.Settings.SignatoryName, Jabatan: p.Settings.SignatoryTitle}},
+		// No name and no title: who signs is decided per export, and an export
+		// nobody has configured prints an unnamed line rather than a guess.
+		Slots: [3]ExportSlot{},
 	}
 }
 

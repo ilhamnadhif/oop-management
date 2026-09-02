@@ -1,17 +1,45 @@
+{{/* pageHead is the signed-out head. Login, register and onboarding are the
+     deployment's own front door: nobody has said which project they belong to
+     yet, so the app's own name and artwork are what there is to show, and the
+     title names the deployment rather than a project. */}}
 {{define "pageHead"}}
 <!doctype html>
 <html lang="id">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#d7192d">
+  {{template "headMeta" .}}
   <title>{{.Title}} · Orecon Putra Perkasa</title>
   <link rel="icon" href="/static/img/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/static/img/opp-logo.png">
-  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="/static/css/style.css">
+  {{template "headStyles" .}}
 </head>
 <body>
+{{end}}
+
+{{/* appHead is the same head inside the app, where the project is known and
+     its own marks are used - falling back to the app's artwork for a project
+     that has uploaded none. */}}
+{{define "appHead"}}
+<!doctype html>
+<html lang="id">
+<head>
+  {{template "headMeta" .}}
+  <title>{{.Title}} · {{.Company}}</title>
+  <link rel="icon" href="{{if .FaviconURL}}{{.FaviconURL}}{{else}}/static/img/favicon.ico{{end}}" sizes="any">
+  <link rel="apple-touch-icon" href="{{if .LogoURL}}{{.LogoURL}}{{else}}/static/img/opp-logo.png{{end}}">
+  {{template "headStyles" .}}
+</head>
+<body>
+{{end}}
+
+{{define "headMeta"}}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#d7192d">
+{{end}}
+
+{{define "headStyles"}}
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/static/css/style.css">
 {{end}}
 
 {{define "pageFoot"}}
@@ -22,12 +50,12 @@
 {{/* appShellOpen draws the sidebar, topbar and breadcrumb. Pages call it, emit
      their own content, then call appShellClose. */}}
 {{define "appShellOpen"}}
-{{template "pageHead" .}}
+{{template "appHead" .}}
 <div class="app-layout" data-page="{{.ActiveNav}}">
   <aside class="sidebar" id="appSidebar">
     <div class="sidebar-brand">
-      {{template "sidebarBrandLogo"}}
-      <p class="eyebrow"><span>ORECON</span><span>PUTRA PERKASA</span></p>
+      {{template "appSidebarLogo" .}}
+      <p class="eyebrow">{{.Company}}</p>
     </div>
     <nav class="sidebar-nav" aria-label="Menu utama">
       {{range .NavItems}}
@@ -73,7 +101,7 @@
             <path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path>
           </svg>
         </button>
-        <span class="topbar-logo">{{template "brandLogo"}}</span>
+        <span class="topbar-logo">{{template "appLogo" .}}</span>
         <p class="topbar-title">{{.PageTitle}}</p>
       </div>
       <div class="topbar-meta">
@@ -180,12 +208,28 @@
 <script src="/static/js/avatar-crop.js" defer></script>
 {{end}}
 
+{{/* brandLogo is the signed-out mark. Login, register and onboarding are the
+     deployment's own front door: nobody has said which project they belong to
+     yet, so there is no project mark to show. */}}
 {{define "brandLogo"}}
-<img class="brand-logo" src="/static/img/opp-logo.png" width="486" height="440" alt="Logo Orecon Putra Perkasa">
+<img class="brand-logo" src="/static/img/opp-logo.png" width="486" height="440" alt="Logo aplikasi">
 {{end}}
 
-{{define "sidebarBrandLogo"}}
-<img class="brand-logo sidebar-brand-logo" src="/static/img/opp-logo-white-only.png" width="486" height="440" alt="">
+{{/* Inside the app the project's own mark is used where it has one, and the
+     app's artwork where it has not. The sidebar keeps its white variant in that
+     case, because the sidebar is dark and the coloured mark would disappear
+     into it. */}}
+{{/* The intrinsic size is given only for the app's own artwork, whose
+     proportions are known. An uploaded mark is any shape, and a wrong pair of
+     numbers would reserve the wrong box and shift the page as it loads. */}}
+{{define "appLogo"}}
+{{if .LogoURL}}<img class="brand-logo" src="{{.LogoURL}}" alt="Logo {{.Company}}">
+{{else}}<img class="brand-logo" src="/static/img/opp-logo.png" width="486" height="440" alt="Logo {{.Company}}">{{end}}
+{{end}}
+
+{{define "appSidebarLogo"}}
+{{if .LogoURL}}<img class="brand-logo sidebar-brand-logo" src="{{.LogoURL}}" alt="">
+{{else}}<img class="brand-logo sidebar-brand-logo" src="/static/img/opp-logo-white-only.png" width="486" height="440" alt="">{{end}}
 {{end}}
 
 {{/* passwordToggle takes the id of the password input it controls. */}}

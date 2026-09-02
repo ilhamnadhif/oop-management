@@ -76,6 +76,22 @@ input, select { width: 100%; padding: 0.85rem 1rem; font-weight: 400; border: 1p
 input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(43, 156, 150, 0.13); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 1.4rem; }
 .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* The uploads on the project settings screen. Each column is a grid inside a
+   grid, and as a grid its rows stretched to fill whatever height the tallest
+   column set - which made the file field taller in some columns than others and
+   stepped the labels down the row. A column stacks instead, so each part keeps
+   its own height and what is stored is pushed to the bottom, lining the three
+   columns up however long the sentences above them run. */
+.mark-grid > .mark-field { display: flex; flex-direction: column; gap: 0.5rem; }
+/* The file field keeps the one height its own padding gives it, whatever the
+   column beside it is doing. */
+.mark-grid input[type="file"] { flex: none; }
+.mark-current { display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; margin-top: auto; padding-top: 0.2rem; }
+.mark-current .menu-option { width: 100%; }
+.mark-empty { margin: 0; }
+/* A fixed slot so a column holding a thumbnail and one holding a sentence are
+   the same height. */
+.mark-preview { width: 96px; height: 64px; padding: 0.4rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; object-fit: contain; }
 .form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .form-grid > div { display: grid; gap: 0.5rem; }
 /* A field whose value is a long sentence, such as a location name, gets the

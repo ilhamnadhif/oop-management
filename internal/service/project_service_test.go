@@ -17,7 +17,7 @@ func newProjectServiceFixture(t *testing.T) (*ProjectService, *repository.TestRe
 	now := time.Date(2026, 8, 7, 8, 0, 0, 0, time.UTC)
 	projects := NewProjectService(store, model.ProjectSettings{
 		WorkStart: "08:00", WorkEnd: "17:00", LateToleranceMinutes: 15,
-		A2BWorkMinutes: 480, Company: "PT Contoh", SignatoryTitle: "Direktur",
+		A2BWorkMinutes: 480, Company: "PT Contoh", SignatoryPlace: "Balikpapan",
 	}, time.UTC, func() time.Time { return now })
 	if _, err := projects.EnsureFirst(context.Background(), "PCPM", "sheet-pcpm"); err != nil {
 		t.Fatalf("seed first project: %v", err)

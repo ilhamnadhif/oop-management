@@ -66,8 +66,6 @@ func main() {
 		LateToleranceMinutes: cfg.LateToleranceMinutes,
 		A2BWorkMinutes:       cfg.A2BWorkMinutes,
 		Company:              cfg.CompanyName,
-		SignatoryName:        cfg.SignatoryName,
-		SignatoryTitle:       cfg.SignatoryTitle,
 		SignatoryPlace:       cfg.SignatoryPlace,
 	}
 	projectService := service.NewProjectService(master, defaults, cfg.Timezone, now)
@@ -127,8 +125,6 @@ func main() {
 		Branding: handler.Branding{
 			Company: cfg.CompanyName,
 			Signatory: export.Signatory{
-				Name:  cfg.SignatoryName,
-				Title: cfg.SignatoryTitle,
 				Place: cfg.SignatoryPlace,
 			},
 		},
@@ -257,8 +253,6 @@ func buildProjectServices(store repository.Store, projects *service.ProjectServi
 		HourMeter:    service.NewHourMeterService(store, location, now).WithWorkMinutes(project.Settings.A2BWorkMinutes),
 		Company:      project.Settings.Company,
 		Signatory: export.Signatory{
-			Name:  project.Settings.SignatoryName,
-			Title: project.Settings.SignatoryTitle,
 			Place: project.Settings.SignatoryPlace,
 		},
 	}, nil

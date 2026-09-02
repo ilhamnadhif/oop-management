@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"opp-management/internal/model"
+	"opp-management/internal/photo"
 	"opp-management/internal/repository"
 )
 
@@ -283,9 +284,21 @@ type ProjectUpdate struct {
 	LateToleranceMinutes int
 	A2BWorkMinutes       int
 	Company              string
-	SignatoryName        string
-	SignatoryTitle       string
-	SignatoryPlace       string
+
+	SignatoryPlace string
+
+	// The marks, each as a data URL. An empty string leaves whatever is stored
+	// alone: an upload form sends nothing when nobody chose a file, and that has
+	// to mean "unchanged" rather than "clear it".
+	LogoSistem string
+	LogoExport string
+	Favicon    string
+	// ClearLogoSistem and the two beside it are how a mark is actually removed,
+	// since an empty upload cannot say the difference between "no change" and
+	// "go back to the app's own artwork".
+	ClearLogoSistem bool
+	ClearLogoExport bool
+	ClearFavicon    bool
 }
 
 // Update saves the settings screen. Blank settings are stored blank rather than
@@ -298,6 +311,21 @@ func (s *ProjectService) Update(ctx context.Context, projectID string, update Pr
 	}
 	if err := validateOptionalClock("Jam masuk", update.WorkStart); err != nil {
 		return model.Project{}, err
+	}
+	// The marks are validated here as well as at the form. What reaches the
+	// sheet is served back to every browser, so it is checked at the boundary
+	// that actually writes it.
+	for label, mark := range map[string]string{
+		"Logo sistem": update.LogoSistem,
+		"Logo export": update.LogoExport,
+		"Favicon":     update.Favicon,
+	} {
+		if strings.TrimSpace(mark) == "" {
+			continue
+		}
+		if err := photo.ValidateLogoDataURL(mark); err != nil {
+			return model.Project{}, fmt.Errorf("%w: %s tidak valid", ErrValidation, label)
+		}
 	}
 	if err := validateOptionalClock("Jam pulang", update.WorkEnd); err != nil {
 		return model.Project{}, err
@@ -341,9 +369,11 @@ func (s *ProjectService) Update(ctx context.Context, projectID string, update Pr
 		LateToleranceMinutes: update.LateToleranceMinutes,
 		A2BWorkMinutes:       update.A2BWorkMinutes,
 		Company:              strings.TrimSpace(update.Company),
-		SignatoryName:        strings.TrimSpace(update.SignatoryName),
-		SignatoryTitle:       strings.TrimSpace(update.SignatoryTitle),
-		SignatoryPlace:       strings.TrimSpace(update.SignatoryPlace),
+
+		SignatoryPlace: strings.TrimSpace(update.SignatoryPlace),
+		LogoSistem:     keptMark(stored.Settings.LogoSistem, update.LogoSistem, update.ClearLogoSistem),
+		LogoExport:     keptMark(stored.Settings.LogoExport, update.LogoExport, update.ClearLogoExport),
+		Favicon:        keptMark(stored.Settings.Favicon, update.Favicon, update.ClearFavicon),
 	}
 	stored.UpdatedAt = s.now().In(s.location)
 
@@ -488,12 +518,6 @@ func (s *ProjectService) merge(settings model.ProjectSettings) model.ProjectSett
 	if settings.Company == "" {
 		settings.Company = s.defaults.Company
 	}
-	if settings.SignatoryName == "" {
-		settings.SignatoryName = s.defaults.SignatoryName
-	}
-	if settings.SignatoryTitle == "" {
-		settings.SignatoryTitle = s.defaults.SignatoryTitle
-	}
 	if settings.SignatoryPlace == "" {
 		settings.SignatoryPlace = s.defaults.SignatoryPlace
 	}
@@ -527,4 +551,18 @@ func validateOptionalClock(label, value string) error {
 		return fmt.Errorf("%w: %s harus berformat HH:MM", ErrValidation, label)
 	}
 	return nil
+}
+
+// keptMark decides what a settings save leaves in a mark's column. A form that
+// carries no file means the mark is unchanged, which is the ordinary case:
+// somebody editing the working hours has not uploaded a logo, and their save
+// must not wipe one.
+func keptMark(current, uploaded string, clear bool) string {
+	if clear {
+		return ""
+	}
+	if strings.TrimSpace(uploaded) == "" {
+		return current
+	}
+	return uploaded
 }
