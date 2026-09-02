@@ -479,9 +479,9 @@ func TestHourMeterUseOfAvailabilityStopsAtFull(t *testing.T) {
 	}
 }
 
-// The export filters readings to one month, or returns every reading when the
-// month is left blank.
-func TestHourMeterExportRowsFiltersByMonth(t *testing.T) {
+// The export narrows the readings to a date range, and an empty side does not
+// bound that side at all.
+func TestHourMeterExportRowsFiltersByRange(t *testing.T) {
 	store := repository.NewTestRepository()
 	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
 	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
@@ -499,23 +499,96 @@ func TestHourMeterExportRowsFiltersByMonth(t *testing.T) {
 		t.Fatalf("create september: %v", err)
 	}
 
-	all, err := service.ExportRows(context.Background(), "")
+	all, err := service.ExportRows(context.Background(), "", "", "")
 	if err != nil {
 		t.Fatalf("export all: %v", err)
 	}
-	if len(all) != 2 {
-		t.Fatalf("export all returned %d rows, want 2", len(all))
+	if len(all.Rows) != 2 {
+		t.Fatalf("export all returned %d rows, want 2", len(all.Rows))
 	}
 
-	august, err := service.ExportRows(context.Background(), "2026-08")
+	august, err := service.ExportRows(context.Background(), "2026-08-01", "2026-08-31", "")
 	if err != nil {
 		t.Fatalf("export august: %v", err)
 	}
-	if len(august) != 1 || august[0].Tanggal != "2026-08-07" {
-		t.Fatalf("export august returned %+v", august)
+	if len(august.Rows) != 1 || august.Rows[0].Tanggal != "2026-08-07" {
+		t.Fatalf("export august returned %+v", august.Rows)
 	}
 
-	if _, err := service.ExportRows(context.Background(), "bukan-bulan"); !errors.Is(err, ErrValidation) {
-		t.Fatalf("an invalid month returned %v, want a validation error", err)
+	// One side open runs to the edge of the sheet rather than to a default.
+	fromSeptember, err := service.ExportRows(context.Background(), "2026-09-01", "", "")
+	if err != nil {
+		t.Fatalf("export from september: %v", err)
+	}
+	if len(fromSeptember.Rows) != 1 || fromSeptember.Rows[0].Tanggal != "2026-09-02" {
+		t.Fatalf("an open end returned %+v", fromSeptember.Rows)
+	}
+}
+
+// A range typed the wrong way round is the person's slip, not a refusal.
+func TestHourMeterExportRowsSwapsAReversedRange(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
+	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
+	if _, err := service.Create(context.Background(), fuelTestUser("Logistik"), hourMeterTestInput()); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	report, err := service.ExportRows(context.Background(), "2026-08-31", "2026-08-01", "")
+	if err != nil {
+		t.Fatalf("export reversed: %v", err)
+	}
+	if report.From != "2026-08-01" || report.To != "2026-08-31" {
+		t.Fatalf("range = %s..%s, want it swapped", report.From, report.To)
+	}
+	if len(report.Rows) != 1 {
+		t.Fatalf("a swapped range returned %d rows, want 1", len(report.Rows))
+	}
+}
+
+// A date the calendar does not have cannot filter anything, so it is refused
+// rather than quietly ignored.
+func TestHourMeterExportRowsRefusesAnInvalidDate(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
+	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
+
+	if _, err := service.ExportRows(context.Background(), "bukan-tanggal", "", ""); !errors.Is(err, ErrValidation) {
+		t.Fatalf("an invalid start returned %v, want a validation error", err)
+	}
+	if _, err := service.ExportRows(context.Background(), "", "2026-13-40", ""); !errors.Is(err, ErrValidation) {
+		t.Fatalf("an invalid end returned %v, want a validation error", err)
+	}
+}
+
+// The unit filter is what the dropdown sends, and an empty one means the whole
+// fleet.
+func TestHourMeterExportRowsFiltersByUnit(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
+	seedFuelMachine(t, store, "bld03", "Bulldozer D65 Komatsu 2 (Rent)")
+	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
+	user := fuelTestUser("Logistik")
+
+	if _, err := service.Create(context.Background(), user, hourMeterTestInput()); err != nil {
+		t.Fatalf("create excavator: %v", err)
+	}
+	bulldozer := hourMeterTestInput()
+	bulldozer.IDUnit = "bld03"
+	if _, err := service.Create(context.Background(), user, bulldozer); err != nil {
+		t.Fatalf("create bulldozer: %v", err)
+	}
+
+	// The dropdown sends the id as the register holds it; matching must not
+	// turn on the case it was typed in.
+	one, err := service.ExportRows(context.Background(), "", "", "BLD03")
+	if err != nil {
+		t.Fatalf("export one unit: %v", err)
+	}
+	if len(one.Rows) != 1 || !strings.EqualFold(one.Rows[0].IDUnit, "bld03") {
+		t.Fatalf("the unit filter returned %+v", one.Rows)
+	}
+	if one.IDUnit != "BLD03" {
+		t.Fatalf("IDUnit = %q, want the filter echoed back for the page", one.IDUnit)
 	}
 }

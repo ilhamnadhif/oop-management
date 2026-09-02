@@ -29,10 +29,12 @@
           {{end}}
         </select>
       </div>
-      {{/* The month filter belongs to the card below, and a GET form sends only
-           its own fields. Carrying it here keeps that card where it was when
+      {{/* The filters below belong to the other card, and a GET form sends only
+           its own fields. Carrying them here keeps that card where it was when
            somebody changes the range up here. */}}
-      {{if .HMMonth}}<input type="hidden" name="month" value="{{.HMMonth}}">{{end}}
+      {{if .HMFrom}}<input type="hidden" name="hm_from" value="{{.HMFrom}}">{{end}}
+      {{if .HMTo}}<input type="hidden" name="hm_to" value="{{.HMTo}}">{{end}}
+      {{if .HMUnit}}<input type="hidden" name="hm_unit" value="{{.HMUnit}}">{{end}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
       <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
@@ -64,28 +66,41 @@
     </div>
     <form class="filter-form" method="get" action="/a2b/export">
       <div>
-        <label for="hm-month">{{template "icon" "calendar"}}Bulan</label>
-        <input id="hm-month" name="month" type="month" value="{{.HMMonth}}">
+        <label for="hm-from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <input id="hm-from" name="hm_from" type="date" value="{{.HMFrom}}">
+      </div>
+      <div>
+        <label for="hm-to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <input id="hm-to" name="hm_to" type="date" value="{{.HMTo}}">
+      </div>
+      <div>
+        <label for="hm-unit">{{template "icon" "cube"}}Unit</label>
+        <select id="hm-unit" name="hm_unit">
+          <option value=""{{if not .HMUnit}} selected{{end}}>Semua unit</option>
+          {{range .UnitOptions}}
+          <option value="{{.ID}}"{{if eq $.HMUnit .ID}} selected{{end}}>{{.ID}} — {{.Nama}}</option>
+          {{end}}
+        </select>
       </div>
       {{if .PerfFrom}}<input type="hidden" name="from" value="{{.PerfFrom}}">{{end}}
       {{if .PerfTo}}<input type="hidden" name="to" value="{{.PerfTo}}">{{end}}
       {{if .PerfUnit}}<input type="hidden" name="unit" value="{{.PerfUnit}}">{{end}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
-      <p class="hint filter-note">Default: semua bulan.</p>
+      <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
     </form>
     {{if not .HMAktif}}
     <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
     {{else if .HMRows}}
     <p class="panel-empty">
-      {{.HMRows}} pembacaan siap diunduh{{if .HMMonth}} untuk {{.HMMonth}}{{end}}. {{.HMNote}}
+      {{.HMRows}} pembacaan siap diunduh{{if .HMPeriod}} untuk {{.HMPeriod}}{{end}}. {{.HMNote}}
     </p>
     <div class="action-row export-actions">
-      <a class="button primary" href="/a2b/export/hm/download?format=xlsx{{if .HMMonth}}&amp;month={{.HMMonth}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
-      <a class="button subtle" href="/a2b/export/hm/download?format=pdf{{if .HMMonth}}&amp;month={{.HMMonth}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
+      <a class="button primary" href="/a2b/export/hm/download?format=xlsx{{if .HMFrom}}&amp;from={{.HMFrom}}{{end}}{{if .HMTo}}&amp;to={{.HMTo}}{{end}}{{if .HMUnit}}&amp;unit={{.HMUnit}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="/a2b/export/hm/download?format=pdf{{if .HMFrom}}&amp;from={{.HMFrom}}{{end}}{{if .HMTo}}&amp;to={{.HMTo}}{{end}}{{if .HMUnit}}&amp;unit={{.HMUnit}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
     </div>
     {{else}}
-    <p class="panel-empty">Tidak ada pembacaan hour meter{{if .HMMonth}} pada bulan ini{{end}}, jadi tidak ada yang bisa diunduh.</p>
+    <p class="panel-empty">Tidak ada pembacaan hour meter pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
     {{end}}
   </section>
 {{template "appShellClose" .}}

@@ -38,11 +38,17 @@ type A2BExportPageData struct {
 	PerfRows   int
 	// UnitOptions fill the machine dropdown, in register order.
 	UnitOptions []UnitOption
-	// HMMonth filters the hour meter report; empty means every month.
-	HMMonth string
-	HMRows  int
-	HMNote  string
-	Error   string
+	// HMFrom, HMTo and HMUnit filter the hour meter report the same way the
+	// performance report is filtered; each left empty means all of it. They
+	// carry their own names in the query because one page holds two filters.
+	HMFrom string
+	HMTo   string
+	HMUnit string
+	// HMPeriod is the range actually used, worded for the person reading it.
+	HMPeriod string
+	HMRows   int
+	HMNote   string
+	Error    string
 }
 
 // UnitOption is one machine in the performance filter's dropdown.
@@ -59,7 +65,6 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	month := strings.TrimSpace(r.URL.Query().Get("month"))
 	data := A2BExportPageData{
 		ShellPageData: s.shellData(user, sessionValue, "a2b-export"),
 		Company:       s.company,
@@ -71,7 +76,9 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 		PerfFrom:  strings.TrimSpace(r.URL.Query().Get("from")),
 		PerfTo:    strings.TrimSpace(r.URL.Query().Get("to")),
 		PerfUnit:  strings.TrimSpace(r.URL.Query().Get("unit")),
-		HMMonth:   month,
+		HMFrom:    strings.TrimSpace(r.URL.Query().Get("hm_from")),
+		HMTo:      strings.TrimSpace(r.URL.Query().Get("hm_to")),
+		HMUnit:    strings.TrimSpace(r.URL.Query().Get("hm_unit")),
 		HMNote: "Input hour meter: satu baris per pembacaan, berisi tanggal, HM awal, " +
 			"HM akhir, total HM, PA, dan UA.",
 	}
@@ -101,7 +108,7 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 		data.PerfPeriod = exportPeriodLabel(report.From, report.To)
 	}
 
-	readings, err := s.hourMeter.ExportRows(r.Context(), month)
+	readings, err := s.hourMeter.ExportRows(r.Context(), data.HMFrom, data.HMTo, data.HMUnit)
 	if err != nil {
 		if errors.Is(err, service.ErrValidation) {
 			if data.Error == "" {
@@ -114,7 +121,8 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		data.HMRows = len(readings)
+		data.HMRows = len(readings.Rows)
+		data.HMPeriod = exportPeriodLabel(readings.From, readings.To)
 	}
 	s.render(w, "a2b_export", data, http.StatusOK)
 }
@@ -183,8 +191,8 @@ func (s *Server) handleA2BHMExportDownload(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	month := strings.TrimSpace(r.URL.Query().Get("month"))
-	readings, err := s.hourMeter.ExportRows(r.Context(), month)
+	readings, err := s.hourMeter.ExportRows(r.Context(),
+		r.URL.Query().Get("from"), r.URL.Query().Get("to"), r.URL.Query().Get("unit"))
 	if err != nil {
 		if errors.Is(err, service.ErrValidation) {
 			http.Error(w, strings.TrimPrefix(err.Error(), "validation error: "), http.StatusUnprocessableEntity)
@@ -195,19 +203,22 @@ func (s *Server) handleA2BHMExportDownload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	meta := s.exportMetaFor(model.ExportInputHM, "Input HM", "", "")
-	if month != "" {
-		meta.Period = monthLabel(month)
+	title := "Input HM"
+	if readings.IDUnit != "" {
+		// The machine is named in the title rather than left to the reader to
+		// work out from a table holding one id over and over.
+		title += " - " + readings.IDUnit
 	}
+	meta := s.exportMetaFor(model.ExportInputHM, title, readings.From, readings.To)
 
 	var payload []byte
 	var contentType, extension string
 	if format == "xlsx" {
-		payload, err = export.HourMeterXLSX(readings, meta)
+		payload, err = export.HourMeterXLSX(readings.Rows, meta)
 		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 		extension = "xlsx"
 	} else {
-		payload, err = export.HourMeterPDF(readings, meta)
+		payload, err = export.HourMeterPDF(readings.Rows, meta)
 		contentType = "application/pdf"
 		extension = "pdf"
 	}
@@ -217,9 +228,14 @@ func (s *Server) handleA2BHMExportDownload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// The filename says which slice of the sheet this is, so two downloads do
+	// not land in the same folder under the same name.
 	filename := "input-hm"
-	if month != "" {
-		filename += "-" + month
+	if readings.IDUnit != "" {
+		filename += "-" + readings.IDUnit
+	}
+	if readings.From != "" || readings.To != "" {
+		filename += "-" + strings.Trim(readings.From+"_"+readings.To, "_")
 	}
 	filename += "." + extension
 	w.Header().Set("Content-Type", contentType)

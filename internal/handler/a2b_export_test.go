@@ -58,7 +58,7 @@ func TestA2BExportPageShowsPerformanceAndTheReadings(t *testing.T) {
 		"INPUT HM",
 		"/a2b/export/hm/download?format=xlsx",
 		"/a2b/export/hm/download?format=pdf",
-		`name="month"`,
+		`name="hm_from"`, `name="hm_to"`, `name="hm_unit"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the page is missing %q", want)
@@ -171,9 +171,9 @@ func TestSwitchedOffPerformanceRefusesItsDownload(t *testing.T) {
 	}
 }
 
-// The month filter counts only the readings in that month, and an empty month
-// counts everything.
-func TestA2BExportPageCountsTheSelectedMonth(t *testing.T) {
+// The readings card counts what its own filters leave, and the download links
+// carry them, so the page and the file cannot disagree.
+func TestA2BExportPageCountsTheFilteredReadings(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	seedHourMeterReading(t, store, "2026-08-07", 1200, 1208)
 	seedHourMeterReading(t, store, "2026-09-02", 1208, 1216)
@@ -184,16 +184,36 @@ func TestA2BExportPageCountsTheSelectedMonth(t *testing.T) {
 		t.Fatalf("the unfiltered page does not count both readings:\n%s", firstLines(all))
 	}
 
-	august := fetchAuthedPage(t, client, testServer.URL+"/a2b/export?month=2026-08")
+	august := fetchAuthedPage(t, client, testServer.URL+"/a2b/export?hm_from=2026-08-01&hm_to=2026-08-31")
 	if !strings.Contains(august, "1 pembacaan") {
 		t.Fatalf("the august page does not count one reading:\n%s", firstLines(august))
 	}
-	if !strings.Contains(august, "month=2026-08") {
-		t.Fatalf("the download links lost the month filter:\n%s", firstLines(august))
+	if !strings.Contains(august, "from=2026-08-01") || !strings.Contains(august, "to=2026-08-31") {
+		t.Fatalf("the download links lost the range:\n%s", firstLines(august))
 	}
 }
 
-// The readings download in both formats, and the file names the month.
+// The readings card filters by machine too, and the two cards' filters do not
+// reach into each other.
+func TestA2BExportReadingsFilterByUnitOnTheirOwn(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 400, 18.5)
+	seedMachine(t, store, 2, "BLD-02", "Caterpillar", "PIT B", 500, 26.0)
+	seedHourMeterReadingFor(t, store, "exc01", "2026-08-07", 1200, 1208)
+	seedHourMeterReadingFor(t, store, "bld-02", "2026-08-08", 300, 307)
+	client := loggedInClient(t, testServer)
+
+	one := fetchAuthedPage(t, client, testServer.URL+"/a2b/export?hm_unit=bld-02")
+	if !strings.Contains(one, "1 pembacaan") {
+		t.Fatalf("the unit filter does not narrow the readings:\n%s", firstLines(one))
+	}
+	// The performance card above is untouched by the readings card's filter.
+	if !strings.Contains(one, "2 unit siap diunduh") {
+		t.Fatalf("the readings filter narrowed the performance card too:\n%s", firstLines(one))
+	}
+}
+
+// The readings download in both formats, and the file names the range.
 func TestA2BHMExportDownloadsBothFormats(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	seedHourMeterReading(t, store, "2026-08-07", 1200, 1208)
@@ -206,7 +226,7 @@ func TestA2BHMExportDownloadsBothFormats(t *testing.T) {
 		"xlsx": {"spreadsheetml", []byte("PK")},
 		"pdf":  {"application/pdf", []byte("%PDF-")},
 	} {
-		response := downloadProduksi(t, client, testServer.URL+"/a2b/export/hm/download?format="+format+"&month=2026-08")
+		response := downloadProduksi(t, client, testServer.URL+"/a2b/export/hm/download?format="+format+"&from=2026-08-01&to=2026-08-31")
 		body := readBodyBytes(t, response)
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("%s: status %d", format, response.StatusCode)
@@ -218,18 +238,18 @@ func TestA2BHMExportDownloadsBothFormats(t *testing.T) {
 			t.Fatalf("%s: body does not start with %q", format, want.magic)
 		}
 		disposition := response.Header.Get("Content-Disposition")
-		if !strings.Contains(disposition, "input-hm-2026-08."+format) {
+		if !strings.Contains(disposition, "input-hm-2026-08-01_2026-08-31."+format) {
 			t.Fatalf("%s: content disposition %q", format, disposition)
 		}
 	}
 }
 
-// The readings export refuses a month that is not a month.
-func TestA2BHMExportRejectsAnInvalidMonth(t *testing.T) {
+// The readings export refuses a date that is not a date.
+func TestA2BHMExportRejectsAnInvalidDate(t *testing.T) {
 	testServer, _ := newTestServerWithStore(t)
 	client := loggedInClient(t, testServer)
 
-	response, err := client.Get(testServer.URL + "/a2b/export/hm/download?format=xlsx&month=bukan-bulan")
+	response, err := client.Get(testServer.URL + "/a2b/export/hm/download?format=xlsx&from=bukan-tanggal")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}

@@ -403,28 +403,70 @@ func (s *HourMeterService) List(ctx context.Context) ([]model.HourMeter, error) 
 	return rows, nil
 }
 
-// ExportRows returns the readings for a report, newest first, filtered to one
-// month when one is given. An empty month means every reading, which is how the
-// export page defaults to "all".
-func (s *HourMeterService) ExportRows(ctx context.Context, month string) ([]model.HourMeter, error) {
+// HourMeterExport is the readings a report asks for: the range and machine as
+// they were given, echoed back so the page can put its own filters back, and
+// the rows that survived them.
+type HourMeterExport struct {
+	// From and To are the range as it was asked for, swapped when it was typed
+	// the wrong way round. Either may be empty, which does not bound that side.
+	From string
+	To   string
+	// IDUnit is the machine picked, empty meaning the whole fleet.
+	IDUnit string
+	Rows   []model.HourMeter
+}
+
+// ExportRows returns the readings for a report, newest first, narrowed to a
+// date range and to one machine. Every filter left empty means all of it, which
+// is how the export page defaults.
+func (s *HourMeterService) ExportRows(ctx context.Context, from, to, idUnit string) (*HourMeterExport, error) {
+	from, err := normalizeExportDate("tanggal awal", from)
+	if err != nil {
+		return nil, err
+	}
+	to, err = normalizeExportDate("tanggal akhir", to)
+	if err != nil {
+		return nil, err
+	}
+	if from != "" && to != "" && from > to {
+		// Typing the range backwards is a slip, not a request for nothing.
+		from, to = to, from
+	}
+	idUnit = strings.TrimSpace(idUnit)
+
 	rows, err := s.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	month = strings.TrimSpace(month)
-	if month == "" {
-		return rows, nil
-	}
-	if _, err := time.Parse("2006-01", month); err != nil {
-		return nil, fmt.Errorf("%w: bulan tidak valid", ErrValidation)
-	}
-	filtered := make([]model.HourMeter, 0, len(rows))
+	report := &HourMeterExport{From: from, To: to, IDUnit: idUnit, Rows: make([]model.HourMeter, 0, len(rows))}
 	for _, row := range rows {
-		if strings.HasPrefix(strings.TrimSpace(row.Tanggal), month) {
-			filtered = append(filtered, row)
+		tanggal := strings.TrimSpace(row.Tanggal)
+		if from != "" && tanggal < from {
+			continue
 		}
+		if to != "" && tanggal > to {
+			continue
+		}
+		if idUnit != "" && !strings.EqualFold(strings.TrimSpace(row.IDUnit), idUnit) {
+			continue
+		}
+		report.Rows = append(report.Rows, row)
 	}
-	return filtered, nil
+	return report, nil
+}
+
+// normalizeExportDate accepts an empty side, which does not bound the range,
+// and refuses anything the calendar does not have: a date that cannot be read
+// cannot filter, and silently ignoring it would hand back the wrong report.
+func normalizeExportDate(label, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if _, err := time.Parse("2006-01-02", value); err != nil {
+		return "", fmt.Errorf("%w: %s tidak valid", ErrValidation, label)
+	}
+	return value, nil
 }
 
 func (s *HourMeterService) resolveUnit(ctx context.Context, idUnit string) (HourMeterUnitPick, error) {
