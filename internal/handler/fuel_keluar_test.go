@@ -149,6 +149,52 @@ func TestFuelKeluarRefusesAFlowMeterThatGoesBackwards(t *testing.T) {
 	}
 }
 
+// A machine's own hour meter only goes forwards. This is the typo that made a
+// bulldozer's fuel ratio read zero: 1368 typed as 136.8.
+func TestFuelKeluarRefusesAMachineMeterThatGoesBackwards(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	first := fuelKeluarFields()
+	first["hm_alat_berat"] = "1294.9"
+	postFuelKeluar(t, client, testServer, fuelKeluarCSRF(t, client, testServer), first, testJPEG(t)).Body.Close()
+
+	second := fuelKeluarFields()
+	second["tanggal"] = "2026-08-04"
+	second["hm_awal"] = "30"
+	second["hm_akhir"] = "45"
+	second["hm_alat_berat"] = "136.8"
+	response := postFuelKeluar(t, client, testServer, fuelKeluarCSRF(t, client, testServer), second, testJPEG(t))
+	requireFuelResponse(t, response, http.StatusUnprocessableEntity, "lebih kecil dari pengisian terakhir")
+	if rows := store.FuelKeluarList(); len(rows) != 1 {
+		t.Fatalf("a backwards machine meter was stored: %+v", rows)
+	}
+}
+
+// A jump past the hours that have actually passed is saved with a caution: the
+// operator at the pump can see the machine, and this code cannot.
+func TestFuelKeluarWarnsAboutAnImpossibleMachineMeterJump(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	first := fuelKeluarFields()
+	first["hm_alat_berat"] = "1294.9"
+	postFuelKeluar(t, client, testServer, fuelKeluarCSRF(t, client, testServer), first, testJPEG(t)).Body.Close()
+
+	second := fuelKeluarFields()
+	second["tanggal"] = "2026-08-04"
+	second["hm_awal"] = "30"
+	second["hm_akhir"] = "45"
+	second["hm_alat_berat"] = "12949"
+	response := postFuelKeluar(t, client, testServer, fuelKeluarCSRF(t, client, testServer), second, testJPEG(t))
+	requireFuelResponse(t, response, http.StatusOK, "kelebihan digit")
+	if rows := store.FuelKeluarList(); len(rows) != 2 {
+		t.Fatalf("the row was refused rather than flagged: %+v", rows)
+	}
+}
+
 // The photo is the only evidence the readings match the pump.
 func TestFuelKeluarRefusesAMissingPhoto(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)

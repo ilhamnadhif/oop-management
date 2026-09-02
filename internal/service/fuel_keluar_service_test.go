@@ -47,14 +47,14 @@ func TestFuelKeluarNumbersDispensesWithinADay(t *testing.T) {
 	service := NewFuelKeluarService(store, location, func() time.Time { return now })
 	user := fuelTestUser("Logistik")
 
-	first, err := service.Create(context.Background(), user, fuelKeluarTestInput(t))
+	first, _, err := service.Create(context.Background(), user, fuelKeluarTestInput(t))
 	if err != nil {
 		t.Fatalf("create first: %v", err)
 	}
 	second := fuelKeluarTestInput(t)
 	second.HMAwalFlowMeter = "30"
 	second.HMAkhirFlowMeter = "45.5"
-	saved, err := service.Create(context.Background(), user, second)
+	saved, _, err := service.Create(context.Background(), user, second)
 	if err != nil {
 		t.Fatalf("create second: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestFuelKeluarLastFlowMeterReportsTheClosingReading(t *testing.T) {
 		t.Fatalf("an empty log reported %v", last)
 	}
 
-	if _, err := service.Create(context.Background(), fuelTestUser("Logistik"), fuelKeluarTestInput(t)); err != nil {
+	if _, _, err := service.Create(context.Background(), fuelTestUser("Logistik"), fuelKeluarTestInput(t)); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	last, err = service.LastFlowMeter(context.Background())
@@ -101,7 +101,7 @@ func TestFuelKeluarKeepsTheMachineHourMeterOptional(t *testing.T) {
 	input := fuelKeluarTestInput(t)
 	input.HMAlatBerat = "0"
 
-	saved, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
+	saved, _, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestFuelKeluarKeepsTheMachineHourMeterOptional(t *testing.T) {
 	input = fuelKeluarTestInput(t)
 	input.HMAwalFlowMeter = "30"
 	input.HMAkhirFlowMeter = "40"
-	saved, err = service.Create(context.Background(), fuelTestUser("Logistik"), input)
+	saved, _, err = service.Create(context.Background(), fuelTestUser("Logistik"), input)
 	if err != nil {
 		t.Fatalf("create without hour meter: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestFuelKeluarRefusesANegativeReading(t *testing.T) {
 	input := fuelKeluarTestInput(t)
 	input.HMAwalFlowMeter = "-5"
 
-	if _, err := service.Create(context.Background(), fuelTestUser("Logistik"), input); !errors.Is(err, ErrValidation) {
+	if _, _, err := service.Create(context.Background(), fuelTestUser("Logistik"), input); !errors.Is(err, ErrValidation) {
 		t.Fatalf("error = %v, want a validation error", err)
 	}
 }

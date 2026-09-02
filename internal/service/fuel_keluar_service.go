@@ -140,52 +140,60 @@ func (s *FuelKeluarService) LastFlowMeter(ctx context.Context) (float64, error) 
 	return highest, nil
 }
 
-func (s *FuelKeluarService) Create(ctx context.Context, user *model.User, input FuelKeluarInput) (*model.FuelKeluar, error) {
+// Create files one dispense. The second return is a caution about the machine's
+// hour meter: the row is saved either way, and the page shows it beside the
+// confirmation. A reading that is impossible rather than merely surprising is
+// refused instead, through the error.
+func (s *FuelKeluarService) Create(ctx context.Context, user *model.User, input FuelKeluarInput) (*model.FuelKeluar, string, error) {
 	if err := validateUser(user); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	tanggal, err := normalizeFuelDate(input.Tanggal)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// The name is taken from the register rather than the form: the page fills
 	// it in for the reader's benefit, and a posted name is not evidence.
 	unit, err := s.resolveUnit(ctx, input.IDUnit)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	awal, err := parseNonNegative("HM awal flow meter", input.HMAwalFlowMeter)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	akhir, err := parseNonNegative("HM akhir flow meter", input.HMAkhirFlowMeter)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if akhir <= awal {
-		return nil, fmt.Errorf("%w: HM akhir flow meter harus lebih besar dari HM awal", ErrValidation)
+		return nil, "", fmt.Errorf("%w: HM akhir flow meter harus lebih besar dari HM awal", ErrValidation)
 	}
 	hmAlatBerat, err := optionalHourMeter(input.HMAlatBerat)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	warning, err := s.checkHourMeter(ctx, unit, tanggal, hmAlatBerat)
+	if err != nil {
+		return nil, "", err
 	}
 	operators, err := s.Operators(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	operator, err := adoptOption("Operator", input.Operator, operators)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// The photo of the closing reading is the only evidence the numbers typed
 	// above match the pump.
 	foto := strings.TrimSpace(input.Foto)
 	if foto == "" {
-		return nil, fmt.Errorf("%w: foto akhir flow meter wajib dilampirkan", ErrValidation)
+		return nil, "", fmt.Errorf("%w: foto akhir flow meter wajib dilampirkan", ErrValidation)
 	}
 	if err := photo.ValidateDataURL(foto); err != nil {
-		return nil, fmt.Errorf("%w: foto akhir flow meter tidak valid", ErrInvalidPhoto)
+		return nil, "", fmt.Errorf("%w: foto akhir flow meter tidak valid", ErrInvalidPhoto)
 	}
 
 	s.mu.Lock()
@@ -194,7 +202,7 @@ func (s *FuelKeluarService) Create(ctx context.Context, user *model.User, input 
 	prefix := fuelOutIDPrefix(now)
 	sequence, err := s.store.MaxFuelKeluarSequence(ctx, prefix)
 	if err != nil {
-		return nil, fmt.Errorf("read fuel keluar sequence: %w", err)
+		return nil, "", fmt.Errorf("read fuel keluar sequence: %w", err)
 	}
 	fuel := &model.FuelKeluar{
 		FuelOutID:          fmt.Sprintf("%s%04d", prefix, sequence+1),
@@ -213,10 +221,10 @@ func (s *FuelKeluarService) Create(ctx context.Context, user *model.User, input 
 		UpdatedAt:          now,
 	}
 	if err := s.store.CreateFuelKeluar(ctx, fuel); err != nil {
-		return nil, fmt.Errorf("create fuel keluar: %w", err)
+		return nil, "", fmt.Errorf("create fuel keluar: %w", err)
 	}
 	s.invalidateOperators()
-	return fuel, nil
+	return fuel, warning, nil
 }
 
 // List returns the dispenses newest first, which is the order the page wants:

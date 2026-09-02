@@ -1,6 +1,8 @@
 {{define "fuel_keluar"}}
 {{template "appShellOpen" .}}
   {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{/* The row is saved; this is a second look worth taking, not a refusal. */}}
+  {{if .Warning}}<div class="alert warn" role="status">{{.Warning}}</div>{{end}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
   <section class="panel">

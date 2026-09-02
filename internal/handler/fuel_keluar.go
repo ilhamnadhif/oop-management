@@ -44,6 +44,19 @@ type FuelKeluarPageData struct {
 	Rows            []FuelKeluarView
 	Error           string
 	Success         string
+	// Warning rides beside Success: the row was saved, but its hour meter
+	// reading is worth a second look before somebody reads a report off it.
+	Warning string
+}
+
+// fuelKeluarNotice is what the page has to say about the last submission. The
+// three are grouped because they travel together through every render, and
+// three bare strings in a row are three chances to pass them in the wrong
+// order.
+type fuelKeluarNotice struct {
+	errMessage string
+	success    string
+	warning    string
 }
 
 func (s *Server) handleFuelKeluar(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +76,7 @@ func (s *Server) handleFuelKeluarPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderFuelKeluar(w, r, user, sessionValue, FuelKeluarFormData{}, "", "", http.StatusOK)
+	s.renderFuelKeluar(w, r, user, sessionValue, FuelKeluarFormData{}, fuelKeluarNotice{}, http.StatusOK)
 }
 
 func (s *Server) handleFuelKeluarCreate(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +99,8 @@ func (s *Server) handleFuelKeluarCreate(w http.ResponseWriter, r *http.Request) 
 	maxBody := s.maxUploadBytes + 64*1024
 	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 	if err := r.ParseMultipartForm(maxBody); err != nil {
-		s.renderFuelKeluar(w, r, user, sessionValue, FuelKeluarFormData{}, "Form tidak valid atau foto terlalu besar", "", http.StatusUnprocessableEntity)
+		s.renderFuelKeluar(w, r, user, sessionValue, FuelKeluarFormData{},
+			fuelKeluarNotice{errMessage: "Form tidak valid atau foto terlalu besar"}, http.StatusUnprocessableEntity)
 		return
 	}
 	defer func() {
@@ -109,11 +123,11 @@ func (s *Server) handleFuelKeluarCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	fotoValue, err := s.readOptionalPhoto(r, "foto_flow_meter")
 	if err != nil {
-		s.renderFuelKeluar(w, r, user, sessionValue, form, err.Error(), "", http.StatusUnprocessableEntity)
+		s.renderFuelKeluar(w, r, user, sessionValue, form, fuelKeluarNotice{errMessage: err.Error()}, http.StatusUnprocessableEntity)
 		return
 	}
 
-	fuel, err := s.fuelKeluar.Create(r.Context(), user, service.FuelKeluarInput{
+	fuel, warning, err := s.fuelKeluar.Create(r.Context(), user, service.FuelKeluarInput{
 		Tanggal:          form.Tanggal,
 		IDUnit:           form.IDUnit,
 		HMAwalFlowMeter:  form.HMAwalFlowMeter,
@@ -135,23 +149,26 @@ func (s *Server) handleFuelKeluarCreate(w http.ResponseWriter, r *http.Request) 
 			message = "Terjadi kesalahan saat menyimpan fuel keluar"
 			status = http.StatusInternalServerError
 		}
-		s.renderFuelKeluar(w, r, user, sessionValue, form, message, "", status)
+		s.renderFuelKeluar(w, r, user, sessionValue, form, fuelKeluarNotice{errMessage: message}, status)
 		return
 	}
-	s.renderFuelKeluar(w, r, user, sessionValue, FuelKeluarFormData{}, "",
-		fmt.Sprintf("Fuel keluar %s tersimpan: %s liter untuk %s.",
-			fuel.FuelOutID, formatLiter(fuel.Liter), fuel.NamaUnit), http.StatusOK)
+	s.renderFuelKeluar(w, r, user, sessionValue, FuelKeluarFormData{}, fuelKeluarNotice{
+		success: fmt.Sprintf("Fuel keluar %s tersimpan: %s liter untuk %s.",
+			fuel.FuelOutID, formatLiter(fuel.Liter), fuel.NamaUnit),
+		warning: warning,
+	}, http.StatusOK)
 }
 
-func (s *Server) renderFuelKeluar(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form FuelKeluarFormData, errMessage, success string, status int) {
+func (s *Server) renderFuelKeluar(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form FuelKeluarFormData, notice fuelKeluarNotice, status int) {
 	if form.Tanggal == "" {
 		form.Tanggal = s.fuelKeluar.Today()
 	}
 	data := FuelKeluarPageData{
 		ShellPageData: s.shellData(user, sessionValue, "a2b-fuel-keluar"),
 		Form:          form,
-		Error:         errMessage,
-		Success:       success,
+		Error:         notice.errMessage,
+		Success:       notice.success,
+		Warning:       notice.warning,
 	}
 	units, err := s.fuelKeluar.UnitOptions(r.Context())
 	if err != nil {
