@@ -131,14 +131,18 @@
   {{/* The KPI cards give the two figures; these give the names behind them, for
        the same day the cards report on. */}}
   <section class="hr-bottom-grid">
+    {{/* Two lists in one card, told apart by the badge: nobody clocked in at
+         all (red), and clocked in but the shift is still open (amber). On a day
+         still running the second list is simply everybody still at work, which
+         is what makes it a reminder rather than a fault. */}}
     <article class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">{{template "icon" "info"}}BELUM ABSEN</p>
-          <h2>{{.TidakHadirHariAkhir}} orang per {{$.To}}</h2>
+          <p class="eyebrow">{{template "icon" "info"}}ABSENSI BELUM LENGKAP</p>
+          <h2>{{len .BelumAbsenNama}} belum absen · {{len .BelumClockOutNama}} belum clock out per {{$.To}}</h2>
         </div>
       </div>
-      {{if .BelumAbsenNama}}
+      {{if or .BelumAbsenNama .BelumClockOutNama}}
       <ul class="compact-list">
         {{range .BelumAbsenNama}}
         <li>
@@ -147,12 +151,22 @@
             <strong>{{.NamaLengkap}}</strong>
             <span>{{if .NRP}}{{.NRP}} · {{end}}{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</span>
           </span>
-          <span class="compact-list-meta"><span class="status-chip pending">Belum absen</span></span>
+          <span class="compact-list-meta"><span class="status-chip rejected">Belum absen</span></span>
+        </li>
+        {{end}}
+        {{range .BelumClockOutNama}}
+        <li>
+          {{template "personAvatar" .}}
+          <span class="compact-list-main">
+            <strong>{{.NamaLengkap}}</strong>
+            <span>{{if .NRP}}{{.NRP}} · {{end}}{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</span>
+          </span>
+          <span class="compact-list-meta"><span class="status-chip pending">Belum clock out</span></span>
         </li>
         {{end}}
       </ul>
       {{else}}
-      <p class="panel-empty">Seluruh karyawan aktif sudah tercatat pada tanggal ini.</p>
+      <p class="panel-empty">Absensi seluruh karyawan aktif sudah lengkap pada tanggal ini.</p>
       {{end}}
     </article>
 

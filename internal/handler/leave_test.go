@@ -2,12 +2,14 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"opp-management/internal/model"
 	"opp-management/internal/photo"
@@ -393,6 +395,61 @@ func TestRejectRequiresNoteAndASecondDecisionConflicts(t *testing.T) {
 	}
 }
 
+// chipsOn lists the status chips a page rendered, for a failure message that
+// says what was there instead.
+func chipsOn(page string) []string {
+	var chips []string
+	for _, part := range strings.Split(page, `class="status-chip `)[1:] {
+		if end := strings.Index(part, "</span>"); end >= 0 {
+			chips = append(chips, part[:end])
+		}
+	}
+	return chips
+}
+
+// The card tells the two apart by the badge alone, so the colours have to be
+// the ones the rest of the app uses for "wrong" and for "wait": red for nobody
+// clocked in, amber for a shift still open.
+func TestHROverviewBadgesAbsenceAndOpenShiftsApart(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	hr := loggedInClientAs(t, testServer, "HR")
+	// Two accounts, one for each half of the card: HR clocks in and leaves the
+	// shift open, and the storekeeper never clocks in at all.
+	loggedInClientAs(t, testServer, "Logistik")
+	users := store.UserList()
+	var hrUser model.User
+	for _, user := range users {
+		if user.Jabatan == "HR" {
+			hrUser = user
+		}
+	}
+	if hrUser.UserID == "" {
+		t.Fatal("the HR account was not registered")
+	}
+	location := time.FixedZone("WIB", 7*60*60)
+	if err := store.CreateAttendance(context.Background(), &model.Attendance{
+		AbsensiID: "ABS-OPEN", UserID: hrUser.UserID, NRP: hrUser.NRP,
+		NamaLengkap: hrUser.NamaLengkap, Jabatan: hrUser.Jabatan,
+		TanggalAbsensi: "2026-08-07", ClockInAt: time.Date(2026, 8, 7, 7, 0, 0, 0, location),
+		StatusAbsensi: model.AttendanceBelumClockOut,
+	}); err != nil {
+		t.Fatalf("seed open shift: %v", err)
+	}
+
+	page := fetchAuthedPage(t, hr, testServer.URL+"/hr/overview?from=2026-08-07&to=2026-08-07")
+	for _, want := range []string{
+		`<span class="status-chip rejected">Belum absen</span>`,
+		`<span class="status-chip pending">Belum clock out</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the card is missing %q; chips on page: %v", want, chipsOn(page))
+		}
+	}
+	if !strings.Contains(page, "belum clock out per 2026-08-07") {
+		t.Fatalf("the heading does not count the open shifts:\n%s", firstLines(page))
+	}
+}
+
 func TestHROverviewRendersCoreDashboardAndLatestRequest(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	owner := loggedInClientAs(t, testServer, "Produksi")
@@ -407,7 +464,7 @@ func TestHROverviewRendersCoreDashboardAndLatestRequest(t *testing.T) {
 		"TOTAL KARYAWAN", "HADIR", "TIDAK HADIR", "CUTI &amp; IZIN",
 		"RINGKASAN ABSENSI", "DISTRIBUSI KARYAWAN", "KARYAWAN BARU", "PENGAJUAN TERBARU",
 		// A count says how many were missing; the lists say who.
-		"BELUM ABSEN", "Belum absen",
+		"ABSENSI BELUM LENGKAP", "Belum absen",
 		leaveID, "2026-08-01", "2026-08-07",
 	} {
 		if !strings.Contains(page, fragment) {

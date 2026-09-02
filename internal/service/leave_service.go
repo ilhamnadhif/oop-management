@@ -133,6 +133,11 @@ type HROverview struct {
 	// The people behind the two figures above, on the last day of the range.
 	BelumAbsenNama    []HRPersonOnDay
 	CutiHariAkhirNama []HRPersonOnDay
+	// BelumClockOutNama are the people who clocked in on that day and left the
+	// shift open. They are present, and counted as present: this is a list to
+	// chase up, not a correction to the figures. On a day still running it is
+	// simply everybody still at work.
+	BelumClockOutNama []HRPersonOnDay
 	Series            []HRDatePoint
 	JabatanShares     []HRJabatanShare
 	KaryawanBaru      []model.User
@@ -560,6 +565,9 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 	}
 
 	present := make(map[string]map[string]bool)
+	// One person may have more than one row in a day. A single row left open is
+	// enough to be chased up, so this is never cleared once set.
+	openShift := make(map[string]map[string]bool)
 	for _, row := range attendance {
 		if row.TanggalAbsensi < from || row.TanggalAbsensi > to || !userActiveOn(usersByID, row.UserID, row.TanggalAbsensi) {
 			continue
@@ -568,6 +576,12 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 			present[row.TanggalAbsensi] = make(map[string]bool)
 		}
 		present[row.TanggalAbsensi][row.UserID] = true
+		if row.ClockOutAt == nil {
+			if openShift[row.TanggalAbsensi] == nil {
+				openShift[row.TanggalAbsensi] = make(map[string]bool)
+			}
+			openShift[row.TanggalAbsensi][row.UserID] = true
+		}
 	}
 
 	// The leave type is kept, not just the fact of it: a count answers how many
@@ -616,6 +630,10 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 			person := hrPersonOnDay(usersByID[userID], userID, jenis)
 			switch {
 			case present[day][userID]:
+				// Present either way; the open shift is a separate list.
+				if openShift[day][userID] {
+					overview.BelumClockOutNama = append(overview.BelumClockOutNama, person)
+				}
 			case onLeave:
 				overview.CutiHariAkhirNama = append(overview.CutiHariAkhirNama, person)
 			default:
@@ -634,6 +652,7 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 	// reshuffle on every reload and read as if the people had changed.
 	sortHRPeople(overview.BelumAbsenNama)
 	sortHRPeople(overview.CutiHariAkhirNama)
+	sortHRPeople(overview.BelumClockOutNama)
 
 	activeAtEnd := make([]model.User, 0)
 	byJabatan := make(map[string]int)
