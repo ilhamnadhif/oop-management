@@ -37,6 +37,12 @@ type MonthlyAbsensiRow struct {
 	Cuti       int
 	TidakAbsen int
 	Persentase float64
+	// BelumClockOut is how many days in the month were clocked into and never
+	// closed. It sits beside the attendance figures rather than changing them:
+	// the person was present, and this explains a low hours total rather than
+	// correcting it. Counted per day, since a day is chased up once however
+	// many rows it holds.
+	BelumClockOut int
 }
 
 // The marker written into a day that has attendance, and the shorthand for the
@@ -88,6 +94,9 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 	}
 
 	present := make(map[string]map[string]bool)
+	// A day holding one unclosed row is an open day, and stays one however many
+	// closed rows sit beside it.
+	openDay := make(map[string]map[string]bool)
 	for _, row := range attendance {
 		if row.TanggalAbsensi < from || row.TanggalAbsensi > to {
 			continue
@@ -96,6 +105,12 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 			present[row.UserID] = make(map[string]bool)
 		}
 		present[row.UserID][row.TanggalAbsensi] = true
+		if row.ClockOutAt == nil {
+			if openDay[row.UserID] == nil {
+				openDay[row.UserID] = make(map[string]bool)
+			}
+			openDay[row.UserID][row.TanggalAbsensi] = true
+		}
 	}
 
 	// The leave type is kept, not just the fact of it, so the day column can
@@ -119,6 +134,15 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 	report := &MonthlyAbsensi{Month: month, Jabatan: jabatan, Days: end.Day()}
 	days := dateStringsInRange(from, to)
 
+	// A month still running only owes the days that have happened. The matrix
+	// still spans the whole month - the export prints a calendar - but a day
+	// nobody has lived through yet is not an absence, and counting it as one
+	// read a perfect record as a handful of percent early in the month.
+	owedTo := to
+	if today := s.now().In(s.location).Format("2006-01-02"); today < owedTo {
+		owedTo = today
+	}
+
 	for _, user := range users {
 		if user.StatusPengguna != model.StatusAktif || strings.TrimSpace(user.UserID) == "" {
 			continue
@@ -140,13 +164,24 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 			if !isActiveUserOn(user, day) {
 				continue
 			}
+			// Leave approved in advance is still worth showing on the calendar;
+			// it is only the tallies that wait for the day to arrive.
+			counted := day <= owedTo
 			switch {
 			case present[user.UserID][day]:
 				row.Hari[i] = absensiHadirMark
-				row.Hadir++
+				if counted {
+					row.Hadir++
+					if openDay[user.UserID][day] {
+						row.BelumClockOut++
+					}
+				}
 			case approvedLeave[user.UserID][day] != "":
 				jenis := approvedLeave[user.UserID][day]
 				row.Hari[i] = leaveShortMark(jenis)
+				if !counted {
+					break
+				}
 				switch jenis {
 				case model.LeaveJenisCutiSakit:
 					row.Sakit++
@@ -156,7 +191,9 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 					row.Cuti++
 				}
 			default:
-				row.TidakAbsen++
+				if counted {
+					row.TidakAbsen++
+				}
 			}
 		}
 		for i, mark := range row.Hari {

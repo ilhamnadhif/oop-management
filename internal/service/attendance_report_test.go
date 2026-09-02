@@ -45,15 +45,27 @@ func seedApprovedLeave(t *testing.T, store *repository.TestRepository, leaveID s
 }
 
 func newMonthlyAttendanceService(store repository.Store) *AttendanceService {
+	return newMonthlyAttendanceServiceOn(store, time.Date(2026, 8, 10, 12, 0, 0, 0, time.FixedZone("WIB", 7*60*60)))
+}
+
+// newMonthlyAttendanceServiceOn fixes the day the report is read on. It matters
+// because a month still running only owes the days that have passed, so a
+// fixture whose attendance falls after "today" is recording days nobody has
+// lived through.
+func newMonthlyAttendanceServiceOn(store repository.Store, now time.Time) *AttendanceService {
 	location := time.FixedZone("WIB", 7*60*60)
-	return NewAttendanceService(store, location, func() time.Time {
-		return time.Date(2026, 8, 10, 12, 0, 0, 0, location)
-	})
+	return NewAttendanceService(store, location, func() time.Time { return now })
+}
+
+// endOfAugust reads a finished month, which is what the tests about the shape
+// of the whole month want.
+func endOfAugust() time.Time {
+	return time.Date(2026, 8, 31, 23, 0, 0, 0, time.FixedZone("WIB", 7*60*60))
 }
 
 func TestBuildMonthlyAbsensiCountsDaysWeeksAndLeaves(t *testing.T) {
 	store := repository.NewTestRepository()
-	service := newMonthlyAttendanceService(store)
+	service := newMonthlyAttendanceServiceOn(store, endOfAugust())
 
 	surveyor := leaveUser("usr_survey", "2001", "Budi Hartono", "Surveyor", "2026-01-02")
 	produksi := leaveUser("usr_prod", "2002", "Citra Ayu", "Produksi", "2026-01-02")
@@ -146,7 +158,7 @@ func TestBuildMonthlyAbsensiCountsLeaveAcrossTheWeekend(t *testing.T) {
 // absen count nor the percentage.
 func TestBuildMonthlyAbsensiCountsOnlyActiveDays(t *testing.T) {
 	store := repository.NewTestRepository()
-	service := newMonthlyAttendanceService(store)
+	service := newMonthlyAttendanceServiceOn(store, endOfAugust())
 	user := leaveUser("usr_late", "2004", "Eka Putri", "Produksi", "2026-08-20")
 	createFixtureUser(t, store, user)
 

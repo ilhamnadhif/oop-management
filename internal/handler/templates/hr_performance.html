@@ -1,0 +1,94 @@
+{{/* One month of attendance read as totals, one row per employee. The
+     day-by-day matrix belongs to the export; this page answers "how did the
+     month go" rather than "what happened on the 12th". */}}
+{{define "hr_performance"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "calculator"}}RENTANG DATA</p>
+        <h2>Pilih bulan dan jabatan</h2>
+      </div>
+    </div>
+    <form class="filter-form" method="get" action="/hr/performance">
+      <div>
+        <label for="month">{{template "icon" "calendar"}}Bulan</label>
+        <input id="month" name="month" type="month" value="{{.Month}}" required>
+      </div>
+      <div>
+        <label for="jabatan">{{template "icon" "user"}}Jabatan</label>
+        <select id="jabatan" name="jabatan">
+          <option value=""{{if not .Jabatan}} selected{{end}}>Semua jabatan</option>
+          {{range .JabatanOptions}}
+          <option value="{{.}}"{{if eq $.Jabatan .}} selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/hr/performance">Reset</a>
+      <p class="hint filter-note">Default: bulan berjalan dan seluruh jabatan.</p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "chart"}}PERFORMANCE KARYAWAN</p>
+        <h2>{{len .Rows}} karyawan aktif{{if .Jabatan}} · {{.Jabatan}}{{end}}</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">No</th>
+            <th scope="col">Nama</th>
+            <th scope="col">Jabatan</th>
+            <th scope="col" class="numeric">Hadir</th>
+            <th scope="col" class="numeric">Sakit</th>
+            <th scope="col" class="numeric">Izin</th>
+            <th scope="col" class="numeric">Cuti</th>
+            <th scope="col" class="numeric">Tidak Absen</th>
+            <th scope="col" class="numeric">Belum Clock Out</th>
+            <th scope="col" class="numeric">Kehadiran</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <td class="numeric">{{.No}}</td>
+            <th scope="row" class="wrap">{{.Nama}}</th>
+            <td>{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</td>
+            <td class="numeric">{{.Hadir}}</td>
+            <td class="numeric">{{.Sakit}}</td>
+            <td class="numeric">{{.Izin}}</td>
+            <td class="numeric">{{.Cuti}}</td>
+            <td class="numeric">{{.TidakAbsen}}</td>
+            <td class="numeric">{{.BelumClockOut}}</td>
+            {{/* Read at a glance down the column: green is fine, amber wants
+                 a word, red wants chasing. The thresholds are the same ones the
+                 site judges attendance by. */}}
+            <td class="numeric">
+              <span class="status-chip {{if ge .Persentase 80.0}}approved{{else if ge .Persentase 60.0}}pending{{else}}rejected{{end}}">{{.Persentase}}%</span>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">
+      <strong>Belum Clock Out</strong> menghitung hari yang sudah diabsen masuk
+      tapi tidak ditutup; harinya tetap dihitung hadir. <strong>Kehadiran</strong>
+      dihitung dari hari yang sudah lewat saja, jadi bulan berjalan tidak terbaca
+      rendah karena hari yang belum terjadi.
+    </p>
+    {{else}}
+    <p class="panel-empty">Tidak ada karyawan aktif pada bulan ini untuk jabatan yang dipilih.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

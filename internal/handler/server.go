@@ -420,6 +420,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/hr/karyawan", s.handleKaryawan)
 	mux.HandleFunc("/hr/user-management", s.handleUserManagement)
 	mux.HandleFunc("/hr/approval-leave", s.handleLeaveApproval)
+	mux.HandleFunc("/hr/performance", s.handleHRPerformance)
 	mux.HandleFunc("/hr/export", s.handleAbsensiExportPage)
 	mux.HandleFunc("/hr/export/download", s.handleAbsensiExportDownload)
 	mux.HandleFunc("/produksi", s.handleProduksi)
