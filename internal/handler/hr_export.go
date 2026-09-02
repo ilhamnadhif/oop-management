@@ -44,7 +44,7 @@ func (s *Server) handleAbsensiExportPage(w http.ResponseWriter, r *http.Request)
 		ShellPageData:  s.shellData(user, sessionValue, "hr-export"),
 		Month:          month,
 		Jabatan:        jabatan,
-		JabatanOptions: service.JabatanOptions,
+		JabatanOptions: s.jabatanOptions(r.Context()),
 		Aktif:          s.exportAktif(model.ExportAbsensi),
 		Note: "Matriks absensi bulanan: satu baris per karyawan. Kolom tanggal 1 sampai akhir " +
 			"bulan berisi ✓ (hadir), S (sakit), I (izin), C (cuti), lalu total per minggu " +

@@ -38,7 +38,7 @@ func (s *Server) handleHRPerformance(w http.ResponseWriter, r *http.Request) {
 		ShellPageData:  s.shellData(user, sessionValue, "hr-performance"),
 		Month:          month,
 		Jabatan:        jabatan,
-		JabatanOptions: service.JabatanOptions,
+		JabatanOptions: s.jabatanOptions(r.Context()),
 	}
 	report, err := s.attendance.BuildMonthlyAbsensi(r.Context(), month, jabatan)
 	if err != nil {

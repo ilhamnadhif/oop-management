@@ -164,9 +164,25 @@ func defaultMenuRules() menuRules {
 // the screen that edits these very rights could lock itself out, and
 // project-settings stays Management-only, for the same reason it is locked in
 // its own editor.
-func effectiveMenuRules(stored []model.JabatanAccess) menuRules {
+//
+// The rules are one project's. A row without a project is what the whole app
+// follows and is applied first, so a project's own row overrides it; a project
+// that has never saved its own matrix keeps following the app-wide one.
+func effectiveMenuRules(stored []model.JabatanAccess, project string) menuRules {
 	rules := defaultMenuRules()
+	project = strings.TrimSpace(project)
+	ordered := make([]model.JabatanAccess, 0, len(stored))
 	for _, access := range stored {
+		if strings.TrimSpace(access.Project) == "" {
+			ordered = append(ordered, access)
+		}
+	}
+	for _, access := range stored {
+		if project != "" && strings.EqualFold(strings.TrimSpace(access.Project), project) {
+			ordered = append(ordered, access)
+		}
+	}
+	for _, access := range ordered {
 		jabatan := strings.TrimSpace(access.Jabatan)
 		if strings.EqualFold(jabatan, JabatanManagement) {
 			continue

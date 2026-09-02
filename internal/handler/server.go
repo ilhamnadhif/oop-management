@@ -108,7 +108,8 @@ func (s *Server) forProject(ctx context.Context, project model.Project, reachabl
 	bound := *s
 	bound.project = project
 	bound.reachable = reachable
-	bound.rules = s.accessRules(ctx)
+	// Read off the bound copy: the rules belong to the project being opened.
+	bound.rules = bound.accessRules(ctx)
 	bound.attendance = services.Attendance
 	bound.unitDT = services.UnitDT
 	bound.produksi = services.Produksi
@@ -806,13 +807,17 @@ func (s *Server) shellData(user *model.User, sessionValue session.Session, navKe
 // read from the master spreadsheet, which also holds the accounts: a position's
 // rights are about who they are, not which site they work in. The result is
 // cached by the auth service and dropped when HR saves a change.
+// accessRules is the menu rights in force for the project this server is bound
+// to. An unbound copy has no project name, which reads as the app-wide rules -
+// the same thing every project followed before the rules became a project's
+// own.
 func (s *Server) accessRules(ctx context.Context) menuRules {
 	stored, err := s.auth.JabatanAccess(ctx)
 	if err != nil {
 		log.Printf("read jabatan access: %v", err)
 		return defaultMenuRules()
 	}
-	return effectiveMenuRules(stored)
+	return effectiveMenuRules(stored, s.project.Nama)
 }
 
 // firstLetter returns the avatar letter. It walks runes rather than bytes so a

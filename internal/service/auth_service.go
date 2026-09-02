@@ -67,9 +67,10 @@ type ActivityMeta struct {
 	UserAgent string
 }
 
-// JabatanOptions is the closed set of positions a new account may hold. The
-// register form renders it and normalizeRegisterInput enforces it, so a direct
-// POST cannot slip an unlisted position past the dropdown.
+// JabatanOptions is the set of positions every site has. A project may add
+// positions of its own on top of these; JabatanOptionsFor answers with both,
+// and it is that answer the forms render and normalizeRegisterInput enforces,
+// so a direct POST cannot slip an unlisted position past the dropdown.
 var JabatanOptions = []string{
 	"Flagman",
 	"Security",
@@ -80,17 +81,6 @@ var JabatanOptions = []string{
 	"SPV",
 	"Management",
 	"Produksi",
-}
-
-// canonicalJabatan matches case-insensitively and returns the listed spelling,
-// so "spv" and "SPV" never become two different values in the sheet.
-func canonicalJabatan(value string) (string, bool) {
-	for _, option := range JabatanOptions {
-		if strings.EqualFold(option, value) {
-			return option, true
-		}
-	}
-	return "", false
 }
 
 func isAllDigits(value string) bool {
@@ -123,7 +113,7 @@ func (s *AuthService) WithHashCost(cost int) *AuthService {
 }
 
 func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*model.User, error) {
-	input, err := normalizeRegisterInput(input)
+	input, err := s.normalizeRegisterInput(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +165,7 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*model
 // every project, which is the one escalation this form must not allow.
 func (s *AuthService) AddEmployee(ctx context.Context, input RegisterInput, allowManagement bool) (*model.User, error) {
 	if !allowManagement {
-		if canonical, ok := canonicalJabatan(input.Jabatan); ok && canonical == model.JabatanManagement {
+		if canonical, ok := builtInJabatan(input.Jabatan); ok && canonical == model.JabatanManagement {
 			return nil, fmt.Errorf("%w: hanya Management yang bisa menambah akun Management", ErrValidation)
 		}
 	}
@@ -249,17 +239,20 @@ func (s *AuthService) JabatanAccess(ctx context.Context) ([]model.JabatanAccess,
 
 // SaveJabatanAccess writes one position's menu rights and drops the cache so
 // the new rule is in force on the very next request.
-func (s *AuthService) SaveJabatanAccess(ctx context.Context, jabatan string, menus []string) error {
-	if canonical, ok := canonicalJabatan(jabatan); ok {
-		jabatan = canonical
-	} else {
+func (s *AuthService) SaveJabatanAccess(ctx context.Context, project, jabatan string, menus []string) error {
+	canonical, ok, err := s.canonicalJabatanIn(ctx, project, jabatan)
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return fmt.Errorf("%w: jabatan tidak terdaftar", ErrValidation)
 	}
+	jabatan = canonical
 	if strings.EqualFold(jabatan, model.JabatanManagement) {
 		return fmt.Errorf("%w: akses Management tidak bisa diubah", ErrValidation)
 	}
 	menus = cleanMenus(menus)
-	if err := s.store.SaveJabatanAccess(ctx, jabatan, menus); err != nil {
+	if err := s.store.SaveJabatanAccess(ctx, strings.TrimSpace(project), jabatan, menus); err != nil {
 		return fmt.Errorf("save jabatan access: %w", err)
 	}
 	s.invalidateJabatanAccess()
@@ -270,16 +263,22 @@ func (s *AuthService) SaveJabatanAccess(ctx context.Context, jabatan string, men
 // guard AddEmployee applies: only somebody who already reaches everything may
 // create or demote a Management account.
 func (s *AuthService) ChangeJabatan(ctx context.Context, userID, newJabatan string, allowManagement bool) (*model.User, error) {
-	newJabatan, ok := canonicalJabatan(newJabatan)
-	if !ok {
-		return nil, fmt.Errorf("%w: jabatan tidak terdaftar", ErrValidation)
-	}
 	target, rowNumber, err := s.store.FindUserRow(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("read user %s: %w", userID, err)
 	}
+	// The position has to be one the person's own project has: moving somebody
+	// onto another site's position would be that position crossing projects.
+	canonical, ok, err := s.canonicalJabatanIn(ctx, target.Project, newJabatan)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("%w: jabatan tidak terdaftar", ErrValidation)
+	}
+	newJabatan = canonical
 	if !allowManagement {
-		current, _ := canonicalJabatan(target.Jabatan)
+		current, _ := builtInJabatan(target.Jabatan)
 		if current == model.JabatanManagement || newJabatan == model.JabatanManagement {
 			return nil, fmt.Errorf("%w: hanya Management yang bisa mengubah jabatan Management", ErrValidation)
 		}
@@ -300,6 +299,7 @@ func cloneJabatanAccess(stored []model.JabatanAccess) []model.JabatanAccess {
 	result := make([]model.JabatanAccess, 0, len(stored))
 	for _, access := range stored {
 		result = append(result, model.JabatanAccess{
+			Project:   access.Project,
 			Jabatan:   access.Jabatan,
 			MenuAktif: append([]string(nil), access.MenuAktif...),
 		})
@@ -417,7 +417,10 @@ func failedActivity(identifier string, meta ActivityMeta, at time.Time, message 
 	return activity
 }
 
-func normalizeRegisterInput(input RegisterInput) (RegisterInput, error) {
+// normalizeRegisterInput is a method because the position has to be checked
+// against the project the account is being added to, and that lives in the
+// store rather than in a list in code.
+func (s *AuthService) normalizeRegisterInput(ctx context.Context, input RegisterInput) (RegisterInput, error) {
 	input.TanggalGabung = strings.TrimSpace(input.TanggalGabung)
 	input.NamaLengkap = strings.TrimSpace(input.NamaLengkap)
 	input.NRP = strings.TrimSpace(input.NRP)
@@ -437,7 +440,10 @@ func normalizeRegisterInput(input RegisterInput) (RegisterInput, error) {
 	if !isAllDigits(input.NRP) {
 		return RegisterInput{}, fmt.Errorf("%w: NRP wajib diisi dan hanya boleh angka", ErrValidation)
 	}
-	jabatan, ok := canonicalJabatan(input.Jabatan)
+	jabatan, ok, err := s.canonicalJabatanIn(ctx, input.Project, input.Jabatan)
+	if err != nil {
+		return RegisterInput{}, err
+	}
 	if !ok {
 		return RegisterInput{}, fmt.Errorf("%w: jabatan tidak terdaftar", ErrValidation)
 	}

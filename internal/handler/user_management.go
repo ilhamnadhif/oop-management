@@ -28,8 +28,17 @@ type UserManagementPageData struct {
 	// AccessRows is one row per position with a tick against every menu it may
 	// open.
 	AccessRows []JabatanAccessRow
-	Error      string
-	Success    string
+	// ProjectNama names the project every edit on this page belongs to. Nothing
+	// here reaches another site, and the page says so rather than leaving it to
+	// be assumed.
+	ProjectNama string
+	// JabatanBaru is what was typed into the add-position form, handed back so a
+	// refusal does not also mean retyping it.
+	JabatanBaru string
+	// NamaJabatanMax is the longest name the server will take.
+	NamaJabatanMax int
+	Error          string
+	Success        string
 }
 
 // UserManagementMember is one account on the move-position table. Options is
@@ -111,6 +120,22 @@ func (s *Server) handleUserManagementSave(w http.ResponseWriter, r *http.Request
 			return
 		}
 		s.renderUserManagement(w, r, user, sessionValue, "", "Jabatan tersimpan.", http.StatusOK)
+	case "tambah-jabatan":
+		nama := strings.TrimSpace(r.FormValue("nama_jabatan"))
+		if err := s.auth.CreateJabatan(r.Context(), s.project.Nama, nama, user.NamaLengkap); err != nil {
+			message := "Jabatan tidak bisa ditambahkan"
+			status := http.StatusUnprocessableEntity
+			if errors.Is(err, service.ErrValidation) {
+				message = strings.TrimPrefix(err.Error(), "validation error: ")
+			} else {
+				log.Printf("create jabatan: %v", err)
+				status = http.StatusInternalServerError
+			}
+			s.renderUserManagementWith(w, r, user, sessionValue, message, "", nama, status)
+			return
+		}
+		s.renderUserManagement(w, r, user, sessionValue, "",
+			"Jabatan "+nama+" ditambahkan untuk project "+s.project.Nama+".", http.StatusOK)
 	case "simpan-akses":
 		if err := s.saveAccessMatrix(r, user); err != nil {
 			message := "Akses menu tidak bisa disimpan"
@@ -135,7 +160,7 @@ func (s *Server) handleUserManagementSave(w http.ResponseWriter, r *http.Request
 // replacement of the stored rules rather than a patch.
 func (s *Server) saveAccessMatrix(r *http.Request, actor *model.User) error {
 	valid := configurableMenuKeys()
-	for _, jabatan := range service.JabatanOptions {
+	for _, jabatan := range s.jabatanOptions(r.Context()) {
 		if strings.EqualFold(jabatan, model.JabatanManagement) {
 			continue
 		}
@@ -145,23 +170,30 @@ func (s *Server) saveAccessMatrix(r *http.Request, actor *model.User) error {
 		if strings.EqualFold(jabatan, "HR") {
 			menus = addPosition(menus, "hr")
 		}
-		if err := s.auth.SaveJabatanAccess(r.Context(), jabatan, menus); err != nil {
+		// Written against this project alone: the same position may open
+		// different menus at another site.
+		if err := s.auth.SaveJabatanAccess(r.Context(), s.project.Nama, jabatan, menus); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// configurableMenuKeys is the closed set of menus the matrix may grant. The
-// settings screen and the HR module itself are locked: one configures the app,
-// the other is where this page lives.
+// configurableMenuKeys is the closed set of menus the matrix may grant. Only
+// the settings screen is left out: it configures the app itself and stays with
+// Management, so putting it on the table would only offer something the server
+// refuses.
+//
+// The HR module is on the table like any other. A site may want somebody
+// besides HR in there; what it may not do is take it away from HR, and that is
+// held one row at a time rather than by removing the column.
 func configurableMenuKeys() []string {
 	keys := make([]string, 0, len(navItems))
 	for _, item := range navItems {
 		if _, restricted := menuAccess[item.Key]; !restricted {
 			continue
 		}
-		if item.Key == projectSettingsKey || item.Key == "hr" {
+		if item.Key == projectSettingsKey {
 			continue
 		}
 		keys = append(keys, item.Key)
@@ -187,15 +219,22 @@ func intersectMenus(got, valid []string) []string {
 }
 
 // accessMenuChoices lists every top-level menu the matrix may grant, in
-// sidebar order, with the locked ones marked. It reads the sidebar's own list,
-// so a module added to the app shows up here on its own.
+// sidebar order. It reads the sidebar's own list, so a module added to the app
+// shows up here on its own.
+//
+// The settings screen is not among them. It belongs to Management whatever the
+// matrix says, so a column of checkboxes that changed nothing would only invite
+// somebody to tick one and believe it.
 func accessMenuChoices() []MenuChoice {
 	choices := make([]MenuChoice, 0, len(navItems))
 	for _, item := range navItems {
 		if _, restricted := menuAccess[item.Key]; !restricted {
 			continue
 		}
-		locked := item.Key == projectSettingsKey || item.Key == "hr"
+		if item.Key == projectSettingsKey {
+			continue
+		}
+		locked := false
 		choices = append(choices, MenuChoice{
 			Key:    item.Key,
 			Label:  item.Label,
@@ -207,6 +246,12 @@ func accessMenuChoices() []MenuChoice {
 }
 
 func (s *Server) renderUserManagement(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, errMessage, success string, status int) {
+	s.renderUserManagementWith(w, r, user, sessionValue, errMessage, success, "", status)
+}
+
+// renderUserManagementWith is the same page holding what was typed into the
+// add-position form, so a refused name comes back rather than being lost.
+func (s *Server) renderUserManagementWith(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, errMessage, success, jabatanBaru string, status int) {
 	users, err := s.projects.AllUsers(r.Context())
 	if err != nil {
 		log.Printf("list users: %v", err)
@@ -219,7 +264,7 @@ func (s *Server) renderUserManagement(w http.ResponseWriter, r *http.Request, us
 		log.Printf("list projects: %v", err)
 	}
 
-	actorOptions := jabatanOptionsFor(user)
+	actorOptions := s.jabatanOptionsFor(r.Context(), user)
 	members := make([]UserManagementMember, 0, len(users))
 	for _, member := range membersOf(users, s.project.Nama, firstProjectName(projects)) {
 		options := actorOptions
@@ -234,19 +279,24 @@ func (s *Server) renderUserManagement(w http.ResponseWriter, r *http.Request, us
 
 	rules := s.accessRules(r.Context())
 	menus := accessMenuChoices()
-	rows := make([]JabatanAccessRow, 0, len(service.JabatanOptions))
-	for _, jabatan := range service.JabatanOptions {
+	positions := s.jabatanOptions(r.Context())
+	rows := make([]JabatanAccessRow, 0, len(positions))
+	for _, jabatan := range positions {
 		if strings.EqualFold(jabatan, model.JabatanManagement) {
 			continue
 		}
 		row := JabatanAccessRow{Jabatan: jabatan}
 		for _, menu := range menus {
+			// HR keeps the HR module whatever is ticked: this is the screen
+			// that edits these rights, and a save that dropped it would lock
+			// its own editors out. Every other cell of that column is open.
+			locked := menu.Locked || (strings.EqualFold(jabatan, "HR") && menu.Key == "hr")
 			choice := MenuChoice{
 				Key:    menu.Key,
 				Label:  menu.Label,
 				Lede:   menu.Lede,
-				Locked: menu.Locked,
-				Aktif:  positionListed(jabatan, rules[menu.Key]),
+				Locked: locked,
+				Aktif:  locked || positionListed(jabatan, rules[menu.Key]),
 			}
 			row.Menus = append(row.Menus, choice)
 		}
@@ -259,6 +309,9 @@ func (s *Server) renderUserManagement(w http.ResponseWriter, r *http.Request, us
 		SemuaProyekMark: model.ProjectSemua,
 		AccessMenus:     menus,
 		AccessRows:      rows,
+		ProjectNama:     s.project.Nama,
+		JabatanBaru:     jabatanBaru,
+		NamaJabatanMax:  service.JabatanNameMaxLength,
 		Error:           errMessage,
 		Success:         success,
 	}, status)

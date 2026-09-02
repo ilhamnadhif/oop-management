@@ -50,6 +50,36 @@
     {{end}}
   </section>
 
+  {{/* A position a site invented for itself. It belongs to this project alone
+       and can never be Management, so it is always beneath the authority of
+       whoever made it - which is what lets HR add one. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "user-plus"}}TAMBAH JABATAN</p>
+        <h2>Jabatan khusus {{.ProjectNama}}</h2>
+      </div>
+    </div>
+    <p class="hint">
+      Jabatan yang ditambahkan di sini hanya ada di {{.ProjectNama}} dan tidak
+      terbawa ke project lain. Nama Management tidak bisa dipakai, dan jabatan
+      baru lahir tanpa menu apa pun — aksesnya diatur di tabel di bawah.
+    </p>
+    <form method="post" action="/hr/user-management" class="filter-form" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="aksi" value="tambah-jabatan">
+      <div>
+        <label for="nama_jabatan">{{template "icon" "tag"}}Nama jabatan</label>
+        <input id="nama_jabatan" name="nama_jabatan" type="text" value="{{.JabatanBaru}}"
+               maxlength="{{.NamaJabatanMax}}" autocomplete="off" required>
+      </div>
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "plus"}}<span data-submit-label>Tambah jabatan</span>
+      </button>
+    </form>
+  </section>
+
   <form method="post" action="/hr/user-management" class="stack-form" data-loading-form>
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="aksi" value="simpan-akses">
@@ -61,7 +91,7 @@
           <h2>Menu yang bisa dibuka setiap jabatan</h2>
         </div>
       </div>
-      <p class="hint">Centang menu yang boleh dibuka jabatan itu. Kosongkan semuanya berarti jabatan itu hanya sampai Beranda, Absensi, dan Request Leave. Management selalu bisa membuka semua.</p>
+      <p class="hint">Centang menu yang boleh dibuka jabatan itu di {{.ProjectNama}}. Setelan ini milik project ini saja — jabatan yang sama bisa punya akses berbeda di project lain. Kosongkan semuanya berarti jabatan itu hanya sampai Beranda, Absensi, dan Request Leave. Management selalu bisa membuka semua.</p>
       {{if .AccessRows}}
       <div class="table-scroll">
         <table class="data-table access-matrix">

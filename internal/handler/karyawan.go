@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -146,7 +147,7 @@ func (s *Server) renderKaryawan(w http.ResponseWriter, r *http.Request, user *mo
 	s.render(w, "karyawan", KaryawanPageData{
 		ShellPageData:   s.shellData(user, sessionValue, "hr-karyawan"),
 		Form:            form,
-		JabatanOptions:  jabatanOptionsFor(user),
+		JabatanOptions:  s.jabatanOptionsFor(r.Context(), user),
 		DefaultPassword: service.DefaultPassword,
 		Members:         membersOf(users, s.project.Nama, firstProjectName(projects)),
 		SemuaProyekMark: model.ProjectSemua,
@@ -161,16 +162,31 @@ func canCreateManagement(user *model.User) bool {
 	return user != nil && strings.EqualFold(strings.TrimSpace(user.Jabatan), model.JabatanManagement)
 }
 
-// jabatanOptionsFor is the closed set this person may choose from. Management is
-// left out for everybody else, so the dropdown offers exactly what the server
-// will accept.
-func jabatanOptionsFor(user *model.User) []string {
-	if canCreateManagement(user) {
+// jabatanOptions is every position this project has: the built-in ones plus
+// whatever the project made for itself. A position another project made is not
+// offered, because it is not a position here.
+func (s *Server) jabatanOptions(ctx context.Context) []string {
+	options, err := s.auth.JabatanOptionsFor(ctx, s.project.Nama)
+	if err != nil {
+		// Losing the project's own positions costs the dropdown those entries,
+		// not the page: the built-in ones are what every site has anyway.
+		log.Printf("read jabatan options: %v", err)
 		return service.JabatanOptions
 	}
-	options := make([]string, 0, len(service.JabatanOptions))
-	for _, jabatan := range service.JabatanOptions {
-		if jabatan == model.JabatanManagement {
+	return options
+}
+
+// jabatanOptionsFor is what this person may choose from. Management is left out
+// for everybody else, so the dropdown offers exactly what the server will
+// accept.
+func (s *Server) jabatanOptionsFor(ctx context.Context, user *model.User) []string {
+	all := s.jabatanOptions(ctx)
+	if canCreateManagement(user) {
+		return all
+	}
+	options := make([]string, 0, len(all))
+	for _, jabatan := range all {
+		if strings.EqualFold(jabatan, model.JabatanManagement) {
 			continue
 		}
 		options = append(options, jabatan)

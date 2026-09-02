@@ -33,8 +33,16 @@ type Store interface {
 	// ListJabatanAccess returns every position's configured menu rights. A
 	// position missing from the list follows the built-in defaults.
 	ListJabatanAccess(ctx context.Context) ([]model.JabatanAccess, error)
-	// SaveJabatanAccess upserts one position's menu rights by its name.
-	SaveJabatanAccess(ctx context.Context, jabatan string, menus []string) error
+	// SaveJabatanAccess upserts one position's menu rights within one project.
+	// An empty project writes the rule the whole app follows, which is what the
+	// rows written before positions belonged to a project hold.
+	SaveJabatanAccess(ctx context.Context, project, jabatan string, menus []string) error
+	// ListJabatan returns the positions projects have made for themselves. The
+	// built-in positions are not among them: they are listed in code and exist
+	// at every site.
+	ListJabatan(ctx context.Context) ([]model.Jabatan, error)
+	// CreateJabatan adds one position to one project.
+	CreateJabatan(ctx context.Context, jabatan *model.Jabatan) error
 	UnitDTExists(ctx context.Context, nopol string) (bool, error)
 	MaxUnitDTSequence(ctx context.Context, prefix string) (int, error)
 	CreateUnitDT(ctx context.Context, unit *model.UnitDT) error

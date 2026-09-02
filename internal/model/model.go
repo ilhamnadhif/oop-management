@@ -83,8 +83,27 @@ func (u User) ReachesEveryProject() bool {
 // lists the top-level menus the position may open, replacing the built-in
 // menuAccess rule for that position when a row exists.
 type JabatanAccess struct {
+	// Project names the site this rule belongs to. Empty is the rule the whole
+	// app follows, which is what every row written before positions became a
+	// project's own holds - and what a project that has never saved its own
+	// matrix keeps following.
+	Project   string
 	Jabatan   string
 	MenuAktif []string
+}
+
+// Jabatan is a position one project made for itself. The eight built-in
+// positions are not in here: they exist at every site and are listed in code.
+//
+// A made-up position can never be Management. Management is the one position
+// defined by reaching every project, and CanAccess lets it through before any
+// stored rule is read, so a position that could be named Management would be an
+// escalation rather than a new job title.
+type Jabatan struct {
+	Project    string
+	Nama       string
+	DibuatOleh string
+	CreatedAt  time.Time
 }
 
 // Project is one site the app is keeping books for. Each has a spreadsheet of

@@ -18,6 +18,7 @@ type TestRepository struct {
 	users         []*model.User
 	activities    []*model.LoginActivity
 	jabatanAccess []model.JabatanAccess
+	jabatanList   []model.Jabatan
 	attendance    []*model.Attendance
 	unitDT        []*model.UnitDT
 	produksi      []*model.Produksi
@@ -172,6 +173,7 @@ func (r *TestRepository) ListJabatanAccess(context.Context) ([]model.JabatanAcce
 	result := make([]model.JabatanAccess, 0, len(r.jabatanAccess))
 	for _, access := range r.jabatanAccess {
 		result = append(result, model.JabatanAccess{
+			Project:   access.Project,
 			Jabatan:   access.Jabatan,
 			MenuAktif: append([]string(nil), access.MenuAktif...),
 		})
@@ -179,21 +181,43 @@ func (r *TestRepository) ListJabatanAccess(context.Context) ([]model.JabatanAcce
 	return result, nil
 }
 
-func (r *TestRepository) SaveJabatanAccess(_ context.Context, jabatan string, menus []string) error {
+func (r *TestRepository) SaveJabatanAccess(_ context.Context, project, jabatan string, menus []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	project = strings.TrimSpace(project)
 	jabatan = strings.TrimSpace(jabatan)
 	for i := range r.jabatanAccess {
-		if strings.EqualFold(strings.TrimSpace(r.jabatanAccess[i].Jabatan), jabatan) {
+		if strings.EqualFold(strings.TrimSpace(r.jabatanAccess[i].Project), project) &&
+			strings.EqualFold(strings.TrimSpace(r.jabatanAccess[i].Jabatan), jabatan) {
 			r.jabatanAccess[i].MenuAktif = append([]string(nil), menus...)
 			return nil
 		}
 	}
 	r.jabatanAccess = append(r.jabatanAccess, model.JabatanAccess{
+		Project:   project,
 		Jabatan:   jabatan,
 		MenuAktif: append([]string(nil), menus...),
 	})
 	return nil
+}
+
+func (r *TestRepository) ListJabatan(context.Context) ([]model.Jabatan, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]model.Jabatan(nil), r.jabatanList...), nil
+}
+
+func (r *TestRepository) CreateJabatan(_ context.Context, jabatan *model.Jabatan) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.jabatanList = append(r.jabatanList, *jabatan)
+	return nil
+}
+
+// JabatanList exposes the positions projects have made, for tests.
+func (r *TestRepository) JabatanList() []model.Jabatan {
+	list, _ := r.ListJabatan(context.Background())
+	return list
 }
 
 // JabatanAccessList exposes stored jabatan access rows to tests.

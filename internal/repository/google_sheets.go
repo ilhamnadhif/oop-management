@@ -16,6 +16,7 @@ const (
 	userSheet          = "user"
 	activitySheet      = "activity login"
 	jabatanAccessSheet = "jabatan akses"
+	jabatanSheet       = "jabatan"
 	exportConfigSheet  = "export config"
 	attendanceSheet    = "absensi data"
 	unitDTSheet        = "Unit DT"
@@ -73,8 +74,15 @@ var activityHeaders = []string{
 // menu_aktif is the comma-separated list of top-level menu keys the position
 // may open; a row absent from the sheet means the position follows the
 // built-in defaults.
+// The project column came after the rest. A row that leaves it blank is the
+// rule the whole app follows, which is what every row written before positions
+// belonged to a project holds.
 var jabatanAccessHeaders = []string{
-	"jabatan", "menu_aktif",
+	"jabatan", "menu_aktif", "project",
+}
+
+var jabatanHeaders = []string{
+	"project", "nama", "dibuat_oleh", "created_at",
 }
 
 var attendanceHeaders = []string{
@@ -292,6 +300,7 @@ var masterSheets = []sheetDefinition{
 	{name: userSheet, headers: userHeaders},
 	{name: activitySheet, headers: activityHeaders},
 	{name: jabatanAccessSheet, headers: jabatanAccessHeaders},
+	{name: jabatanSheet, headers: jabatanHeaders},
 	{name: exportConfigSheet, headers: exportConfigHeaders},
 	{name: projectSheet, headers: projectHeaders},
 }
@@ -598,13 +607,13 @@ func (r *GoogleSheetsRepository) UpdateUserJabatan(ctx context.Context, rowNumbe
 // order. The sheet lives in the master spreadsheet beside the accounts: the
 // rights are about who a position is, not which site they work in.
 func (r *GoogleSheetsRepository) ListJabatanAccess(ctx context.Context) ([]model.JabatanAccess, error) {
-	rows, err := r.readRows(ctx, jabatanAccessSheet, "B")
+	rows, err := r.readRows(ctx, jabatanAccessSheet, "C")
 	if err != nil {
 		return nil, err
 	}
 	access := make([]model.JabatanAccess, 0, len(rows))
 	for _, row := range dataRows(rows) {
-		row = padRow(row, 2)
+		row = padRow(row, len(jabatanAccessHeaders))
 		jabatan := strings.TrimSpace(cellString(row[0]))
 		if jabatan == "" {
 			continue
@@ -612,6 +621,7 @@ func (r *GoogleSheetsRepository) ListJabatanAccess(ctx context.Context) ([]model
 		access = append(access, model.JabatanAccess{
 			Jabatan:   jabatan,
 			MenuAktif: splitMenus(cellString(row[1])),
+			Project:   strings.TrimSpace(cellString(row[2])),
 		})
 	}
 	return access, nil
@@ -619,34 +629,70 @@ func (r *GoogleSheetsRepository) ListJabatanAccess(ctx context.Context) ([]model
 
 // SaveJabatanAccess writes one position's menu rights, creating the row when
 // it is new and replacing the list when it exists.
-func (r *GoogleSheetsRepository) SaveJabatanAccess(ctx context.Context, jabatan string, menus []string) error {
-	rows, err := r.readRows(ctx, jabatanAccessSheet, "A")
+func (r *GoogleSheetsRepository) SaveJabatanAccess(ctx context.Context, project, jabatan string, menus []string) error {
+	rows, err := r.readRows(ctx, jabatanAccessSheet, "C")
 	if err != nil {
 		return err
 	}
+	project = strings.TrimSpace(project)
 	jabatan = strings.TrimSpace(jabatan)
 	rowNumber := 0
+	// Keyed by both columns: one position holds a different rule in each
+	// project, and the app-wide row is the one whose project is blank.
 	for _, row := range dataRowsWithIndex(rows) {
-		if len(row.values) == 0 {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(cellString(row.values[0])), jabatan) {
+		values := padRow(row.values, len(jabatanAccessHeaders))
+		if strings.EqualFold(strings.TrimSpace(cellString(values[0])), jabatan) &&
+			strings.EqualFold(strings.TrimSpace(cellString(values[2])), project) {
 			rowNumber = row.rowNumber
 			break
 		}
 	}
 	value := strings.Join(menus, ",")
 	if rowNumber == 0 {
-		return r.appendRow(ctx, jabatanAccessSheet, []interface{}{jabatan, value})
+		return r.appendRow(ctx, jabatanAccessSheet, []interface{}{jabatan, value, project})
 	}
-	rangeName := fmt.Sprintf("%s!B%d", quoteSheet(jabatanAccessSheet), rowNumber)
+	rangeName := fmt.Sprintf("%s!A%d:C%d", quoteSheet(jabatanAccessSheet), rowNumber, rowNumber)
 	_, err = r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName,
-		&sheets.ValueRange{Values: [][]interface{}{{value}}}).
+		&sheets.ValueRange{Values: [][]interface{}{{jabatan, value, project}}}).
 		ValueInputOption("RAW").Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("update jabatan access row %d: %w", rowNumber, err)
 	}
 	return nil
+}
+
+// ListJabatan reads the positions projects have made for themselves.
+func (r *GoogleSheetsRepository) ListJabatan(ctx context.Context) ([]model.Jabatan, error) {
+	rows, err := r.readRows(ctx, jabatanSheet, "D")
+	if err != nil {
+		return nil, err
+	}
+	list := make([]model.Jabatan, 0, len(rows))
+	for _, row := range dataRows(rows) {
+		row = padRow(row, len(jabatanHeaders))
+		nama := strings.TrimSpace(cellString(row[1]))
+		if nama == "" {
+			continue
+		}
+		createdAt, _ := parseDateTime(cellString(row[3]), r.location)
+		list = append(list, model.Jabatan{
+			Project:    strings.TrimSpace(cellString(row[0])),
+			Nama:       nama,
+			DibuatOleh: strings.TrimSpace(cellString(row[2])),
+			// Read leniently: a row typed straight into the sheet has no
+			// timestamp, and refusing it would hide a real position.
+			CreatedAt: createdAt,
+		})
+	}
+	return list, nil
+}
+
+// CreateJabatan appends one position. The service decides whether the name may
+// be used; this only writes the row.
+func (r *GoogleSheetsRepository) CreateJabatan(ctx context.Context, jabatan *model.Jabatan) error {
+	return r.appendRow(ctx, jabatanSheet, []interface{}{
+		jabatan.Project, jabatan.Nama, jabatan.DibuatOleh, formatDateTime(jabatan.CreatedAt),
+	})
 }
 
 // ListExportConfigs reads every project-and-export setting, in sheet order.

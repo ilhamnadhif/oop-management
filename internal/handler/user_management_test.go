@@ -173,7 +173,7 @@ func TestHRConfiguresJabatanMenuAccess(t *testing.T) {
 	}
 
 	// Produksi still reaches the produksi menu: the matrix kept it ticked.
-	if !CanAccess(effectiveMenuRules(store.JabatanAccessList()), "Produksi", "produksi-input") {
+	if !CanAccess(effectiveMenuRules(store.JabatanAccessList(), testProjectName), "Produksi", "produksi-input") {
 		t.Fatal("Produksi lost the produksi menu it was granted")
 	}
 }
@@ -201,23 +201,29 @@ func TestSavingAnEmptyRowRevokesTheDefaultAccess(t *testing.T) {
 		t.Fatalf("status = %d, want 200", response.StatusCode)
 	}
 
-	if CanAccess(effectiveMenuRules(store.JabatanAccessList()), "Surveyor", "unit-dt") {
+	if CanAccess(effectiveMenuRules(store.JabatanAccessList(), testProjectName), "Surveyor", "unit-dt") {
 		t.Fatal("Surveyor still reaches the unit menu after an empty save")
 	}
 }
 
-// The menus HR may grant are the module menus; the settings screen and the HR
-// module itself are not on the table.
-func TestTheAccessMatrixDoesNotOfferLockedMenus(t *testing.T) {
+// The settings screen is not on the table: it belongs to Management whatever
+// the matrix says, so a column of checkboxes there would change nothing while
+// looking as though it did.
+func TestTheAccessMatrixDoesNotOfferProjectSettings(t *testing.T) {
 	keys := configurableMenuKeys()
-	for _, locked := range []string{"project-settings", "hr"} {
-		for _, key := range keys {
-			if key == locked {
-				t.Fatalf("the matrix may grant %q, which is locked", locked)
-			}
+	for _, key := range keys {
+		if key == projectSettingsKey {
+			t.Fatal("the matrix may grant project-settings, which is Management's alone")
 		}
 	}
-	for _, expected := range []string{"produksi", "unit", "a2b", "nota"} {
+	for _, choice := range accessMenuChoices() {
+		if choice.Key == projectSettingsKey {
+			t.Fatal("the matrix still shows a project-settings column")
+		}
+	}
+	// The HR module is grantable like any other: a site may want somebody
+	// besides HR in there.
+	for _, expected := range []string{"produksi", "unit", "a2b", "nota", "hr"} {
 		contains := false
 		for _, key := range keys {
 			if key == expected {
@@ -235,7 +241,7 @@ func TestTheAccessMatrixDoesNotOfferLockedMenus(t *testing.T) {
 func TestEffectiveRulesKeepHRInTheHRMenu(t *testing.T) {
 	rules := effectiveMenuRules([]model.JabatanAccess{
 		{Jabatan: "HR", MenuAktif: nil},
-	})
+	}, testProjectName)
 	if !positionListed("HR", rules["hr"]) {
 		t.Fatal("HR lost the hr menu even though the matrix excluded it")
 	}
