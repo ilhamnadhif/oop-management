@@ -52,6 +52,7 @@
             <th scope="col" class="numeric">Izin</th>
             <th scope="col" class="numeric">Cuti</th>
             <th scope="col" class="numeric">Tidak Absen</th>
+            <th scope="col" class="numeric">Lembur</th>
             <th scope="col" class="numeric">Belum Clock Out</th>
             <th scope="col" class="numeric">Kehadiran</th>
           </tr>
@@ -67,6 +68,7 @@
             <td class="numeric">{{.Izin}}</td>
             <td class="numeric">{{.Cuti}}</td>
             <td class="numeric">{{.TidakAbsen}}</td>
+            <td class="numeric">{{.LemburLabel}}</td>
             <td class="numeric">{{.BelumClockOut}}</td>
             {{/* Read at a glance down the column: green is fine, amber wants
                  a word, red wants chasing. The thresholds are the same ones the
@@ -80,8 +82,10 @@
       </table>
     </div>
     <p class="hint">
-      <strong>Belum Clock Out</strong> menghitung hari yang sudah diabsen masuk
-      tapi tidak ditutup; harinya tetap dihitung hadir. <strong>Kehadiran</strong>
+      <strong>Lembur</strong> dihitung dari clock out yang melewati jam pulang;
+      hari yang tidak ditutup tidak menyumbang lembur. <strong>Belum Clock Out</strong>
+      menghitung hari yang sudah diabsen masuk tapi tidak ditutup; harinya tetap
+      dihitung hadir. <strong>Kehadiran</strong>
       dihitung dari hari yang sudah lewat saja, jadi bulan berjalan tidak terbaca
       rendah karena hari yang belum terjadi.
     </p>

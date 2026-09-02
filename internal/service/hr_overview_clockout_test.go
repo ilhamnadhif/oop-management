@@ -137,3 +137,66 @@ func TestHROverviewSortsTheClockOutList(t *testing.T) {
 		t.Fatalf("open shift list is not sorted by name: %+v", overview.BelumClockOutNama)
 	}
 }
+
+// HR wants to see who stayed on, and for how long. The overview reports the
+// last day of the range, the same day its other lists report.
+func TestHROverviewNamesWhoWorkedOvertime(t *testing.T) {
+	fixture := newLeaveFixture(t)
+	ctx := context.Background()
+	lembur := leaveUser("usr_lembur", "9401", "Ani Lestari", "Logistik", "2025-01-01")
+	pulang := leaveUser("usr_pulang", "9402", "Cahyo Nugroho", "Security", "2025-01-01")
+	createFixtureUser(t, fixture.store, lembur)
+	createFixtureUser(t, fixture.store, pulang)
+	fixture.service.WithSchedule(Schedule{Start: 8 * 60, End: 17 * 60, Tolerance: 15 * time.Minute})
+
+	late := time.Date(2026, 8, 10, 19, 0, 0, 0, fixture.location)
+	if err := fixture.store.CreateAttendance(ctx, &model.Attendance{
+		AbsensiID: "ABS-LEMBUR", UserID: lembur.UserID, TanggalAbsensi: "2026-08-10",
+		ClockInAt: time.Date(2026, 8, 10, 8, 0, 0, 0, fixture.location), ClockOutAt: &late,
+	}); err != nil {
+		t.Fatalf("seed overtime: %v", err)
+	}
+	onTime := time.Date(2026, 8, 10, 17, 0, 0, 0, fixture.location)
+	if err := fixture.store.CreateAttendance(ctx, &model.Attendance{
+		AbsensiID: "ABS-ONTIME", UserID: pulang.UserID, TanggalAbsensi: "2026-08-10",
+		ClockInAt: time.Date(2026, 8, 10, 8, 0, 0, 0, fixture.location), ClockOutAt: &onTime,
+	}); err != nil {
+		t.Fatalf("seed on-time day: %v", err)
+	}
+
+	overview, err := fixture.service.BuildHROverview(ctx, "2026-08-10", "2026-08-10")
+	if err != nil {
+		t.Fatalf("build overview: %v", err)
+	}
+	if len(overview.LemburNama) != 1 || overview.LemburNama[0].NamaLengkap != "Ani Lestari" {
+		t.Fatalf("overtime list is wrong: %+v", overview.LemburNama)
+	}
+	if overview.LemburNama[0].Keterangan != "2j" {
+		t.Fatalf("keterangan = %q, want the hours stayed on", overview.LemburNama[0].Keterangan)
+	}
+	if overview.LemburMenitHariAkhir != 120 {
+		t.Fatalf("total lembur = %d menit, want 120", overview.LemburMenitHariAkhir)
+	}
+}
+
+// A shift nobody closed has no departure to measure, so it earns no overtime
+// however late the overview is read.
+func TestHROverviewCountsNoOvertimeForAnOpenShift(t *testing.T) {
+	fixture := newLeaveFixture(t)
+	ctx := context.Background()
+	fixture.service.WithSchedule(Schedule{Start: 8 * 60, End: 17 * 60, Tolerance: 15 * time.Minute})
+	if err := fixture.store.CreateAttendance(ctx, &model.Attendance{
+		AbsensiID: "ABS-OPEN", UserID: fixture.user.UserID, TanggalAbsensi: "2026-08-10",
+		ClockInAt: time.Date(2026, 8, 10, 8, 0, 0, 0, fixture.location),
+	}); err != nil {
+		t.Fatalf("seed open shift: %v", err)
+	}
+
+	overview, err := fixture.service.BuildHROverview(ctx, "2026-08-10", "2026-08-10")
+	if err != nil {
+		t.Fatalf("build overview: %v", err)
+	}
+	if len(overview.LemburNama) != 0 || overview.LemburMenitHariAkhir != 0 {
+		t.Fatalf("an open shift earned overtime: %+v", overview.LemburNama)
+	}
+}

@@ -450,6 +450,57 @@ func TestHROverviewBadgesAbsenceAndOpenShiftsApart(t *testing.T) {
 	}
 }
 
+// The overview names who stayed on and for how long, and a shift nobody closed
+// is not overtime: there is no departure to measure it from.
+func TestHROverviewNamesWhoWorkedOvertime(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	hr := loggedInClientAs(t, testServer, "HR")
+	loggedInClientAs(t, testServer, "Logistik")
+
+	users := store.UserList()
+	var stayed, open model.User
+	for _, user := range users {
+		switch user.Jabatan {
+		case "HR":
+			stayed = user
+		case "Logistik":
+			open = user
+		}
+	}
+	location := time.FixedZone("WIB", 7*60*60)
+	// The default working day ends at 17:00, so 19:00 is two hours past it.
+	out := time.Date(2026, 8, 7, 19, 0, 0, 0, location)
+	if err := store.CreateAttendance(context.Background(), &model.Attendance{
+		AbsensiID: "ABS-OT", UserID: stayed.UserID, NRP: stayed.NRP,
+		NamaLengkap: stayed.NamaLengkap, Jabatan: stayed.Jabatan,
+		TanggalAbsensi: "2026-08-07",
+		ClockInAt:      time.Date(2026, 8, 7, 8, 0, 0, 0, location), ClockOutAt: &out,
+		StatusAbsensi: model.AttendanceSelesai,
+	}); err != nil {
+		t.Fatalf("seed overtime day: %v", err)
+	}
+	if err := store.CreateAttendance(context.Background(), &model.Attendance{
+		AbsensiID: "ABS-OPEN", UserID: open.UserID, NRP: open.NRP,
+		NamaLengkap: open.NamaLengkap, Jabatan: open.Jabatan,
+		TanggalAbsensi: "2026-08-07",
+		ClockInAt:      time.Date(2026, 8, 7, 8, 0, 0, 0, location),
+		StatusAbsensi:  model.AttendanceBelumClockOut,
+	}); err != nil {
+		t.Fatalf("seed open day: %v", err)
+	}
+
+	page := fetchAuthedPage(t, hr, testServer.URL+"/hr/overview?from=2026-08-07&to=2026-08-07")
+	if !strings.Contains(page, "LEMBUR") {
+		t.Fatal("the overview has no overtime card")
+	}
+	if !strings.Contains(page, `<span class="status-chip approved">2j</span>`) {
+		t.Fatalf("the overtime card does not say how long:\n%s", firstLines(page))
+	}
+	if !strings.Contains(page, "1 orang per 2026-08-07") {
+		t.Fatal("the open shift was counted as overtime")
+	}
+}
+
 func TestHROverviewRendersCoreDashboardAndLatestRequest(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	owner := loggedInClientAs(t, testServer, "Produksi")
@@ -471,8 +522,8 @@ func TestHROverviewRendersCoreDashboardAndLatestRequest(t *testing.T) {
 			t.Fatalf("HR overview missing %q", fragment)
 		}
 	}
-	if strings.Contains(strings.ToLower(page), "lembur") {
-		t.Fatal("the HR overview still reports overtime")
+	if !strings.Contains(page, "LEMBUR") {
+		t.Fatal("the HR overview does not report overtime")
 	}
 
 	invalid, err := hr.Get(testServer.URL + "/hr/overview?from=invalid&to=2026-08-07")
@@ -482,22 +533,25 @@ func TestHROverviewRendersCoreDashboardAndLatestRequest(t *testing.T) {
 	requireLeaveResponse(t, invalid, http.StatusOK, "tanggal awal tidak valid")
 }
 
-func TestDashboardShowsTrackedLeaveSummary(t *testing.T) {
+// A request just filed shows up on the page that filed it, waiting for a
+// decision. That summary used to sit on the dashboard as well; leave has its
+// own menu now, and this checks the one place that still carries it.
+func TestLeaveRequestPageShowsTrackedSummary(t *testing.T) {
 	testServer, _ := newTestServerWithStore(t)
 	owner := loggedInClientAs(t, testServer, "Produksi")
 	requireLeaveResponse(t, postLeaveRequest(t, owner, testServer, leaveFormCSRF(t, owner, testServer),
 		leaveFields(model.LeaveJenisIzin, "2026-08-07", "2026-08-07", "Izin hari ini"), nil),
 		http.StatusOK, "berhasil diajukan")
 
-	page := fetchAuthedPage(t, owner, testServer.URL+"/dashboard")
-	for _, fragment := range []string{"Ringkasan leave saya", "Hari disetujui tahun 2026", "Menunggu approval", "MENUNGGU", `href="/leave/request"`} {
+	page := fetchAuthedPage(t, owner, testServer.URL+"/leave/request")
+	for _, fragment := range []string{"Hari disetujui", "Menunggu approval", "MENUNGGU"} {
 		if !strings.Contains(page, fragment) {
-			t.Fatalf("dashboard leave summary missing %q", fragment)
+			t.Fatalf("the leave request page is missing %q", fragment)
 		}
 	}
 	for _, obsolete := range []string{"belum dicatat di aplikasi ini", "Ringkasan cuti dan izin belum tersedia"} {
 		if strings.Contains(page, obsolete) {
-			t.Fatalf("dashboard still says leave is untracked: %q", obsolete)
+			t.Fatalf("the page still says leave is untracked: %q", obsolete)
 		}
 	}
 }

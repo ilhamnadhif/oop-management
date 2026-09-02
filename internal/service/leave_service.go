@@ -138,10 +138,15 @@ type HROverview struct {
 	// chase up, not a correction to the figures. On a day still running it is
 	// simply everybody still at work.
 	BelumClockOutNama []HRPersonOnDay
-	Series            []HRDatePoint
-	JabatanShares     []HRJabatanShare
-	KaryawanBaru      []model.User
-	PengajuanTerbaru  []model.Leave
+	// LemburNama are the people who worked past the end of the working day,
+	// with how long against each name, and LemburMenitHariAkhir is their total.
+	// A shift nobody closed earns none: there is no departure to measure.
+	LemburNama           []HRPersonOnDay
+	LemburMenitHariAkhir int
+	Series               []HRDatePoint
+	JabatanShares        []HRJabatanShare
+	KaryawanBaru         []model.User
+	PengajuanTerbaru     []model.Leave
 }
 
 // LeaveService owns every lifecycle transition. The mutex makes the read-check-
@@ -156,7 +161,17 @@ type LeaveService struct {
 	// are introduced. Left nil the service reads its own store, which is what
 	// the tests do.
 	users UserLister
-	mu    sync.Mutex
+	// schedule is the working day overtime is measured against. Left at the
+	// default the service still reads, which is what the tests rely on.
+	schedule Schedule
+	mu       sync.Mutex
+}
+
+// WithSchedule points this service at the project's working hours. Overtime is
+// time past the end of that day, so without it the default day is used.
+func (s *LeaveService) WithSchedule(schedule Schedule) *LeaveService {
+	s.schedule = schedule
+	return s
 }
 
 // WithUsers points this service at the account directory. Accounts live in the
@@ -182,7 +197,7 @@ func NewLeaveService(store repository.Store, location *time.Location, now NowFun
 	if now == nil {
 		now = time.Now
 	}
-	return &LeaveService{store: store, location: location, now: now}
+	return &LeaveService{store: store, location: location, now: now, schedule: DefaultSchedule()}
 }
 
 func (s *LeaveService) Today() string {
@@ -568,6 +583,9 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 	// One person may have more than one row in a day. A single row left open is
 	// enough to be chased up, so this is never cleared once set.
 	openShift := make(map[string]map[string]bool)
+	// The day's own span per person, so overtime is measured once over the
+	// whole day rather than once per shift.
+	span := make(map[string]map[string]*daySpan)
 	for _, row := range attendance {
 		if row.TanggalAbsensi < from || row.TanggalAbsensi > to || !userActiveOn(usersByID, row.UserID, row.TanggalAbsensi) {
 			continue
@@ -582,6 +600,13 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 			}
 			openShift[row.TanggalAbsensi][row.UserID] = true
 		}
+		if span[row.TanggalAbsensi] == nil {
+			span[row.TanggalAbsensi] = make(map[string]*daySpan)
+		}
+		if span[row.TanggalAbsensi][row.UserID] == nil {
+			span[row.TanggalAbsensi][row.UserID] = &daySpan{}
+		}
+		span[row.TanggalAbsensi][row.UserID].add(row, s.location)
 	}
 
 	// The leave type is kept, not just the fact of it: a count answers how many
@@ -633,6 +658,13 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 				// Present either way; the open shift is a separate list.
 				if openShift[day][userID] {
 					overview.BelumClockOutNama = append(overview.BelumClockOutNama, person)
+					break
+				}
+				if minutes := span[day][userID].overtime(s.schedule); minutes > 0 {
+					stayed := person
+					stayed.Keterangan = formatDuration(minutes)
+					overview.LemburNama = append(overview.LemburNama, stayed)
+					overview.LemburMenitHariAkhir += minutes
 				}
 			case onLeave:
 				overview.CutiHariAkhirNama = append(overview.CutiHariAkhirNama, person)
@@ -653,6 +685,7 @@ func (s *LeaveService) BuildHROverview(ctx context.Context, from, to string) (*H
 	sortHRPeople(overview.BelumAbsenNama)
 	sortHRPeople(overview.CutiHariAkhirNama)
 	sortHRPeople(overview.BelumClockOutNama)
+	sortHRPeople(overview.LemburNama)
 
 	activeAtEnd := make([]model.User, 0)
 	byJabatan := make(map[string]int)

@@ -43,6 +43,13 @@ type MonthlyAbsensiRow struct {
 	// correcting it. Counted per day, since a day is chased up once however
 	// many rows it holds.
 	BelumClockOut int
+	// LemburMenit is the month's time worked past the end of the working day.
+	// A day is judged as one working day - earliest arrival to latest
+	// departure - because judging each shift on its own would count the same
+	// evening once per shift.
+	LemburMenit int
+	// LemburLabel is the same figure written the way the page prints it.
+	LemburLabel string
 }
 
 // The marker written into a day that has attendance, and the shorthand for the
@@ -97,6 +104,9 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 	// A day holding one unclosed row is an open day, and stays one however many
 	// closed rows sit beside it.
 	openDay := make(map[string]map[string]bool)
+	// The day's own span, so overtime is measured once over the whole day
+	// rather than once per shift.
+	span := make(map[string]map[string]*daySpan)
 	for _, row := range attendance {
 		if row.TanggalAbsensi < from || row.TanggalAbsensi > to {
 			continue
@@ -111,6 +121,13 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 			}
 			openDay[row.UserID][row.TanggalAbsensi] = true
 		}
+		if span[row.UserID] == nil {
+			span[row.UserID] = make(map[string]*daySpan)
+		}
+		if span[row.UserID][row.TanggalAbsensi] == nil {
+			span[row.UserID][row.TanggalAbsensi] = &daySpan{}
+		}
+		span[row.UserID][row.TanggalAbsensi].add(row, s.location)
 	}
 
 	// The leave type is kept, not just the fact of it, so the day column can
@@ -175,6 +192,11 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 					if openDay[user.UserID][day] {
 						row.BelumClockOut++
 					}
+					// A day nobody closed has no departure to measure against,
+					// so it contributes no overtime.
+					if !openDay[user.UserID][day] {
+						row.LemburMenit += span[user.UserID][day].overtime(s.schedule)
+					}
 				}
 			case approvedLeave[user.UserID][day] != "":
 				jenis := approvedLeave[user.UserID][day]
@@ -216,6 +238,7 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 		if total := row.Hadir + row.Sakit + row.Izin + row.Cuti + row.TidakAbsen; total > 0 {
 			row.Persentase = round2(float64(row.Hadir+row.Sakit+row.Izin+row.Cuti) * 100 / float64(total))
 		}
+		row.LemburLabel = formatDuration(row.LemburMenit)
 		report.Rows = append(report.Rows, row)
 	}
 
@@ -229,4 +252,36 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 		report.Rows[i].No = i + 1
 	}
 	return report, nil
+}
+
+// daySpan is one person's whole day: when they first arrived and when they last
+// left. Somebody may clock in and out more than once in a day, and those rows
+// describe one working day rather than several.
+type daySpan struct {
+	first time.Time
+	last  *time.Time
+}
+
+func (d *daySpan) add(row model.Attendance, location *time.Location) {
+	if !row.ClockInAt.IsZero() {
+		in := row.ClockInAt.In(location)
+		if d.first.IsZero() || in.Before(d.first) {
+			d.first = in
+		}
+	}
+	if row.ClockOutAt == nil || row.ClockOutAt.IsZero() {
+		return
+	}
+	out := row.ClockOutAt.In(location)
+	if d.last == nil || out.After(*d.last) {
+		d.last = &out
+	}
+}
+
+// overtime measures the day against the working hours, once.
+func (d *daySpan) overtime(schedule Schedule) int {
+	if d == nil || d.first.IsZero() || d.last == nil {
+		return 0
+	}
+	return schedule.Judge(d.first, d.last).OvertimeMinutes
 }

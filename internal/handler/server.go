@@ -826,9 +826,7 @@ func firstLetter(name string) string {
 
 type BerandaPageData struct {
 	ShellPageData
-	Summary      *service.AttendanceSummary
-	LeaveSummary *service.LeavePersonalSummary
-	LeaveError   string
+	Summary *service.AttendanceSummary
 	// JamChart plots the hours worked per day; a gap in it is a day nobody
 	// clocked in, which is as much a reading as a tall bar.
 	JamChart *Chart
@@ -860,16 +858,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Summary = summary
 	data.JamChart = BuildValueChart(labels, hours, 1)
-	leaveSummary, leaveErr := s.leave.PersonalSummary(r.Context(), user.UserID)
-	if leaveErr != nil {
-		log.Printf("build personal leave summary: %v", leaveErr)
-		data.LeaveError = "Ringkasan cuti dan izin belum dapat dimuat."
-	} else {
-		if leaveSummary.TodayStatus == "" {
-			leaveSummary.TodayStatus = "Tidak ada leave"
-		}
-		data.LeaveSummary = leaveSummary
-	}
+	// Cuti and izin have a menu of their own, so the dashboard stays about the
+	// one question it answers: how is my own attendance going.
 	s.render(w, "beranda", data, http.StatusOK)
 }
 

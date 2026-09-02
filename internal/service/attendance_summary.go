@@ -20,6 +20,12 @@ type AttendanceDay struct {
 	Durasi   string
 	Jam      float64
 	Status   string
+	// Lembur is time worked past the end of the working day, already written
+	// the way the page prints it; LemburMenit is the same figure to add up. A
+	// day nobody clocked out of has neither: there is no departure to measure,
+	// and guessing one would pay for hours nobody recorded.
+	Lembur      string
+	LemburMenit int
 	// Selesai separates a finished day from one still open, which is the
 	// difference between a record and a reminder.
 	Selesai bool
@@ -38,22 +44,22 @@ type AttendanceSummary struct {
 	MasukPukul  string
 	PulangPukul string
 
-	BulanLabel  string
-	HariHadir   int
-	TotalJam    float64
-	RataJam     float64
-	BelumPulang int
+	BulanLabel string
+	HariHadir  int
+	TotalJam   float64
+	RataJam    float64
 
 	// Counted over the same month, against the working day in force.
-	Jadwal      Schedule
-	TepatWaktu  int
-	Terlambat   int
-	MasukAwal   int
-	PulangCepat int
-	// Overtime is judged by the schedule but not reported: the dashboards do
-	// not account for it, and a figure nobody acts on invites being read as
-	// hours owed.
+	Jadwal         Schedule
+	TepatWaktu     int
+	Terlambat      int
+	MasukAwal      int
+	PulangCepat    int
 	TerlambatMenit int
+	// LemburMenit is the month's time worked past closing, and LemburLabel is
+	// the same figure written the way the page prints it.
+	LemburMenit int
+	LemburLabel string
 
 	Series  []AttendanceDay
 	Riwayat []AttendanceDay
@@ -104,9 +110,6 @@ func (s *AttendanceService) Summary(ctx context.Context, userID string) (*Attend
 		if strings.HasPrefix(day.Tanggal, month) {
 			summary.HariHadir++
 			summary.TotalJam += day.Jam
-			if !day.Selesai {
-				summary.BelumPulang++
-			}
 			if day.Rule.EarlyIn {
 				summary.MasukAwal++
 			}
@@ -117,6 +120,7 @@ func (s *AttendanceService) Summary(ctx context.Context, userID string) (*Attend
 			if day.Rule.EarlyLeave {
 				summary.PulangCepat++
 			}
+			summary.LemburMenit += day.LemburMenit
 			if day.Rule.OnTime(day.Selesai) {
 				summary.TepatWaktu++
 			}
@@ -126,6 +130,7 @@ func (s *AttendanceService) Summary(ctx context.Context, userID string) (*Attend
 		}
 	}
 	summary.Jadwal = s.schedule
+	summary.LemburLabel = formatDuration(summary.LemburMenit)
 	summary.TotalJam = round2(summary.TotalJam)
 	if summary.HariHadir > 0 {
 		summary.RataJam = round2(summary.TotalJam / float64(summary.HariHadir))
@@ -177,6 +182,8 @@ func (s *AttendanceService) attendanceDay(row model.Attendance) AttendanceDay {
 		clockOut = &local
 	}
 	day.Rule = s.schedule.Judge(row.ClockInAt.In(s.location), clockOut)
+	day.LemburMenit = day.Rule.OvertimeMinutes
+	day.Lembur = formatDuration(day.LemburMenit)
 	day.Catatan = ruleNotes(day.Rule, day.Selesai)
 	return day
 }
@@ -194,6 +201,9 @@ func ruleNotes(rule AttendanceRule, closed bool) []string {
 	}
 	if rule.EarlyLeave {
 		notes = append(notes, "Pulang cepat "+formatDuration(rule.EarlyOutMinutes))
+	}
+	if rule.Overtime {
+		notes = append(notes, "Lembur "+formatDuration(rule.OvertimeMinutes))
 	}
 	if len(notes) == 0 && closed {
 		notes = append(notes, "Tepat waktu")

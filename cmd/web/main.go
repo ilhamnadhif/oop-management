@@ -250,7 +250,7 @@ func buildProjectServices(store repository.Store, projects *service.ProjectServi
 		Overview:     service.NewOverviewService(store, location, now),
 		UnitA2B:      service.NewUnitA2BService(store, location, now),
 		Nota:         service.NewNotaService(store, location, now),
-		Leave:        service.NewLeaveService(store, location, now).WithUsers(members),
+		Leave:        service.NewLeaveService(store, location, now).WithSchedule(schedule).WithUsers(members),
 		UnitOverview: service.NewUnitOverviewService(store, location, now),
 		FuelMasuk:    service.NewFuelMasukService(store, location, now),
 		FuelKeluar:   service.NewFuelKeluarService(store, location, now),

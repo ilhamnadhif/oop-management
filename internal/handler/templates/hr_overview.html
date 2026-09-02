@@ -170,6 +170,34 @@
       {{end}}
     </article>
 
+    {{/* Overtime is the other end of the day from the card beside it: not who
+         is missing, but who stayed on. A shift nobody closed earns none - there
+         is no departure to measure it from. */}}
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "clock"}}LEMBUR</p>
+          <h2>{{len .LemburNama}} orang per {{$.To}}</h2>
+        </div>
+      </div>
+      {{if .LemburNama}}
+      <ul class="compact-list">
+        {{range .LemburNama}}
+        <li>
+          {{template "personAvatar" .}}
+          <span class="compact-list-main">
+            <strong>{{.NamaLengkap}}</strong>
+            <span>{{if .NRP}}{{.NRP}} · {{end}}{{if .Jabatan}}{{.Jabatan}}{{else}}Tanpa jabatan{{end}}</span>
+          </span>
+          <span class="compact-list-meta"><span class="status-chip approved">{{.Keterangan}}</span></span>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="panel-empty">Tidak ada yang clock out melewati jam pulang pada tanggal ini.</p>
+      {{end}}
+    </article>
+
     <article class="panel">
       <div class="panel-heading">
         <div>

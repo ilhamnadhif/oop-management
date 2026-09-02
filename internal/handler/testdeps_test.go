@@ -104,7 +104,7 @@ func testProjectServices(store repository.Store, location *time.Location, nowFun
 		Overview:     service.NewOverviewService(store, location, nowFunc),
 		UnitA2B:      service.NewUnitA2BService(store, location, nowFunc),
 		Nota:         service.NewNotaService(store, location, nowFunc),
-		Leave:        service.NewLeaveService(store, location, nowFunc),
+		Leave:        service.NewLeaveService(store, location, nowFunc).WithSchedule(service.DefaultSchedule()),
 		UnitOverview: service.NewUnitOverviewService(store, location, nowFunc),
 		FuelMasuk:    service.NewFuelMasukService(store, location, nowFunc),
 		FuelKeluar:   service.NewFuelKeluarService(store, location, nowFunc),

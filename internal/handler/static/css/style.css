@@ -762,12 +762,12 @@ dialog.upload-sheet { width: min(420px, calc(100vw - 1.5rem)); margin-top: auto;
 .rank-table .accent { color: var(--success); font-weight: 600; }
 
 @media (max-width: 1100px) {
-  .kpi-grid, .a2b-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi-grid, .kpi-grid-4, .a2b-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .a2b-kpi-grid > *, .a2b-kpi-grid > *:nth-child(4), .a2b-kpi-grid > *:nth-child(5) { grid-column: auto; }
   .chart-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
-  .kpi-grid, .a2b-kpi-grid { grid-template-columns: 1fr; }
+  .kpi-grid, .kpi-grid-4, .a2b-kpi-grid { grid-template-columns: 1fr; }
   .a2b-kpi-grid > *, .a2b-kpi-grid > *:nth-child(4), .a2b-kpi-grid > *:nth-child(5) { grid-column: auto; }
   .filter-form input,
   .filter-form select { min-width: 0; width: 100%; }
@@ -1757,6 +1757,9 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 /* KPI cards --------------------------------------------------------------- */
 
 .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+/* A row of four measurements belongs on one line: the fourth wrapping onto its
+   own row reads as a card about something else. */
+.kpi-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 /* Three across, then two: five equal columns squeezed "UNIT BREAKDOWN" onto
    three lines and split the stock figure mid-number. */
 .a2b-kpi-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -1920,6 +1923,7 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
   .app-shell::after { height: 230px; }
   .page-lede { margin-bottom: 4.6rem; }
   .kpi-grid,
+  .kpi-grid-4,
   .a2b-kpi-grid,
   .hr-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .a2b-kpi-grid > *, .a2b-kpi-grid > *:nth-child(4), .a2b-kpi-grid > *:nth-child(5) { grid-column: auto; }
@@ -1953,6 +1957,7 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
   .page-lede { max-width: 82%; margin-bottom: 3.55rem; font-size: 0.82rem; line-height: 1.5; }
   .panel { padding: 1rem; }
   .kpi-grid,
+  .kpi-grid-4,
   .hr-kpi-grid { grid-template-columns: 1fr; }
   .kpi-card,
   .hr-kpi-grid .kpi-card { min-height: 150px; grid-template-columns: 54px minmax(0, 1fr); padding: 1.05rem; }

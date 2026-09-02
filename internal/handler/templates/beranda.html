@@ -59,17 +59,12 @@
       </div>
       <span class="kpi-icon purple">{{template "icon" "activity"}}</span>
     </article>
-    <article class="panel kpi-card">
-      <div>
-        <p class="eyebrow">BELUM CLOCK OUT</p>
-        <p class="kpi-value">{{.BelumPulang}}</p>
-        <p class="kpi-note">Hari yang belum ditutup bulan ini</p>
-      </div>
-      <span class="kpi-icon amber">{{template "icon" "info"}}</span>
-    </article>
   </section>
 
-  <section class="kpi-grid">
+  {{/* Four cards, four columns: the row reads as one set of measurements
+       against the working day, and wrapping the last one onto its own line
+       reads as a card that belongs to something else. */}}
+  <section class="kpi-grid kpi-grid-4">
     <article class="panel kpi-card">
       <div>
         <p class="eyebrow">TEPAT WAKTU</p>
@@ -94,6 +89,14 @@
       </div>
       <span class="kpi-icon purple">{{template "icon" "logout"}}</span>
     </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">LEMBUR</p>
+        <p class="kpi-value">{{.LemburLabel}}</p>
+        <p class="kpi-note">Clock out setelah {{.Jadwal.EndLabel}} bulan ini</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "clock"}}</span>
+    </article>
   </section>
 
   <p class="hint schedule-note">
@@ -104,7 +107,10 @@
   </p>
 
   <section class="chart-grid">
-    <article class="panel">
+    {{/* The chart spans the row too. Nothing sits beside it any more, and a
+         fortnight of bars squeezed into half a grid reads as a narrow strip
+         with the dates turned on their side. */}}
+    <article class="panel span-full">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">{{template "icon" "chart"}}JAM KERJA 14 HARI TERAKHIR</p>
@@ -115,7 +121,7 @@
       <p class="hint">Batang kosong berarti tidak ada kehadiran tercatat pada hari itu.</p>
     </article>
 
-    {{/* The history spans the row: five columns and a note do not fit half a
+    {{/* The history spans the row: six columns and a note do not fit half a
          grid without the notes being cut off mid-word. */}}
     <article class="panel span-full">
       <div class="panel-heading">
@@ -133,6 +139,7 @@
               <th scope="col">Clock in</th>
               <th scope="col">Clock out</th>
               <th scope="col">Durasi</th>
+              <th scope="col">Lembur</th>
               <th scope="col">Catatan</th>
             </tr>
           </thead>
@@ -143,6 +150,7 @@
               <td>{{.ClockIn}}</td>
               <td>{{.ClockOut}}</td>
               <td>{{.Durasi}}</td>
+              <td>{{.Lembur}}</td>
               <td class="wrap">
                 {{if .Selesai}}
                 <span class="rule-chip{{if .Rule.Late}} late{{else if .Rule.EarlyLeave}} late{{else if .Rule.Overtime}} overtime{{else}} ontime{{end}}">
@@ -160,37 +168,6 @@
       {{else}}
       <p class="panel-empty">Belum ada kehadiran tercatat. Riwayat muncul setelah clock in pertama Anda.</p>
       {{end}}
-    </article>
-
-    <article class="panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">{{template "icon" "calendar"}}CUTI &amp; IZIN</p>
-          <h2>Ringkasan leave saya</h2>
-        </div>
-        <a class="button subtle table-action" href="/leave/request">Buka request</a>
-      </div>
-      {{if $.LeaveError}}
-      <p class="panel-empty">{{$.LeaveError}}</p>
-      {{else}}
-      {{with $.LeaveSummary}}
-      <div class="leave-personal-summary">
-        <p class="leave-personal-stat"><span>Hari disetujui tahun {{.Year}}</span><strong>{{.ApprovedDays}} hari</strong></p>
-        <p class="leave-personal-stat"><span>Menunggu approval</span><strong>{{.PendingCount}}</strong></p>
-        <p class="leave-personal-stat"><span>Status hari ini</span><strong>{{.TodayStatus}}</strong></p>
-      </div>
-      {{if .TodayLeave}}
-      <p class="hint">{{.TodayLeave.JenisLeave}} · {{.TodayLeave.TanggalMulai}}–{{.TodayLeave.TanggalSelesai}}</p>
-      {{else}}
-      <p class="hint">Tidak ada leave aktif hari ini.</p>
-      {{end}}
-      {{else}}
-      <p class="panel-empty">Ringkasan cuti dan izin belum tersedia.</p>
-      {{end}}
-      {{end}}
-      <div class="dashboard-leave-actions">
-        <a class="button primary" href="/leave/request">{{template "icon" "plus"}}Ajukan leave</a>
-      </div>
     </article>
   </section>
   {{end}}

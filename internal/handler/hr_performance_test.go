@@ -126,6 +126,52 @@ func TestHRPerformanceBadgesTheAttendanceRate(t *testing.T) {
 	}
 }
 
+// Overtime is the other half of the working day: the table says how much was
+// worked past closing, and a day nobody closed contributes none.
+func TestHRPerformanceReportsOvertime(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	hr := loggedInClientAs(t, testServer, "HR")
+
+	karyawan := &model.User{
+		UserID: "usr_ot", NRP: "NRP902", NamaLengkap: "Budi Hartono", Jabatan: "Surveyor",
+		Email: "usr_ot@example.test", TanggalGabung: "2026-01-02", StatusPengguna: model.StatusAktif,
+	}
+	if err := store.CreateUser(t.Context(), karyawan); err != nil {
+		t.Fatalf("seed employee: %v", err)
+	}
+	location := time.FixedZone("WIB", 7*60*60)
+	// The default working day ends at 17:00, so 19:00 is two hours past it.
+	in := time.Date(2026, 8, 3, 8, 0, 0, 0, location)
+	out := time.Date(2026, 8, 3, 19, 0, 0, 0, location)
+	minutes := 660
+	if err := store.CreateAttendance(t.Context(), &model.Attendance{
+		AbsensiID: "ABS-OT", UserID: karyawan.UserID, NRP: karyawan.NRP,
+		NamaLengkap: karyawan.NamaLengkap, Jabatan: karyawan.Jabatan,
+		TanggalAbsensi: "2026-08-03", ClockInAt: in, ClockOutAt: &out, DurasiMenit: &minutes,
+		StatusAbsensi: model.AttendanceSelesai,
+	}); err != nil {
+		t.Fatalf("seed overtime day: %v", err)
+	}
+	// A second day left open earns nothing however late it started.
+	if err := store.CreateAttendance(t.Context(), &model.Attendance{
+		AbsensiID: "ABS-OPEN", UserID: karyawan.UserID, NRP: karyawan.NRP,
+		NamaLengkap: karyawan.NamaLengkap, Jabatan: karyawan.Jabatan,
+		TanggalAbsensi: "2026-08-04",
+		ClockInAt:      time.Date(2026, 8, 4, 8, 0, 0, 0, location),
+		StatusAbsensi:  model.AttendanceBelumClockOut,
+	}); err != nil {
+		t.Fatalf("seed open day: %v", err)
+	}
+
+	page := fetchAuthedPage(t, hr, testServer.URL+"/hr/performance?month=2026-08&jabatan=Surveyor")
+	if !strings.Contains(page, "Lembur") {
+		t.Fatal("the table has no overtime column")
+	}
+	if !strings.Contains(page, ">2j<") {
+		t.Fatalf("the overtime total is not the two hours worked past closing:\n%s", firstLines(page))
+	}
+}
+
 // The jabatan filter narrows the table the same way the export's does.
 func TestHRPerformanceFiltersByJabatan(t *testing.T) {
 	testServer := newTestServer(t)

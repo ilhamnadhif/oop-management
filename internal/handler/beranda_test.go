@@ -46,7 +46,7 @@ func TestDashboardSummarisesOwnAttendance(t *testing.T) {
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/dashboard")
 	for _, fragment := range []string{
-		"HARI HADIR", "TOTAL JAM KERJA", "RATA-RATA PER HARI", "BELUM CLOCK OUT",
+		"HARI HADIR", "TOTAL JAM KERJA", "RATA-RATA PER HARI",
 		"RIWAYAT KEHADIRAN", "JAM KERJA 14 HARI TERAKHIR",
 		// Two days, seventeen hours between them, so an average of 8.5.
 		`<p class="kpi-value">2</p>`, "17.0 <small>jam</small>", "8.5 <small>jam</small>",
@@ -108,10 +108,10 @@ func TestDashboardCountsAgainstTheWorkingDay(t *testing.T) {
 			t.Fatalf("the dashboard is missing %q", fragment)
 		}
 	}
-	// The 2026-08-04 day ran to 19:00, two hours past the working day. Nothing
-	// on the dashboard accounts for overtime, so nothing may report it either.
-	if strings.Contains(strings.ToLower(page), "lembur") {
-		t.Fatal("the dashboard still reports overtime")
+	// The 2026-08-04 day ran to 19:00, two hours past the working day, and the
+	// dashboard now says so rather than leaving the hours unaccounted for.
+	if !strings.Contains(page, "Lembur 2j") {
+		t.Fatal("the dashboard does not report the overtime worked")
 	}
 }
 
@@ -126,19 +126,28 @@ func TestAbsensiStatesTheWorkingDay(t *testing.T) {
 	}
 }
 
-// Once leave is tracked, the personal dashboard links to the real request flow
-// and reports an explicit summary instead of the old unavailable placeholder.
-func TestDashboardShowsPersonalLeaveSummary(t *testing.T) {
+// Cuti and izin have a menu of their own, so the dashboard leaves them to it
+// and stays about the one question it answers: how is my own attendance going.
+func TestDashboardLeavesCutiToItsOwnMenu(t *testing.T) {
 	testServer := newTestServer(t)
-	page := fetchAuthedPage(t, loggedInClient(t, testServer), testServer.URL+"/dashboard")
+	client := loggedInClient(t, testServer)
+	page := fetchAuthedPage(t, client, testServer.URL+"/dashboard")
 
-	for _, fragment := range []string{"CUTI &amp; IZIN", "Ringkasan leave saya", `href="/leave/request"`, "Hari disetujui tahun", "Menunggu approval"} {
-		if !strings.Contains(page, fragment) {
-			t.Fatalf("the dashboard leave summary is missing %q", fragment)
+	for _, obsolete := range []string{"Ringkasan leave saya", "Hari disetujui tahun", "Ajukan leave"} {
+		if strings.Contains(page, obsolete) {
+			t.Fatalf("the dashboard still carries the leave summary: %q", obsolete)
 		}
 	}
-	if strings.Contains(page, "belum dicatat di aplikasi ini") {
-		t.Fatal("the dashboard still claims that leave is untracked")
+	// The menu is the way there, and it is still one click away.
+	if !strings.Contains(navSection(t, page), `href="/leave/request"`) {
+		t.Fatal("the menu no longer leads to the leave request page")
+	}
+	// The summary itself did not go anywhere; it lives on that page.
+	request := fetchAuthedPage(t, client, testServer.URL+"/leave/request")
+	for _, fragment := range []string{"Hari disetujui", "Menunggu approval"} {
+		if !strings.Contains(request, fragment) {
+			t.Fatalf("the leave request page is missing %q", fragment)
+		}
 	}
 }
 
