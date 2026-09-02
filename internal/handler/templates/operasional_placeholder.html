@@ -1,0 +1,21 @@
+{{/* Every Operasional page renders this until it has something to show. The
+     menu exists first so a project can decide whether it wants the module at
+     all, and so the shape of the section is visible while it is being built. */}}
+{{define "operasional_placeholder"}}
+{{template "appShellOpen" .}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "wallet"}}OPERASIONAL</p>
+        <h2>{{.PageTitle}}</h2>
+      </div>
+    </div>
+    {{/* Said plainly: nothing is broken and nothing is missing, the page has
+         not been built yet. */}}
+    <p class="panel-empty">
+      Halaman ini belum berisi apa-apa. Menunya sudah disiapkan, isinya menyusul.
+    </p>
+  </section>
+{{template "appShellClose" .}}
+{{template "pageFoot" .}}
+{{end}}

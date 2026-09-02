@@ -68,6 +68,22 @@ var navItems = []NavItem{
 		{Key: "nota-export", Label: "Export Data", Path: "/nota/export", Icon: "save",
 			Lede: "Unduh laporan nota bertanda tangan dalam XLSX atau PDF."},
 	}},
+	// Operasional is what the site spends to keep running, as against Nota,
+	// which is what it spent on a particular purchase. The pages are empty for
+	// now; the menu is here so a project can switch it on and off before there
+	// is anything under it.
+	{Key: "operasional", Label: "Operasional", Icon: "wallet", Children: []NavItem{
+		{Key: "operasional-gaji", Label: "Gaji", Path: "/operasional/gaji", Icon: "users",
+			Lede: "Gaji karyawan project ini, dihitung dari absensi."},
+		{Key: "operasional-makan", Label: "Makan", Path: "/operasional/makan", Icon: "receipt",
+			Lede: "Biaya makan harian karyawan di site."},
+		{Key: "operasional-sewa-a2b", Label: "Bayar Sewa A2B", Path: "/operasional/sewa-a2b", Icon: "cube",
+			Lede: "Pembayaran sewa alat berat kepada vendornya."},
+		{Key: "operasional-sewa-dt", Label: "Bayar Sewa DT", Path: "/operasional/sewa-dt", Icon: "truck",
+			Lede: "Pembayaran sewa dump truck kepada vendornya."},
+		{Key: "operasional-lain", Label: "Pengeluaran Lain-lain", Path: "/operasional/lain-lain", Icon: "list",
+			Lede: "Pengeluaran operasional yang tidak masuk keempat pos di atas."},
+	}},
 	{Key: "unit", Label: "Unit", Icon: "truck", Children: []NavItem{
 		{Key: "unit-overview", Label: "Overview", Path: "/unit/overview", Icon: "activity",
 			Lede: "Ringkasan isi daftar unit DT dan alat berat A2B."},
@@ -116,6 +132,9 @@ var menuAccess = map[string][]string{
 	// the same positions as the unit register.
 	"a2b":  {"Surveyor", "Produksi", "SPV", "Logistik"},
 	"nota": {"HR"},
+	// HR keeps the payroll and the meal money; SPV signs off the machines the
+	// rental is paid for. Management reaches every menu before this map is read.
+	"operasional": {"HR", "SPV"},
 	// Nobody but Management, which CanAccess lets through before this map is
 	// consulted. An empty list is how a menu is closed to every other position.
 	"project-settings": {},

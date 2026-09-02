@@ -449,6 +449,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/nota/rekonsiliasi", s.handleRekonsiliasi)
 	mux.HandleFunc("/nota/export", s.handleNotaExport)
 	mux.HandleFunc("/nota/export/download", s.handleNotaDownload)
+	// The Operasional pages are placeholders for now, one route each so that
+	// access and the project's menu switch already apply per page.
+	mux.HandleFunc("/operasional/gaji", s.operasionalPage("operasional-gaji"))
+	mux.HandleFunc("/operasional/makan", s.operasionalPage("operasional-makan"))
+	mux.HandleFunc("/operasional/sewa-a2b", s.operasionalPage("operasional-sewa-a2b"))
+	mux.HandleFunc("/operasional/sewa-dt", s.operasionalPage("operasional-sewa-dt"))
+	mux.HandleFunc("/operasional/lain-lain", s.operasionalPage("operasional-lain"))
 	mux.HandleFunc("/absensi/clock-in", s.handleClockIn)
 	mux.HandleFunc("/absensi/clock-out", s.handleClockOut)
 	mux.HandleFunc("/healthz", s.handleHealth)
