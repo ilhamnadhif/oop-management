@@ -71,8 +71,9 @@ func TestHRPerformanceListsEveryActiveEmployee(t *testing.T) {
 // The percentage is read down the column at a glance, so it carries the colour
 // rather than only the number: green at 80 and above, amber from 60, red below.
 //
-// The fixture reads on 7 August, and the month still running owes only the days
-// that have passed, so this employee owes the first seven days of the month.
+// The fixture reads on 7 August. A day still running is nobody's absence, so
+// the six finished days are what can be missed; attendance on the seventh still
+// counts, which is why a full week reads the same as the six before it.
 func TestHRPerformanceBadgesTheAttendanceRate(t *testing.T) {
 	for _, testCase := range []struct {
 		name string
@@ -80,10 +81,11 @@ func TestHRPerformanceBadgesTheAttendanceRate(t *testing.T) {
 		chip string
 		rate string
 	}{
-		{name: "seven of seven is green", days: 7, chip: "approved", rate: "100%"},
-		{name: "six of seven is green", days: 6, chip: "approved", rate: "85.71%"},
-		{name: "five of seven is amber", days: 5, chip: "pending", rate: "71.43%"},
-		{name: "four of seven is red", days: 4, chip: "rejected", rate: "57.14%"},
+		{name: "every finished day and today is green", days: 7, chip: "approved", rate: "100%"},
+		{name: "every finished day is green", days: 6, chip: "approved", rate: "100%"},
+		{name: "five of six is green", days: 5, chip: "approved", rate: "83.33%"},
+		{name: "four of six is amber", days: 4, chip: "pending", rate: "66.67%"},
+		{name: "three of six is red", days: 3, chip: "rejected", rate: "50%"},
 		{name: "nothing attended is red", days: 0, chip: "rejected", rate: "0%"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

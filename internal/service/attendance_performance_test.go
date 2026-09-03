@@ -210,3 +210,92 @@ func TestMonthlyAbsensiCountsApprovedLeaveAsAttendance(t *testing.T) {
 		t.Fatalf("persentase = %v, want 100: approved leave does not lower it", row.Persentase)
 	}
 }
+
+// A day still running is nobody's absence. Somebody who has not clocked in at
+// nine this morning has not missed the day; counting it as missed dragged the
+// attendance rate down for a day nobody has finished.
+func TestMonthlyAbsensiDoesNotCountTodayAsAbsent(t *testing.T) {
+	store := repository.NewTestRepository()
+	service := newMonthlyAttendanceService(store) // now: 2026-08-10
+	present := leaveUser("usr_present", "2001", "Budi Hartono", "Surveyor", "2026-01-02")
+	missing := leaveUser("usr_missing", "2002", "Cahyo Nugroho", "Surveyor", "2026-01-02")
+	createFixtureUser(t, store, present)
+	createFixtureUser(t, store, missing)
+
+	// Both attended every day up to yesterday; only one has clocked in today.
+	for day := 1; day <= 9; day++ {
+		seedMonthlyAttendance(t, store, present, fmt.Sprintf("2026-08-%02d", day))
+		seedMonthlyAttendance(t, store, missing, fmt.Sprintf("2026-08-%02d", day))
+	}
+	seedMonthlyAttendance(t, store, present, "2026-08-10")
+
+	report, err := service.BuildMonthlyAbsensi(context.Background(), "2026-08", "")
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	rows := make(map[string]MonthlyAbsensiRow, len(report.Rows))
+	for _, row := range report.Rows {
+		rows[row.Nama] = row
+	}
+
+	// The one who clocked in today has that day counted: it happened.
+	if got := rows["Budi Hartono"]; got.Hadir != 10 || got.TidakAbsen != 0 || got.Persentase != 100 {
+		t.Fatalf("present = hadir %d, tidak absen %d, %v%%, want 10/0/100",
+			got.Hadir, got.TidakAbsen, got.Persentase)
+	}
+	// The one who has not is neither present nor absent today - the day is not
+	// over - so nine of nine is still a perfect record.
+	if got := rows["Cahyo Nugroho"]; got.Hadir != 9 || got.TidakAbsen != 0 || got.Persentase != 100 {
+		t.Fatalf("not yet in = hadir %d, tidak absen %d, %v%%, want 9/0/100",
+			got.Hadir, got.TidakAbsen, got.Persentase)
+	}
+}
+
+// Yesterday is over, so a day missed then is missed.
+func TestMonthlyAbsensiStillCountsAbsenceOnFinishedDays(t *testing.T) {
+	store := repository.NewTestRepository()
+	service := newMonthlyAttendanceService(store) // now: 2026-08-10
+	user := leaveUser("usr_survey", "2001", "Budi Hartono", "Surveyor", "2026-01-02")
+	createFixtureUser(t, store, user)
+
+	// Eight of the nine finished days; the ninth was missed.
+	for day := 1; day <= 8; day++ {
+		seedMonthlyAttendance(t, store, user, fmt.Sprintf("2026-08-%02d", day))
+	}
+
+	report, err := service.BuildMonthlyAbsensi(context.Background(), "2026-08", "")
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	row := report.Rows[0]
+	if row.Hadir != 8 || row.TidakAbsen != 1 {
+		t.Fatalf("hadir %d, tidak absen %d, want 8 and the ninth missed", row.Hadir, row.TidakAbsen)
+	}
+	if row.Persentase != 88.89 {
+		t.Fatalf("persentase = %v, want 8 of 9", row.Persentase)
+	}
+}
+
+// Approved leave today counts the same way attendance today does: it is a
+// fact about the day already, not something the day has to finish to settle.
+func TestMonthlyAbsensiCountsLeaveTakenToday(t *testing.T) {
+	store := repository.NewTestRepository()
+	service := newMonthlyAttendanceService(store) // now: 2026-08-10
+	user := leaveUser("usr_survey", "2001", "Budi Hartono", "Surveyor", "2026-01-02")
+	createFixtureUser(t, store, user)
+
+	for day := 1; day <= 9; day++ {
+		seedMonthlyAttendance(t, store, user, fmt.Sprintf("2026-08-%02d", day))
+	}
+	seedApprovedLeave(t, store, "LVE-TODAY", user, model.LeaveJenisIzin, "2026-08-10", "2026-08-10")
+
+	report, err := service.BuildMonthlyAbsensi(context.Background(), "2026-08", "")
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	row := report.Rows[0]
+	if row.Izin != 1 || row.TidakAbsen != 0 || row.Persentase != 100 {
+		t.Fatalf("izin %d, tidak absen %d, %v%%, want today's leave counted",
+			row.Izin, row.TidakAbsen, row.Persentase)
+	}
+}

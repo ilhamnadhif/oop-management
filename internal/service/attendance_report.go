@@ -155,8 +155,9 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 	// still spans the whole month - the export prints a calendar - but a day
 	// nobody has lived through yet is not an absence, and counting it as one
 	// read a perfect record as a handful of percent early in the month.
+	today := s.now().In(s.location).Format("2006-01-02")
 	owedTo := to
-	if today := s.now().In(s.location).Format("2006-01-02"); today < owedTo {
+	if today < owedTo {
 		owedTo = today
 	}
 
@@ -184,6 +185,12 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 			// Leave approved in advance is still worth showing on the calendar;
 			// it is only the tallies that wait for the day to arrive.
 			counted := day <= owedTo
+			// Today is not anybody's absence. Somebody who has not clocked in
+			// by nine this morning has not missed the day, and counting it as
+			// missed dragged the attendance rate down for a day nobody has
+			// finished. Attendance and approved leave today still count: those
+			// are facts about the day already.
+			absenceCounted := counted && day < today
 			switch {
 			case present[user.UserID][day]:
 				row.Hari[i] = absensiHadirMark
@@ -213,7 +220,7 @@ func (s *AttendanceService) BuildMonthlyAbsensi(ctx context.Context, month, jaba
 					row.Cuti++
 				}
 			default:
-				if counted {
+				if absenceCounted {
 					row.TidakAbsen++
 				}
 			}
