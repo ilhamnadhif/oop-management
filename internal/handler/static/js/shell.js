@@ -1,3 +1,75 @@
+// The sidebar keeps where it was scrolled to. Every page here is a fresh
+// server render, so following a link rebuilds the menu from the top and throws
+// away the place somebody had scrolled to - which on a long menu means hunting
+// for the same spot after every click.
+//
+// The position is kept per tab rather than per browser: two tabs open on
+// different parts of the app should not drag each other's menu about. It is
+// forgotten when the tab closes, so a fresh visit starts at the top.
+(() => {
+  const sidebar = document.querySelector("#appSidebar");
+  if (!sidebar) return;
+
+  // Which element scrolls depends on the width: the nav takes the overflow on
+  // a desktop, the whole sidebar on a narrow screen. Both are remembered, and
+  // whichever is not scrolling simply stays at nought.
+  const panes = [
+    { key: "sidebar-scroll", node: sidebar },
+    { key: "sidebar-nav-scroll", node: sidebar.querySelector(".sidebar-nav") },
+  ].filter((pane) => pane.node);
+
+  // Storage is unavailable in some privacy modes, and a menu that will not
+  // scroll is a worse failure than a menu that forgets.
+  const read = (key) => {
+    try {
+      return Number.parseInt(window.sessionStorage.getItem(key) || "", 10);
+    } catch (error) {
+      return Number.NaN;
+    }
+  };
+  const write = (key, value) => {
+    try {
+      window.sessionStorage.setItem(key, String(value));
+    } catch (error) {
+      /* nothing to do: the position is a convenience, not the page */
+    }
+  };
+
+  const restore = () => {
+    for (const pane of panes) {
+      const saved = read(pane.key);
+      if (Number.isFinite(saved) && saved > 0) pane.node.scrollTop = saved;
+    }
+  };
+  const remember = () => {
+    for (const pane of panes) write(pane.key, pane.node.scrollTop);
+  };
+
+  restore();
+  // Coming back through the history cache restores the whole page, including
+  // the scroll, so this only has to cover the case where it does not.
+  window.addEventListener("pageshow", restore);
+
+  let queued = false;
+  for (const pane of panes) {
+    pane.node.addEventListener(
+      "scroll",
+      () => {
+        if (queued) return;
+        queued = true;
+        window.requestAnimationFrame(() => {
+          queued = false;
+          remember();
+        });
+      },
+      { passive: true }
+    );
+  }
+  // A click may leave before the next frame runs, so the position is written
+  // once more on the way out.
+  window.addEventListener("pagehide", remember);
+})();
+
 (() => {
   const sidebar = document.querySelector("#appSidebar");
   const toggle = document.querySelector("#menuToggle");
