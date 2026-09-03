@@ -311,7 +311,10 @@ func drawTotals(pdf *fpdf.Fpdf, table Table, metrics pdfMetrics) {
 	if pdf.GetY()+6 > pageHeight-bottomMargin {
 		pdf.AddPage()
 	}
-	pdf.CellFormat(labelWidth, 6, tr(fmt.Sprintf("TOTAL  (%d baris)", len(table.Rows))), "1", 0, "R", true, 0, "")
+	// Centred in the block it spans: the label belongs to the whole row rather
+	// than to the column it happens to end against. It carried a row count
+	// once, which the numbered first column already gives.
+	pdf.CellFormat(labelWidth, 6, tr("TOTAL"), "1", 0, "C", true, 0, "")
 	for i := start; i < len(table.Columns); i++ {
 		text := ""
 		if value, ok := table.Totals[i]; ok {

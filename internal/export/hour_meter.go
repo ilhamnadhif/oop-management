@@ -1,6 +1,7 @@
 package export
 
 import (
+	"math"
 	"strconv"
 
 	"opp-management/internal/model"
@@ -18,11 +19,13 @@ var hourMeterColumns = []Column{
 	{Header: "HM Awal", Width: 48, Numeric: true, Decimals: 2},
 	{Header: "HM Akhir", Width: 48, Numeric: true, Decimals: 2},
 	{Header: "Total HM", Width: 48, Numeric: true, Decimals: 2},
-	{Header: "PA", Width: 35, Numeric: true, Decimals: 1},
-	{Header: "UA", Width: 35, Numeric: true, Decimals: 1},
+	{Header: "PA (%)", Width: 35, Numeric: true, Decimals: 1},
+	{Header: "UA (%)", Width: 35, Numeric: true, Decimals: 1},
 }
 
-// HourMeterTable describes the hour meter readings for both formats.
+// HourMeterTable describes the hour meter readings for both formats. It closes
+// with a summary row: the hours worked add up, while PA and UA are averaged,
+// because a column of percentages added together is a number about nothing.
 func HourMeterTable(rows []model.HourMeter) Table {
 	table := Table{
 		SheetName: "Input HM",
@@ -30,6 +33,7 @@ func HourMeterTable(rows []model.HourMeter) Table {
 		Rows:      make([][]string, 0, len(rows)),
 		Values:    make([][]interface{}, 0, len(rows)),
 	}
+	var totalHM, sumPA, sumUA float64
 	for i, row := range rows {
 		number := i + 1
 		table.Rows = append(table.Rows, []string{
@@ -42,6 +46,19 @@ func HourMeterTable(rows []model.HourMeter) Table {
 			row.HMAwal, row.HMAkhir, row.TotalHM,
 			row.PA, row.UA,
 		})
+		totalHM += row.TotalHM
+		sumPA += row.PA
+		sumUA += row.UA
+	}
+	// Nothing read means nothing to summarise. A row of noughts would read as a
+	// fleet that did no work rather than as an empty range.
+	if len(rows) > 0 {
+		count := float64(len(rows))
+		table.Totals = map[int]float64{
+			4: roundExport(totalHM),
+			5: roundExport(sumPA / count),
+			6: roundExport(sumUA / count),
+		}
 	}
 	return table
 }
@@ -54,4 +71,10 @@ func HourMeterXLSX(rows []model.HourMeter, meta Meta) ([]byte, error) {
 // HourMeterPDF prints the same readings as the signable report.
 func HourMeterPDF(rows []model.HourMeter, meta Meta) ([]byte, error) {
 	return RenderPDF(HourMeterTable(rows), meta)
+}
+
+// roundExport trims the drift a running sum picks up, so a total of hours reads
+// as the hours rather than as 13.999999999999998.
+func roundExport(value float64) float64 {
+	return math.Round(value*100) / 100
 }

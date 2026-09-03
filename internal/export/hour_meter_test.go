@@ -59,7 +59,9 @@ func TestHourMeterColumnsNameTheReading(t *testing.T) {
 	for _, column := range hourMeterColumns {
 		headers = append(headers, column.Header)
 	}
-	want := []string{"No", "Tanggal", "HM Awal", "HM Akhir", "Total HM", "PA", "UA"}
+	// PA and UA are percentages, and the header says so: the column of bare
+	// numbers reads as hours otherwise, which is what sits beside it.
+	want := []string{"No", "Tanggal", "HM Awal", "HM Akhir", "Total HM", "PA (%)", "UA (%)"}
 	for i := range want {
 		if headers[i] != want[i] {
 			t.Fatalf("column %d = %q, want %q", i, headers[i], want[i])
@@ -96,5 +98,38 @@ func TestHourMeterSurvivesNoRows(t *testing.T) {
 	}
 	if _, err := HourMeterXLSX(nil, unitMeta("Input HM")); err != nil {
 		t.Fatalf("empty hour meter xlsx: %v", err)
+	}
+}
+
+// The report closes with a summary row. Hours add up; the availability figures
+// do not, so they are averaged - a column of percentages summed to 155% would
+// be a number about nothing.
+func TestHourMeterTotalsHoursAndAveragesAvailability(t *testing.T) {
+	table := HourMeterTable(hourMeterFixtures())
+
+	if got := table.Totals[4]; got != 14 {
+		t.Fatalf("total hm = %v, want 8 + 6", got)
+	}
+	if got := table.Totals[5]; got != 77.5 {
+		t.Fatalf("pa = %v, want the mean of 80 and 75", got)
+	}
+	if got := table.Totals[6]; got != 71.25 {
+		t.Fatalf("ua = %v, want the mean of 80 and 62.5", got)
+	}
+	// The meter readings themselves are not summed: adding one machine's
+	// odometer to the next reading of it means nothing.
+	for _, column := range []int{0, 1, 2, 3} {
+		if _, summed := table.Totals[column]; summed {
+			t.Fatalf("column %d (%s) carries a meaningless total",
+				column, table.Columns[column].Header)
+		}
+	}
+}
+
+// A report with no readings has nothing to total, and a row of noughts would
+// read as a fleet that did no work rather than as an empty range.
+func TestHourMeterHasNoTotalsRowWithoutReadings(t *testing.T) {
+	if HourMeterTable(nil).hasTotals() {
+		t.Fatal("an empty report still prints a totals row")
 	}
 }

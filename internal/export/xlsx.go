@@ -238,7 +238,7 @@ func newStyles(file *excelize.File) (sheetStyles, error) {
 	if styles.totalLabel, err = file.NewStyle(&excelize.Style{
 		Font:      &excelize.Font{Bold: true},
 		Fill:      excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{"EEF3F5"}},
-		Alignment: &excelize.Alignment{Horizontal: "right"},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
 		Border:    cellBorder("DCE4E9"),
 	}); err != nil {
 		return styles, err

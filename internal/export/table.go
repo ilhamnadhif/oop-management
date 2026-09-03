@@ -13,8 +13,12 @@ type Table struct {
 	Rows   [][]string
 	Values [][]interface{}
 
-	// Totals maps a zero-based column index to its sum. The label spans every
-	// column before the first total.
+	// Totals maps a zero-based column index to the figure its summary row
+	// carries. The label spans every column before the first one.
+	//
+	// Most of the time these are sums. A report may put an average here
+	// instead, where a sum would mean nothing: a column of percentages added
+	// together is a number about nothing.
 	Totals map[int]float64
 
 	// FilterColumns limits the spreadsheet's autofilter to the leading columns
