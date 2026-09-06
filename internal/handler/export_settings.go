@@ -11,23 +11,25 @@ import (
 // exportLabels word each configurable export the way its own page is titled,
 // so the settings screen and the sidebar name the same thing.
 var exportLabels = map[model.ExportTypeKey]string{
-	model.ExportProduksi: "Laporan Produksi",
-	model.ExportNota:     "Laporan Nota",
-	model.ExportUnitDT:   "Daftar Unit DT",
-	model.ExportUnitA2B:  "Performance Unit A2B",
-	model.ExportInputHM:  "Input Hour Meter",
-	model.ExportAbsensi:  "Rekap Absensi Bulanan",
+	model.ExportProduksi:   "Laporan Produksi",
+	model.ExportNota:       "Laporan Nota",
+	model.ExportUnitDT:     "Daftar Unit DT",
+	model.ExportUnitA2B:    "Performance Unit A2B",
+	model.ExportInputHM:    "Input Hour Meter",
+	model.ExportFuelKeluar: "Fuel Keluar",
+	model.ExportAbsensi:    "Rekap Absensi Bulanan",
 }
 
 // exportLedes say what each report contains, so somebody switching one off can
 // tell what they are taking away.
 var exportLedes = map[model.ExportTypeKey]string{
-	model.ExportProduksi: "Ritase harian per unit, lengkap dengan tonase dan lokasinya.",
-	model.ExportNota:     "Rincian nota per item, dengan filter metode pembayaran.",
-	model.ExportUnitDT:   "Register dump truck: ukuran bak dan drivernya.",
-	model.ExportUnitA2B:  "Performance per alat berat: shift, total HM, fuel, fuel ratio, PA, UA.",
-	model.ExportInputHM:  "Pembacaan hour meter per bulan, dengan PA dan UA.",
-	model.ExportAbsensi:  "Matriks absensi bulanan per karyawan.",
+	model.ExportProduksi:   "Ritase harian per unit, lengkap dengan tonase dan lokasinya.",
+	model.ExportNota:       "Rincian nota per item, dengan filter metode pembayaran.",
+	model.ExportUnitDT:     "Register dump truck: ukuran bak dan drivernya.",
+	model.ExportUnitA2B:    "Performance per alat berat: shift, total HM, fuel, fuel ratio, PA, UA.",
+	model.ExportInputHM:    "Pembacaan hour meter per bulan, dengan PA dan UA.",
+	model.ExportFuelKeluar: "Pemakaian bahan bakar per alat berat, dengan pembacaan flow meter.",
+	model.ExportAbsensi:    "Matriks absensi bulanan per karyawan.",
 }
 
 // ExportChoice is one export type as the settings form shows it: whether the

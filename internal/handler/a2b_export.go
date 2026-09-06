@@ -40,7 +40,7 @@ type A2BExportPageData struct {
 	UnitOptions []UnitOption
 	// HMFrom, HMTo and HMUnit filter the hour meter report the same way the
 	// performance report is filtered; each left empty means all of it. They
-	// carry their own names in the query because one page holds two filters.
+	// carry their own names in the query because one page holds three filters.
 	HMFrom string
 	HMTo   string
 	HMUnit string
@@ -48,7 +48,17 @@ type A2BExportPageData struct {
 	HMPeriod string
 	HMRows   int
 	HMNote   string
-	Error    string
+
+	// The dispensing sheet is filtered the same way, under its own names.
+	FKAktif  bool
+	FKFrom   string
+	FKTo     string
+	FKUnit   string
+	FKPeriod string
+	FKRows   int
+	FKNote   string
+
+	Error string
 }
 
 // UnitOption is one machine in the performance filter's dropdown.
@@ -79,6 +89,12 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 		HMFrom:    strings.TrimSpace(r.URL.Query().Get("hm_from")),
 		HMTo:      strings.TrimSpace(r.URL.Query().Get("hm_to")),
 		HMUnit:    strings.TrimSpace(r.URL.Query().Get("hm_unit")),
+		FKAktif:   s.exportAktif(model.ExportFuelKeluar),
+		FKFrom:    strings.TrimSpace(r.URL.Query().Get("fk_from")),
+		FKTo:      strings.TrimSpace(r.URL.Query().Get("fk_to")),
+		FKUnit:    strings.TrimSpace(r.URL.Query().Get("fk_unit")),
+		FKNote: "Fuel keluar: satu baris per pemakaian, berisi pembacaan flow meter, " +
+			"liter yang keluar, hour meter alat berat, dan operatornya.",
 		HMNote: "Input hour meter: satu baris per pembacaan, berisi tanggal, HM awal, " +
 			"HM akhir, total HM, PA, dan UA.",
 	}
@@ -123,6 +139,23 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		data.HMRows = len(readings.Rows)
 		data.HMPeriod = exportPeriodLabel(readings.From, readings.To)
+	}
+
+	dispenses, err := s.fuelKeluar.ExportRows(r.Context(), data.FKFrom, data.FKTo, data.FKUnit)
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			if data.Error == "" {
+				data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
+			}
+		} else {
+			log.Printf("count fuel keluar for export: %v", err)
+			if data.Error == "" {
+				data.Error = "Gagal memuat data fuel keluar"
+			}
+		}
+	} else {
+		data.FKRows = len(dispenses.Rows)
+		data.FKPeriod = exportPeriodLabel(dispenses.From, dispenses.To)
 	}
 	s.render(w, "a2b_export", data, http.StatusOK)
 }
@@ -245,4 +278,59 @@ func (s *Server) handleA2BHMExportDownload(w http.ResponseWriter, r *http.Reques
 	// stale behind the person downloading it.
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(payload)
+}
+
+// handleFuelKeluarExportDownload streams the dispensing sheet as XLSX or PDF.
+// The range and the machine travel in the query; both left empty mean every
+// fill of every machine.
+func (s *Server) handleFuelKeluarExportDownload(w http.ResponseWriter, r *http.Request) {
+	s, _, _, ok := s.requireAccess(w, r, "a2b-export")
+	if !ok {
+		return
+	}
+	if !s.requireExportAktif(w, model.ExportFuelKeluar) {
+		return
+	}
+	format, ok := downloadFormat(w, r)
+	if !ok {
+		return
+	}
+	report, err := s.fuelKeluar.ExportRows(r.Context(),
+		r.URL.Query().Get("from"), r.URL.Query().Get("to"), r.URL.Query().Get("unit"))
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			http.Error(w, strings.TrimPrefix(err.Error(), "validation error: "), http.StatusUnprocessableEntity)
+			return
+		}
+		log.Printf("read fuel keluar for export: %v", err)
+		http.Error(w, "Gagal memuat data fuel keluar", http.StatusInternalServerError)
+		return
+	}
+
+	title := "Fuel Keluar"
+	if report.IDUnit != "" {
+		title += " - " + report.IDUnit
+	}
+	meta := s.exportMetaFor(model.ExportFuelKeluar, title, report.From, report.To)
+
+	var payload []byte
+	if format == "xlsx" {
+		payload, err = export.FuelKeluarXLSX(report.Rows, meta)
+	} else {
+		payload, err = export.FuelKeluarPDF(report.Rows, meta)
+	}
+	s.writeRegister(w, fuelKeluarFilename(report), format, payload, err)
+}
+
+// fuelKeluarFilename says which slice of the sheet a download holds, so two of
+// them do not land in the same folder under the same name.
+func fuelKeluarFilename(report *service.FuelKeluarExport) string {
+	name := "fuel-keluar"
+	if report.IDUnit != "" {
+		name += "-" + report.IDUnit
+	}
+	if report.From != "" || report.To != "" {
+		name += "-" + strings.Trim(report.From+"_"+report.To, "_")
+	}
+	return name
 }

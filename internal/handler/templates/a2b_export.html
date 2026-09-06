@@ -35,6 +35,7 @@
       {{if .HMFrom}}<input type="hidden" name="hm_from" value="{{.HMFrom}}">{{end}}
       {{if .HMTo}}<input type="hidden" name="hm_to" value="{{.HMTo}}">{{end}}
       {{if .HMUnit}}<input type="hidden" name="hm_unit" value="{{.HMUnit}}">{{end}}
+      {{template "a2bFuelKeluarFilters" .}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
       <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
@@ -82,9 +83,8 @@
           {{end}}
         </select>
       </div>
-      {{if .PerfFrom}}<input type="hidden" name="from" value="{{.PerfFrom}}">{{end}}
-      {{if .PerfTo}}<input type="hidden" name="to" value="{{.PerfTo}}">{{end}}
-      {{if .PerfUnit}}<input type="hidden" name="unit" value="{{.PerfUnit}}">{{end}}
+      {{template "a2bPerformanceFilters" .}}
+      {{template "a2bFuelKeluarFilters" .}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
       <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
@@ -103,6 +103,68 @@
     <p class="panel-empty">Tidak ada pembacaan hour meter pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
     {{end}}
   </section>
+  {{/* The dispensing sheet, filtered the same way as the two cards above it. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "fuel"}}FUEL KELUAR</p>
+        <h2>Export pemakaian bahan bakar</h2>
+      </div>
+    </div>
+    <form class="filter-form" method="get" action="/a2b/export">
+      <div>
+        <label for="fk-from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <input id="fk-from" name="fk_from" type="date" value="{{.FKFrom}}">
+      </div>
+      <div>
+        <label for="fk-to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <input id="fk-to" name="fk_to" type="date" value="{{.FKTo}}">
+      </div>
+      <div>
+        <label for="fk-unit">{{template "icon" "cube"}}Unit</label>
+        <select id="fk-unit" name="fk_unit">
+          <option value=""{{if not .FKUnit}} selected{{end}}>Semua unit</option>
+          {{range .UnitOptions}}
+          <option value="{{.ID}}"{{if eq $.FKUnit .ID}} selected{{end}}>{{.ID}} — {{.Nama}}</option>
+          {{end}}
+        </select>
+      </div>
+      {{template "a2bPerformanceFilters" .}}
+      {{if .HMFrom}}<input type="hidden" name="hm_from" value="{{.HMFrom}}">{{end}}
+      {{if .HMTo}}<input type="hidden" name="hm_to" value="{{.HMTo}}">{{end}}
+      {{if .HMUnit}}<input type="hidden" name="hm_unit" value="{{.HMUnit}}">{{end}}
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/a2b/export">Reset</a>
+      <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
+    </form>
+    {{if not .FKAktif}}
+    <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
+    {{else if .FKRows}}
+    <p class="panel-empty">
+      {{.FKRows}} pemakaian siap diunduh{{if .FKPeriod}} untuk {{.FKPeriod}}{{end}}. {{.FKNote}}
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="/a2b/export/fuel-keluar/download?format=xlsx{{if .FKFrom}}&amp;from={{.FKFrom}}{{end}}{{if .FKTo}}&amp;to={{.FKTo}}{{end}}{{if .FKUnit}}&amp;unit={{.FKUnit}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="/a2b/export/fuel-keluar/download?format=pdf{{if .FKFrom}}&amp;from={{.FKFrom}}{{end}}{{if .FKTo}}&amp;to={{.FKTo}}{{end}}{{if .FKUnit}}&amp;unit={{.FKUnit}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
+    </div>
+    {{else}}
+    <p class="panel-empty">Tidak ada pemakaian pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
+    {{end}}
+  </section>
 {{template "appShellClose" .}}
 {{template "pageFoot" .}}
+{{end}}
+
+{{/* Each card's filter form sends only its own fields, so it carries the other
+     cards' as hidden ones - otherwise applying a range here would reset them. */}}
+{{define "a2bPerformanceFilters"}}
+      {{if .PerfFrom}}<input type="hidden" name="from" value="{{.PerfFrom}}">{{end}}
+      {{if .PerfTo}}<input type="hidden" name="to" value="{{.PerfTo}}">{{end}}
+      {{if .PerfUnit}}<input type="hidden" name="unit" value="{{.PerfUnit}}">{{end}}
+{{end}}
+
+{{define "a2bFuelKeluarFilters"}}
+      {{if .FKFrom}}<input type="hidden" name="fk_from" value="{{.FKFrom}}">{{end}}
+      {{if .FKTo}}<input type="hidden" name="fk_to" value="{{.FKTo}}">{{end}}
+      {{if .FKUnit}}<input type="hidden" name="fk_unit" value="{{.FKUnit}}">{{end}}
 {{end}}

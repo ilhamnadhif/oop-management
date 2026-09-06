@@ -451,6 +451,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/a2b/export", s.handleA2BExport)
 	mux.HandleFunc("/a2b/export/download", s.handleA2BPerformanceDownload)
 	mux.HandleFunc("/a2b/export/hm/download", s.handleA2BHMExportDownload)
+	mux.HandleFunc("/a2b/export/fuel-keluar/download", s.handleFuelKeluarExportDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/nota", s.handleNota)

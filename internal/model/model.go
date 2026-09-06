@@ -207,18 +207,19 @@ type ExportTypeKey string
 // in the handler, which is where the export pages and the settings form both
 // reach.
 const (
-	ExportProduksi ExportTypeKey = "produksi"
-	ExportNota     ExportTypeKey = "nota"
-	ExportUnitDT   ExportTypeKey = "unit-dt"
-	ExportUnitA2B  ExportTypeKey = "unit-a2b"
-	ExportInputHM  ExportTypeKey = "input-hm"
-	ExportAbsensi  ExportTypeKey = "absensi"
+	ExportProduksi   ExportTypeKey = "produksi"
+	ExportNota       ExportTypeKey = "nota"
+	ExportUnitDT     ExportTypeKey = "unit-dt"
+	ExportUnitA2B    ExportTypeKey = "unit-a2b"
+	ExportInputHM    ExportTypeKey = "input-hm"
+	ExportFuelKeluar ExportTypeKey = "fuel-keluar"
+	ExportAbsensi    ExportTypeKey = "absensi"
 )
 
 // ExportTypeKeys is every configurable export, in the order the settings form
 // lists them.
 var ExportTypeKeys = []ExportTypeKey{
-	ExportProduksi, ExportNota, ExportUnitDT, ExportUnitA2B, ExportInputHM, ExportAbsensi,
+	ExportProduksi, ExportNota, ExportUnitDT, ExportUnitA2B, ExportInputHM, ExportFuelKeluar, ExportAbsensi,
 }
 
 // ExportConfigFor returns one export's config, or the defaults when the

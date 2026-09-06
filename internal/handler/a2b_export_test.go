@@ -281,3 +281,122 @@ func TestA2BExportsRequireASession(t *testing.T) {
 		}
 	}
 }
+
+// seedFuelKeluarRow files one dispense straight into a project's store, so the
+// export has something to count without going through the form's rules.
+func seedFuelKeluarRow(t *testing.T, store *repository.TestRepository, id, tanggal, idUnit string, liter float64) {
+	t.Helper()
+	if err := store.CreateFuelKeluar(context.Background(), &model.FuelKeluar{
+		FuelOutID: id, Tanggal: tanggal, IDUnit: idUnit, NamaUnit: "Excavator " + idUnit,
+		HMAwalFlowMeter: 100, HMAkhirFlowMeter: 100 + liter, Liter: liter, Operator: "kadal",
+	}); err != nil {
+		t.Fatalf("seed fuel keluar %s: %v", id, err)
+	}
+}
+
+// The page carries a third card for the dispensing sheet, filtered the same way
+// as the two above it.
+func TestA2BExportPageShowsTheFuelKeluarCard(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 400, 18.5)
+	seedFuelKeluarRow(t, store, "FO-1", "2026-08-07", "EXC-01", 150)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/export")
+	for _, want := range []string{
+		"FUEL KELUAR",
+		`name="fk_from"`, `name="fk_to"`, `name="fk_unit"`,
+		"/a2b/export/fuel-keluar/download?format=xlsx",
+		"/a2b/export/fuel-keluar/download?format=pdf",
+		"1 pemakaian siap diunduh",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the page is missing %q", want)
+		}
+	}
+}
+
+// The three cards keep their own filters: applying a range to one must not
+// reset the other two.
+func TestA2BExportCardsKeepEachOthersFilters(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 400, 18.5)
+	seedFuelKeluarRow(t, store, "FO-1", "2026-08-07", "EXC-01", 150)
+	seedFuelKeluarRow(t, store, "FO-2", "2026-09-02", "EXC-01", 200)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client,
+		testServer.URL+"/a2b/export?fk_from=2026-08-01&fk_to=2026-08-31&unit=EXC-01&hm_unit=EXC-01")
+	if !strings.Contains(page, "1 pemakaian siap diunduh") {
+		t.Fatalf("the range did not narrow the dispensing sheet:\n%s", firstLines(page))
+	}
+	// The other two cards' filters are carried as hidden fields, or applying
+	// this one would drop them.
+	for _, want := range []string{
+		`<input type="hidden" name="unit" value="EXC-01">`,
+		`<input type="hidden" name="hm_unit" value="EXC-01">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the page does not carry %q", want)
+		}
+	}
+}
+
+// The download carries its filters and answers as a file, and the name says
+// which slice of the sheet it holds.
+func TestFuelKeluarExportDownloadsBothFormats(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedFuelKeluarRow(t, store, "FO-1", "2026-08-07", "EXC-01", 150)
+	client := loggedInClient(t, testServer)
+
+	for format, magic := range map[string][]byte{"xlsx": []byte("PK"), "pdf": []byte("%PDF-")} {
+		response := downloadProduksi(t, client,
+			testServer.URL+"/a2b/export/fuel-keluar/download?format="+format+"&from=2026-08-01&to=2026-08-31&unit=EXC-01")
+		body := readBodyBytes(t, response)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d", format, response.StatusCode)
+		}
+		if !bytes.HasPrefix(body, magic) {
+			t.Fatalf("%s: body does not start with %q", format, magic)
+		}
+		if got := response.Header.Get("Content-Disposition"); !strings.Contains(got, "fuel-keluar-EXC-01-2026-08-01_2026-08-31."+format) {
+			t.Fatalf("%s: content disposition %q", format, got)
+		}
+	}
+}
+
+// A date that is not a date is refused rather than quietly ignored.
+func TestFuelKeluarExportRejectsAnInvalidDate(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	response, err := client.Get(testServer.URL + "/a2b/export/fuel-keluar/download?format=xlsx&from=bukan-tanggal")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", response.StatusCode)
+	}
+}
+
+// The dispensing sheet answers to its own project setting, so switching it off
+// holds at the URL and not only at the hidden button.
+func TestSwitchedOffFuelKeluarExportRefusesItsDownload(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedFuelKeluarRow(t, store, "FO-1", "2026-08-07", "EXC-01", 150)
+	client := loggedInClient(t, testServer)
+
+	response := saveExportConfig(t, client, testServer, store.ProjectList()[0].ProjectID, testProjectName,
+		map[string]string{"export_key": string(model.ExportFuelKeluar), "ttd_count": "1"})
+	response.Body.Close()
+
+	download, err := client.Get(testServer.URL + "/a2b/export/fuel-keluar/download?format=xlsx")
+	if err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	defer download.Body.Close()
+	if download.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 for a report the project switched off", download.StatusCode)
+	}
+}
