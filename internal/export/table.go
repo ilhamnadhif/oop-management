@@ -26,6 +26,15 @@ type Table struct {
 	// otherwise put a dropdown on all of them; zero means the whole table.
 	FilterColumns int
 
+	// Detail is the working behind the table, printed after the signature and
+	// written to a second sheet. A summary saying a machine ran fifty hours
+	// without saying which shifts those were has to be taken on trust; this is
+	// where the shifts go. Its SheetName names the section.
+	//
+	// It is one level deep on purpose: a detail carrying its own detail is a
+	// report that should have been two reports.
+	Detail *Table
+
 	// Attachments are the photos the PDF prints after the signature. They are
 	// PDF only: a spreadsheet with images embedded stops being a spreadsheet.
 	// A report with none simply leaves this empty.
@@ -51,4 +60,10 @@ func (t Table) totalWidth() float64 {
 		total += column.Width
 	}
 	return total
+}
+
+// hasDetail reports whether there is working to print behind the table. A
+// detail with no rows is nothing to show, not an empty section.
+func (t Table) hasDetail() bool {
+	return t.Detail != nil && len(t.Detail.Rows) > 0
 }

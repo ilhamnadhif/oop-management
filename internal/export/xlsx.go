@@ -18,26 +18,57 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 	file := excelize.NewFile()
 	defer file.Close()
 
-	sheet := table.SheetName
-	index, err := file.NewSheet(sheet)
-	if err != nil {
-		return nil, fmt.Errorf("create sheet: %w", err)
-	}
-	file.SetActiveSheet(index)
-	if err := file.DeleteSheet("Sheet1"); err != nil {
-		return nil, fmt.Errorf("remove default sheet: %w", err)
-	}
-
 	styles, err := newStyles(file)
 	if err != nil {
 		return nil, err
 	}
 
-	lastColumn, err := excelize.ColumnNumberToName(len(table.Columns))
-	if err != nil {
-		return nil, err
+	sheets := []Table{table}
+	// The working behind the table goes on a sheet of its own rather than
+	// under it: a second header halfway down a column breaks sorting and
+	// filtering, which is most of what a spreadsheet is for.
+	if table.hasDetail() {
+		sheets = append(sheets, *table.Detail)
+	}
+	for i, sheet := range sheets {
+		index, err := file.NewSheet(sheet.SheetName)
+		if err != nil {
+			return nil, fmt.Errorf("create sheet: %w", err)
+		}
+		if i == 0 {
+			file.SetActiveSheet(index)
+		}
+		if err := writeSheet(file, styles, sheet, meta); err != nil {
+			return nil, err
+		}
+	}
+	if err := file.DeleteSheet("Sheet1"); err != nil {
+		return nil, fmt.Errorf("remove default sheet: %w", err)
 	}
 
+	// A cell written as a formula has no cached value, so the workbook has to
+	// recompute it the moment it opens, or the percentage would sit blank.
+	fullCalc := true
+	if err := file.SetCalcProps(&excelize.CalcPropsOptions{FullCalcOnLoad: &fullCalc}); err != nil {
+		return nil, fmt.Errorf("set calc props: %w", err)
+	}
+
+	var buffer bytes.Buffer
+	if err := file.Write(&buffer); err != nil {
+		return nil, fmt.Errorf("write xlsx: %w", err)
+	}
+	return buffer.Bytes(), nil
+}
+
+// writeSheet lays one table onto one sheet: the letterhead, the frozen header,
+// the rows, and the summary line.
+func writeSheet(file *excelize.File, styles sheetStyles, table Table, meta Meta) error {
+	sheet := table.SheetName
+
+	lastColumn, err := excelize.ColumnNumberToName(len(table.Columns))
+	if err != nil {
+		return err
+	}
 	_ = file.SetCellValue(sheet, "A1", meta.Company)
 	_ = file.SetCellStyle(sheet, "A1", "A1", styles.title)
 	_ = file.MergeCell(sheet, "A1", lastColumn+"1")
@@ -55,7 +86,7 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 	for i, column := range table.Columns {
 		name, err := excelize.ColumnNumberToName(i + 1)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		cell := fmt.Sprintf("%s%d", name, headerRow)
 		_ = file.SetCellValue(sheet, cell, column.Header)
@@ -70,7 +101,7 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 		for j, value := range values {
 			name, err := excelize.ColumnNumberToName(j + 1)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			cell := fmt.Sprintf("%s%d", name, rowNumber)
 			if formula, ok := value.(Formula); ok {
@@ -87,7 +118,7 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 		start := table.totalsStart()
 		labelEnd, err := excelize.ColumnNumberToName(start)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		first := fmt.Sprintf("A%d", totalRow)
 		last := fmt.Sprintf("%s%d", labelEnd, totalRow)
@@ -98,7 +129,7 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 		for column, value := range table.Totals {
 			name, err := excelize.ColumnNumberToName(column + 1)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			cell := fmt.Sprintf("%s%d", name, totalRow)
 			_ = file.SetCellValue(sheet, cell, value)
@@ -113,31 +144,20 @@ func RenderXLSX(table Table, meta Meta) ([]byte, error) {
 		TopLeftCell: fmt.Sprintf("A%d", headerRow+1),
 		ActivePane:  "bottomLeft",
 	}); err != nil {
-		return nil, fmt.Errorf("freeze header: %w", err)
+		return fmt.Errorf("freeze header: %w", err)
 	}
 	if len(table.Values) > 0 {
 		filterEnd := lastColumn
 		if table.FilterColumns > 0 {
 			if filterEnd, err = excelize.ColumnNumberToName(table.FilterColumns); err != nil {
-				return nil, err
+				return err
 			}
 		}
 		_ = file.AutoFilter(sheet,
 			fmt.Sprintf("A%d:%s%d", headerRow, filterEnd, headerRow+len(table.Values)), nil)
 	}
 
-	// A cell written as a formula has no cached value, so the workbook has to
-	// recompute it the moment it opens, or the percentage would sit blank.
-	fullCalc := true
-	if err := file.SetCalcProps(&excelize.CalcPropsOptions{FullCalcOnLoad: &fullCalc}); err != nil {
-		return nil, fmt.Errorf("set calc props: %w", err)
-	}
-
-	var buffer bytes.Buffer
-	if err := file.Write(&buffer); err != nil {
-		return nil, fmt.Errorf("write xlsx: %w", err)
-	}
-	return buffer.Bytes(), nil
+	return nil
 }
 
 type sheetStyles struct {

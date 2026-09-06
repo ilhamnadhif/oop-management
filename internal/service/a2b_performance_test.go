@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"opp-management/internal/model"
 	"opp-management/internal/repository"
 )
 
@@ -100,5 +102,64 @@ func TestA2BPerformanceWithoutAnyReadings(t *testing.T) {
 	}
 	if len(report.Units) != 0 {
 		t.Fatalf("listed %d units, want none", len(report.Units))
+	}
+}
+
+// The summary says a machine ran fifty hours; the detail says which shifts
+// those were. Without it the figure has to be taken on trust.
+func TestA2BPerformanceCarriesTheReadingsBehindIt(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200")
+	seedFuelMachine(t, store, "bld02", "Bulldozer D6")
+	service := newA2BOverviewService(store, time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC))
+
+	seedReading(t, store, "exc01", "2026-08-05", 7, 245,
+		[]model.HourMeterStandby{{Variable: "ISTIRAHAT", Menit: 60}}, 0)
+	seedReading(t, store, "exc01", "2026-08-06", 6, 200, nil, 120)
+	seedReading(t, store, "bld02", "2026-08-06", 8, 300, nil, 0)
+
+	report, err := service.A2BPerformance(context.Background(), "", "", "", 720)
+	if err != nil {
+		t.Fatalf("build performance: %v", err)
+	}
+	if len(report.Readings) != 3 {
+		t.Fatalf("carried %d readings, want all three", len(report.Readings))
+	}
+	// Grouped by machine and then by day, so the detail reads down each unit's
+	// own run rather than jumping between them.
+	if report.Readings[0].IDUnit != "bld02" {
+		t.Fatalf("readings are not grouped by unit: %+v", report.Readings)
+	}
+	if report.Readings[1].Tanggal > report.Readings[2].Tanggal {
+		t.Fatalf("one unit's readings are not in date order: %+v", report.Readings[1:])
+	}
+}
+
+// The detail answers the same filters the summary does, or the two would
+// describe different months.
+func TestA2BPerformanceReadingsFollowTheFilters(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200")
+	seedFuelMachine(t, store, "bld02", "Bulldozer D6")
+	service := newA2BOverviewService(store, time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC))
+
+	seedReading(t, store, "exc01", "2026-07-30", 8, 100, nil, 0)
+	seedReading(t, store, "exc01", "2026-08-05", 7, 245, nil, 0)
+	seedReading(t, store, "bld02", "2026-08-06", 8, 300, nil, 0)
+
+	ranged, err := service.A2BPerformance(context.Background(), "2026-08-01", "2026-08-31", "", 720)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if len(ranged.Readings) != 2 {
+		t.Fatalf("carried %d readings, want the two inside the range", len(ranged.Readings))
+	}
+
+	one, err := service.A2BPerformance(context.Background(), "2026-08-01", "2026-08-31", "EXC01", 720)
+	if err != nil {
+		t.Fatalf("build for one unit: %v", err)
+	}
+	if len(one.Readings) != 1 || !strings.EqualFold(one.Readings[0].IDUnit, "exc01") {
+		t.Fatalf("the unit filter did not narrow the detail: %+v", one.Readings)
 	}
 }

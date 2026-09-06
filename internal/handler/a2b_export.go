@@ -203,9 +203,9 @@ func (s *Server) handleA2BPerformanceDownload(w http.ResponseWriter, r *http.Req
 
 	var payload []byte
 	if format == "xlsx" {
-		payload, err = export.A2BPerformanceXLSX(report.Units, meta)
+		payload, err = export.A2BPerformanceXLSX(report, meta)
 	} else {
-		payload, err = export.A2BPerformancePDF(report.Units, meta)
+		payload, err = export.A2BPerformancePDF(report, meta)
 	}
 	s.writeRegister(w, "performance-unit-a2b", format, payload, err)
 }

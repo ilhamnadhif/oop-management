@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+
+	"opp-management/internal/model"
 )
 
 // A2BPerformanceReport is the machine performance table as an export asks for
@@ -19,6 +22,10 @@ type A2BPerformanceReport struct {
 	// dropdown back where it was. Empty means the whole fleet.
 	IDUnit string
 	Units  []A2BUnitPerformance
+	// Readings are the shifts the summary was built from, grouped by machine
+	// and then by day. A report that says a machine ran fifty hours without
+	// saying which shifts those were has to be taken on trust.
+	Readings []model.HourMeter
 }
 
 // A2BPerformance builds the per-machine table for an export. Unlike the
@@ -57,14 +64,54 @@ func (s *UnitOverviewService) A2BPerformance(ctx context.Context, from, to, idUn
 	report := &A2BPerformanceReport{From: overview.From, To: overview.To, IDUnit: idUnit}
 	if idUnit == "" {
 		report.Units = overview.Units
-		return report, nil
-	}
-	for _, unit := range overview.Units {
-		if strings.EqualFold(strings.TrimSpace(unit.IDUnit), idUnit) {
-			report.Units = append(report.Units, unit)
+	} else {
+		for _, unit := range overview.Units {
+			if strings.EqualFold(strings.TrimSpace(unit.IDUnit), idUnit) {
+				report.Units = append(report.Units, unit)
+			}
 		}
 	}
+
+	readings, err := s.a2bReadingsIn(ctx, report.From, report.To, idUnit)
+	if err != nil {
+		return nil, err
+	}
+	report.Readings = readings
 	return report, nil
+}
+
+// a2bReadingsIn is the detail behind the summary: the shifts that fell inside
+// the range, for the machine asked for or for all of them. It answers the same
+// filters the summary does, or the two would describe different months.
+func (s *UnitOverviewService) a2bReadingsIn(ctx context.Context, from, to, idUnit string) ([]model.HourMeter, error) {
+	rows, err := s.store.ListHourMeter(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read hour meter: %w", err)
+	}
+	readings := make([]model.HourMeter, 0, len(rows))
+	for _, row := range rows {
+		tanggal := strings.TrimSpace(row.Tanggal)
+		if tanggal < from || tanggal > to {
+			continue
+		}
+		if idUnit != "" && !strings.EqualFold(strings.TrimSpace(row.IDUnit), idUnit) {
+			continue
+		}
+		readings = append(readings, row)
+	}
+	// Grouped by machine, then by day, so the detail reads down each unit's own
+	// run rather than jumping between them.
+	sort.SliceStable(readings, func(i, j int) bool {
+		left, right := strings.ToLower(readings[i].IDUnit), strings.ToLower(readings[j].IDUnit)
+		if left != right {
+			return left < right
+		}
+		if readings[i].Tanggal != readings[j].Tanggal {
+			return readings[i].Tanggal < readings[j].Tanggal
+		}
+		return readings[i].HMID < readings[j].HMID
+	})
+	return readings, nil
 }
 
 // a2bReadingRange is the first and last day anything was read. Both are empty

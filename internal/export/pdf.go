@@ -83,9 +83,14 @@ func renderPDF(table Table, meta Meta, metrics pdfMetrics) ([]byte, error) {
 		pdf.RegisterImageOptionsReader(logoName, fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(meta.Logo))
 	}
 
-	// The appendix pages carry the same letterhead but no table header: there
-	// is no table on them to name.
-	appendix := false
+	// What the header draws under the letterhead depends on which section the
+	// page belongs to: the report's own table, the working behind it, or the
+	// photos, which have no table header to draw at all.
+	//
+	// The row count in the letterhead follows the section too, or the detail
+	// pages would keep claiming the summary's row count.
+	section := &table
+	photos := false
 
 	// The header and footer run on every page, so a page torn out of the stack
 	// still says what it is and where it came from.
@@ -114,18 +119,21 @@ func renderPDF(table Table, meta Meta, metrics pdfMetrics) ([]byte, error) {
 		pdf.SetXY(pageWidth-pageMargin-70, top)
 		pdf.SetFont("Helvetica", "", 7.5)
 		pdf.CellFormat(70, 4, tr("Dicetak: "+formatIndonesianDate(meta.Generated)), "", 2, "R", false, 0, "")
-		pdf.CellFormat(70, 4, tr(fmt.Sprintf("%d baris", len(table.Rows))), "", 2, "R", false, 0, "")
+		pdf.CellFormat(70, 4, tr(fmt.Sprintf("%d baris", len(section.Rows))), "", 2, "R", false, 0, "")
 
 		pdf.SetDrawColor(23, 63, 95)
 		pdf.SetLineWidth(0.4)
 		pdf.Line(pageMargin, top+17, pageWidth-pageMargin, top+17)
 		pdf.SetY(top + 20)
 
-		if appendix {
-			drawAppendixHeading(pdf)
+		if photos {
+			drawAppendixHeading(pdf, "LAMPIRAN - FOTO KWITANSI")
 			return
 		}
-		drawTableHeader(pdf, table.Columns, metrics)
+		if section != &table {
+			drawAppendixHeading(pdf, "LAMPIRAN - "+strings.ToUpper(section.SheetName))
+		}
+		drawTableHeader(pdf, section.Columns, metrics)
 	})
 
 	pdf.SetFooterFunc(func() {
@@ -155,10 +163,23 @@ func renderPDF(table Table, meta Meta, metrics pdfMetrics) ([]byte, error) {
 		drawSignature(pdf, meta)
 	}
 
-	// The photos come after the signature: the signed figures are the report,
-	// and the evidence backs them up rather than interrupting them.
+	// The working comes after the signature: the signed figures are the report,
+	// and what they were built from backs them up rather than interrupting
+	// them. Same for the photos, which come last.
+	if table.hasDetail() {
+		section = table.Detail
+		pdf.AddPage()
+		pdf.SetFont("Helvetica", "", metrics.bodyFont)
+		for i, cells := range section.Rows {
+			drawRow(pdf, section.Columns, cells, i%2 == 1, metrics)
+		}
+		if section.hasTotals() {
+			drawTotals(pdf, *section, metrics)
+		}
+	}
+
 	if len(table.Attachments) > 0 {
-		appendix = true
+		photos = true
 		drawAttachments(pdf, table.Attachments)
 	}
 
@@ -327,12 +348,11 @@ func drawTotals(pdf *fpdf.Fpdf, table Table, metrics pdfMetrics) {
 
 // drawAppendixHeading names the section on every appendix page, so a page torn
 // from the stack is not mistaken for a loose photocopy.
-func drawAppendixHeading(pdf *fpdf.Fpdf) {
+func drawAppendixHeading(pdf *fpdf.Fpdf, title string) {
 	pdf.SetFont("Helvetica", "B", 8)
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFillColor(hexToRGB(headerFill))
-	pdf.CellFormat(pageWidth-2*pageMargin, 6,
-		tr("LAMPIRAN - FOTO KWITANSI"), "", 1, "L", true, 0, "")
+	pdf.CellFormat(pageWidth-2*pageMargin, 6, tr(title), "", 1, "L", true, 0, "")
 	pdf.SetTextColor(28, 40, 51)
 	pdf.Ln(2)
 }

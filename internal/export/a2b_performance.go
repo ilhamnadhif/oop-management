@@ -1,8 +1,12 @@
 package export
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
+	"opp-management/internal/model"
 	"opp-management/internal/service"
 )
 
@@ -62,12 +66,121 @@ func A2BPerformanceTable(units []service.A2BUnitPerformance) Table {
 	return table
 }
 
-// A2BPerformanceXLSX writes the performance table as a spreadsheet.
-func A2BPerformanceXLSX(units []service.A2BUnitPerformance, meta Meta) ([]byte, error) {
-	return RenderXLSX(A2BPerformanceTable(units), meta)
+// The detail behind the summary: one row per shift, in the order the machine
+// worked them. The machine's name is left out - the id names it, and the
+// summary above says which machine that is - to leave the width for the reasons
+// a shift was not spent working, which is what the availability figures are
+// actually explained by.
+var a2bReadingColumns = []Column{
+	{Header: "No", Width: 10},
+	{Header: "ID Unit", Width: 24},
+	{Header: "Tanggal", Width: 24},
+	{Header: "Shift", Width: 20},
+	{Header: "Operator", Width: 30},
+	{Header: "HM Awal", Width: 20, Numeric: true, Decimals: 2},
+	{Header: "HM Akhir", Width: 20, Numeric: true, Decimals: 2},
+	{Header: "Total HM", Width: 22, Numeric: true, Decimals: 2},
+	{Header: "PA (%)", Width: 18, Numeric: true, Decimals: 1},
+	{Header: "UA (%)", Width: 18, Numeric: true, Decimals: 1},
+	{Header: "Standby (m)", Width: 20, Numeric: true, Decimals: 0},
+	{Header: "Breakdown (m)", Width: 22, Numeric: true, Decimals: 0},
+	{Header: "Keterangan", Width: 33},
 }
 
-// A2BPerformancePDF prints the same table as the signable report.
-func A2BPerformancePDF(units []service.A2BUnitPerformance, meta Meta) ([]byte, error) {
-	return RenderPDF(A2BPerformanceTable(units), meta)
+// A2BReadingTable describes the shifts the summary was built from. Hours and
+// lost minutes add up; PA and UA do not, and are left out of the summary line
+// rather than printed as a sum that means nothing - the figures per machine are
+// in the table this is attached to.
+func A2BReadingTable(readings []model.HourMeter) Table {
+	table := Table{
+		SheetName: "Rincian Shift",
+		Columns:   a2bReadingColumns,
+		Rows:      make([][]string, 0, len(readings)),
+		Values:    make([][]interface{}, 0, len(readings)),
+	}
+	var hours, standby, breakdown float64
+	for i, row := range readings {
+		number := i + 1
+		reasons := stoppageReasons(row)
+		table.Rows = append(table.Rows, []string{
+			strconv.Itoa(number), row.IDUnit, row.Tanggal, row.Shift, row.Operator,
+			FormatFloat(row.HMAwal, 2), FormatFloat(row.HMAkhir, 2), FormatFloat(row.TotalHM, 2),
+			FormatFloat(row.PA, 1), FormatFloat(row.UA, 1),
+			FormatFloat(row.TotalStandby, 0), FormatFloat(row.TotalBreakdown, 0),
+			reasons,
+		})
+		table.Values = append(table.Values, []interface{}{
+			number, row.IDUnit, row.Tanggal, row.Shift, row.Operator,
+			row.HMAwal, row.HMAkhir, row.TotalHM,
+			row.PA, row.UA,
+			row.TotalStandby, row.TotalBreakdown,
+			reasons,
+		})
+		hours += row.TotalHM
+		standby += row.TotalStandby
+		breakdown += row.TotalBreakdown
+	}
+	if len(readings) > 0 {
+		table.Totals = map[int]float64{
+			7:  roundExport(hours),
+			10: roundExport(standby),
+			11: roundExport(breakdown),
+		}
+	}
+	return table
+}
+
+// stoppageReasons words why a shift was not spent working, standby and
+// breakdown together: they are the same question asked of the same shift, and
+// splitting them across two columns would leave both half empty.
+func stoppageReasons(row model.HourMeter) string {
+	minutes := make(map[string]float64)
+	order := make([]string, 0, len(row.Standby)+len(row.Breakdown))
+	add := func(variable string, menit float64) {
+		variable = strings.TrimSpace(variable)
+		if variable == "" || menit <= 0 {
+			return
+		}
+		if _, seen := minutes[variable]; !seen {
+			order = append(order, variable)
+		}
+		minutes[variable] += menit
+	}
+	for _, line := range row.Standby {
+		add(line.Variable, line.Menit)
+	}
+	for _, line := range row.Breakdown {
+		add(line.Variable, line.Menit)
+	}
+	// Longest first: the reason that cost the most is the one worth reading.
+	sort.SliceStable(order, func(i, j int) bool { return minutes[order[i]] > minutes[order[j]] })
+
+	parts := make([]string, 0, len(order))
+	for _, variable := range order {
+		parts = append(parts, fmt.Sprintf("%s %s m", variable, FormatFloat(minutes[variable], 0)))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// a2bPerformanceWithDetail is the summary with the shifts behind it attached,
+// which is what both formats render.
+func a2bPerformanceWithDetail(report *service.A2BPerformanceReport) Table {
+	table := A2BPerformanceTable(report.Units)
+	if len(report.Readings) > 0 {
+		detail := A2BReadingTable(report.Readings)
+		table.Detail = &detail
+	}
+	return table
+}
+
+// A2BPerformanceXLSX writes the performance table as a spreadsheet, with the
+// shifts behind it on a second sheet.
+func A2BPerformanceXLSX(report *service.A2BPerformanceReport, meta Meta) ([]byte, error) {
+	return RenderXLSX(a2bPerformanceWithDetail(report), meta)
+}
+
+// A2BPerformancePDF prints the same table as the signable report, with the
+// shifts behind it after the signature.
+func A2BPerformancePDF(report *service.A2BPerformanceReport, meta Meta) ([]byte, error) {
+	return RenderPDF(a2bPerformanceWithDetail(report), meta)
 }
