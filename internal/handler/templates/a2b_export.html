@@ -20,21 +20,11 @@
         <label for="perf-to">{{template "icon" "calendar"}}Sampai tanggal</label>
         <input id="perf-to" name="to" type="date" value="{{.PerfTo}}">
       </div>
-      <div>
-        <label for="perf-unit">{{template "icon" "cube"}}Unit</label>
-        <select id="perf-unit" name="unit">
-          <option value=""{{if not .PerfUnit}} selected{{end}}>Semua unit</option>
-          {{range .UnitOptions}}
-          <option value="{{.ID}}"{{if eq $.PerfUnit .ID}} selected{{end}}>{{.ID}} — {{.Nama}}</option>
-          {{end}}
-        </select>
-      </div>
+      {{template "unitPicker" .PerfPicker}}
       {{/* The filters below belong to the other card, and a GET form sends only
            its own fields. Carrying them here keeps that card where it was when
            somebody changes the range up here. */}}
-      {{if .HMFrom}}<input type="hidden" name="hm_from" value="{{.HMFrom}}">{{end}}
-      {{if .HMTo}}<input type="hidden" name="hm_to" value="{{.HMTo}}">{{end}}
-      {{if .HMUnit}}<input type="hidden" name="hm_unit" value="{{.HMUnit}}">{{end}}
+      {{template "a2bHourMeterFilters" .}}
       {{template "a2bFuelKeluarFilters" .}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
@@ -49,8 +39,8 @@
       blok tanda tangan.
     </p>
     <div class="action-row export-actions">
-      <a class="button primary" href="{{.BasePath}}/download?format=xlsx{{if .PerfFrom}}&amp;from={{.PerfFrom}}{{end}}{{if .PerfTo}}&amp;to={{.PerfTo}}{{end}}{{if .PerfUnit}}&amp;unit={{.PerfUnit}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
-      <a class="button subtle" href="{{.BasePath}}/download?format=pdf{{if .PerfFrom}}&amp;from={{.PerfFrom}}{{end}}{{if .PerfTo}}&amp;to={{.PerfTo}}{{end}}{{if .PerfUnit}}&amp;unit={{.PerfUnit}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
+      <a class="button primary" href="{{.BasePath}}/download?format=xlsx{{if .PerfFrom}}&amp;from={{.PerfFrom}}{{end}}{{if .PerfTo}}&amp;to={{.PerfTo}}{{end}}{{range .PerfUnits}}&amp;unit={{.}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="{{.BasePath}}/download?format=pdf{{if .PerfFrom}}&amp;from={{.PerfFrom}}{{end}}{{if .PerfTo}}&amp;to={{.PerfTo}}{{end}}{{range .PerfUnits}}&amp;unit={{.}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
     </div>
     {{else}}
     <p class="panel-empty">Tidak ada pembacaan hour meter pada rentang ini, jadi tidak ada yang bisa diunduh. Catat lewat <a href="/a2b/hm">Input HM</a>.</p>
@@ -74,15 +64,7 @@
         <label for="hm-to">{{template "icon" "calendar"}}Sampai tanggal</label>
         <input id="hm-to" name="hm_to" type="date" value="{{.HMTo}}">
       </div>
-      <div>
-        <label for="hm-unit">{{template "icon" "cube"}}Unit</label>
-        <select id="hm-unit" name="hm_unit">
-          <option value=""{{if not .HMUnit}} selected{{end}}>Semua unit</option>
-          {{range .UnitOptions}}
-          <option value="{{.ID}}"{{if eq $.HMUnit .ID}} selected{{end}}>{{.ID}} — {{.Nama}}</option>
-          {{end}}
-        </select>
-      </div>
+      {{template "unitPicker" .HMPicker}}
       {{template "a2bPerformanceFilters" .}}
       {{template "a2bFuelKeluarFilters" .}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
@@ -96,8 +78,8 @@
       {{.HMRows}} pembacaan siap diunduh{{if .HMPeriod}} untuk {{.HMPeriod}}{{end}}. {{.HMNote}}
     </p>
     <div class="action-row export-actions">
-      <a class="button primary" href="/a2b/export/hm/download?format=xlsx{{if .HMFrom}}&amp;from={{.HMFrom}}{{end}}{{if .HMTo}}&amp;to={{.HMTo}}{{end}}{{if .HMUnit}}&amp;unit={{.HMUnit}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
-      <a class="button subtle" href="/a2b/export/hm/download?format=pdf{{if .HMFrom}}&amp;from={{.HMFrom}}{{end}}{{if .HMTo}}&amp;to={{.HMTo}}{{end}}{{if .HMUnit}}&amp;unit={{.HMUnit}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
+      <a class="button primary" href="/a2b/export/hm/download?format=xlsx{{if .HMFrom}}&amp;from={{.HMFrom}}{{end}}{{if .HMTo}}&amp;to={{.HMTo}}{{end}}{{range .HMUnits}}&amp;unit={{.}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="/a2b/export/hm/download?format=pdf{{if .HMFrom}}&amp;from={{.HMFrom}}{{end}}{{if .HMTo}}&amp;to={{.HMTo}}{{end}}{{range .HMUnits}}&amp;unit={{.}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
     </div>
     {{else}}
     <p class="panel-empty">Tidak ada pembacaan hour meter pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
@@ -120,19 +102,9 @@
         <label for="fk-to">{{template "icon" "calendar"}}Sampai tanggal</label>
         <input id="fk-to" name="fk_to" type="date" value="{{.FKTo}}">
       </div>
-      <div>
-        <label for="fk-unit">{{template "icon" "cube"}}Unit</label>
-        <select id="fk-unit" name="fk_unit">
-          <option value=""{{if not .FKUnit}} selected{{end}}>Semua unit</option>
-          {{range .UnitOptions}}
-          <option value="{{.ID}}"{{if eq $.FKUnit .ID}} selected{{end}}>{{.ID}} — {{.Nama}}</option>
-          {{end}}
-        </select>
-      </div>
+      {{template "unitPicker" .FKPicker}}
       {{template "a2bPerformanceFilters" .}}
-      {{if .HMFrom}}<input type="hidden" name="hm_from" value="{{.HMFrom}}">{{end}}
-      {{if .HMTo}}<input type="hidden" name="hm_to" value="{{.HMTo}}">{{end}}
-      {{if .HMUnit}}<input type="hidden" name="hm_unit" value="{{.HMUnit}}">{{end}}
+      {{template "a2bHourMeterFilters" .}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
       <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
@@ -144,14 +116,15 @@
       {{.FKRows}} pemakaian siap diunduh{{if .FKPeriod}} untuk {{.FKPeriod}}{{end}}. {{.FKNote}}
     </p>
     <div class="action-row export-actions">
-      <a class="button primary" href="/a2b/export/fuel-keluar/download?format=xlsx{{if .FKFrom}}&amp;from={{.FKFrom}}{{end}}{{if .FKTo}}&amp;to={{.FKTo}}{{end}}{{if .FKUnit}}&amp;unit={{.FKUnit}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
-      <a class="button subtle" href="/a2b/export/fuel-keluar/download?format=pdf{{if .FKFrom}}&amp;from={{.FKFrom}}{{end}}{{if .FKTo}}&amp;to={{.FKTo}}{{end}}{{if .FKUnit}}&amp;unit={{.FKUnit}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
+      <a class="button primary" href="/a2b/export/fuel-keluar/download?format=xlsx{{if .FKFrom}}&amp;from={{.FKFrom}}{{end}}{{if .FKTo}}&amp;to={{.FKTo}}{{end}}{{range .FKUnits}}&amp;unit={{.}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="/a2b/export/fuel-keluar/download?format=pdf{{if .FKFrom}}&amp;from={{.FKFrom}}{{end}}{{if .FKTo}}&amp;to={{.FKTo}}{{end}}{{range .FKUnits}}&amp;unit={{.}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
     </div>
     {{else}}
     <p class="panel-empty">Tidak ada pemakaian pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
     {{end}}
   </section>
 {{template "appShellClose" .}}
+<script src="/static/js/unit-picker.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}
 
@@ -160,11 +133,57 @@
 {{define "a2bPerformanceFilters"}}
       {{if .PerfFrom}}<input type="hidden" name="from" value="{{.PerfFrom}}">{{end}}
       {{if .PerfTo}}<input type="hidden" name="to" value="{{.PerfTo}}">{{end}}
-      {{if .PerfUnit}}<input type="hidden" name="unit" value="{{.PerfUnit}}">{{end}}
+      {{range .PerfUnits}}<input type="hidden" name="unit" value="{{.}}">{{end}}
+{{end}}
+
+{{define "a2bHourMeterFilters"}}
+      {{if .HMFrom}}<input type="hidden" name="hm_from" value="{{.HMFrom}}">{{end}}
+      {{if .HMTo}}<input type="hidden" name="hm_to" value="{{.HMTo}}">{{end}}
+      {{range .HMUnits}}<input type="hidden" name="hm_unit" value="{{.}}">{{end}}
 {{end}}
 
 {{define "a2bFuelKeluarFilters"}}
       {{if .FKFrom}}<input type="hidden" name="fk_from" value="{{.FKFrom}}">{{end}}
       {{if .FKTo}}<input type="hidden" name="fk_to" value="{{.FKTo}}">{{end}}
-      {{if .FKUnit}}<input type="hidden" name="fk_unit" value="{{.FKUnit}}">{{end}}
+      {{range .FKUnits}}<input type="hidden" name="fk_unit" value="{{.}}">{{end}}
 {{end}}
+
+{{/* unitPicker is the machine filter the three export cards share: a list of
+     ticks with a search box over it, and a summary saying what is picked
+     without the list having to be open.
+
+     Ticks rather than a dropdown because a report is often about a handful of
+     machines, and a single-choice list makes that three downloads. Nothing
+     ticked means every machine, which is what a report nobody narrowed asks
+     for.
+
+     It works without the script: <details> opens and closes on its own and the
+     ticks post the same either way. The search box is hidden until the script
+     unhides it - a search box that does not search is worse than none. */}}
+{{define "unitPicker"}}
+<div class="unit-picker-field">
+  <label for="{{.Field}}-search">{{template "icon" "cube"}}Unit
+    {{template "fieldHelp" "Kosongkan untuk semua unit. Centang beberapa untuk melaporkan sekaligus."}}
+  </label>
+  <details class="unit-picker" data-unit-picker>
+    <summary>
+      <span data-unit-picker-summary>{{.SummaryLabel}}</span>
+      <svg class="group-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+    </summary>
+    <div class="unit-picker-body">
+      <input id="{{.Field}}-search" class="unit-picker-search" type="search"
+             placeholder="Cari unit…" autocomplete="off" data-unit-picker-search hidden>
+      <p class="hint unit-picker-empty" data-unit-picker-empty hidden>Tidak ada unit yang cocok.</p>
+      <div class="unit-picker-list">
+        {{range .Options}}
+        <label class="menu-option" data-unit-option="{{.ID}} {{.Nama}}">
+          <input type="checkbox" name="{{$.Field}}" value="{{.ID}}"{{if .Dipilih}} checked{{end}}>
+          <span><strong>{{.ID}}</strong><small>{{.Nama}}</small></span>
+        </label>
+        {{end}}
+      </div>
+    </div>
+  </details>
+</div>
+{{end}}
+

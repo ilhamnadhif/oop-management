@@ -400,3 +400,130 @@ func TestSwitchedOffFuelKeluarExportRefusesItsDownload(t *testing.T) {
 		t.Fatalf("status = %d, want 403 for a report the project switched off", download.StatusCode)
 	}
 }
+
+// The machine filter is a list of ticks with a search over it, not a dropdown:
+// a report is often about a handful of machines, and one choice at a time makes
+// that three downloads.
+func TestA2BExportUnitFiltersAreTickLists(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 400, 18.5)
+	seedMachine(t, store, 2, "BLD-02", "Caterpillar", "PIT B", 500, 26.0)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/export")
+	flat := strings.Join(strings.Fields(page), " ")
+	for _, field := range []string{"unit", "hm_unit", "fk_unit"} {
+		if !strings.Contains(flat, `type="checkbox" name="`+field+`" value="EXC-01"`) {
+			t.Fatalf("%s is not a tick list", field)
+		}
+		if !strings.Contains(flat, `id="`+field+`-search"`) {
+			t.Fatalf("%s has no search box", field)
+		}
+	}
+	// The list says what is picked without having to be opened.
+	if !strings.Contains(page, "Semua unit") {
+		t.Fatal("the closed filter does not say that nothing is narrowed")
+	}
+	// What an empty filter means is a note beside the label rather than a line
+	// of grey under every one of the three.
+	if !strings.Contains(page, "Penjelasan: Kosongkan untuk semua unit") {
+		t.Fatal("the filter does not explain what leaving it empty does")
+	}
+	if strings.Count(page, `class="hint">Kosongkan untuk semua unit`) != 0 {
+		t.Fatal("the note is still printed under the field as well")
+	}
+	// The script is what makes the search work, so it has to be on the page.
+	if !strings.Contains(page, `src="/static/js/unit-picker.js"`) {
+		t.Fatal("the page does not load the unit picker script")
+	}
+}
+
+// Two machines ticked is one report about both, and the page says so.
+func TestA2BExportFiltersToSeveralUnits(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	for i, id := range []string{"EXC-01", "BLD-02", "SVD-03"} {
+		seedMachine(t, store, i+1, id, "Komatsu", "PIT A", 400, 18.5)
+		seedHourMeterReadingFor(t, store, id, "2026-08-07", 1200, 1208)
+		seedFuelKeluarRow(t, store, "FO-"+id, "2026-08-07", id, 150)
+	}
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client,
+		testServer.URL+"/a2b/export?unit=EXC-01&unit=BLD-02&hm_unit=EXC-01&hm_unit=BLD-02&fk_unit=EXC-01&fk_unit=BLD-02")
+	for _, want := range []string{
+		"2 unit siap diunduh",      // performance
+		"2 pembacaan siap diunduh", // input hm
+		"2 pemakaian siap diunduh", // fuel keluar
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the page is missing %q:\n%s", want, firstLines(page))
+		}
+	}
+	// The summary names both rather than making the list be opened.
+	if !strings.Contains(page, "EXC-01, BLD-02") {
+		t.Fatal("the closed filter does not name what is picked")
+	}
+	// The ticks travel to the download too.
+	if !strings.Contains(page, "unit=EXC-01&amp;unit=BLD-02") {
+		t.Fatalf("the download links lost the ticks:\n%s", firstLines(page))
+	}
+}
+
+// Past two machines the summary counts instead of listing: a summary line
+// holding ten ids is a list, not a summary.
+func TestA2BExportSummaryCountsPastTwoUnits(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	for i, id := range []string{"EXC-01", "BLD-02", "SVD-03"} {
+		seedMachine(t, store, i+1, id, "Komatsu", "PIT A", 400, 18.5)
+	}
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/export?unit=EXC-01&unit=BLD-02&unit=SVD-03")
+	if !strings.Contains(page, "3 unit dipilih") {
+		t.Fatalf("the summary lists the ids rather than counting them:\n%s", firstLines(page))
+	}
+}
+
+// The file is named for what it holds, and past one machine that is a count:
+// ten ids in a name is unreadable and long enough to trouble a filesystem.
+func TestA2BExportNamesTheFileForItsUnits(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	for i, id := range []string{"EXC-01", "BLD-02"} {
+		seedMachine(t, store, i+1, id, "Komatsu", "PIT A", 400, 18.5)
+		seedHourMeterReadingFor(t, store, id, "2026-08-07", 1200, 1208)
+	}
+	client := loggedInClient(t, testServer)
+
+	one := downloadProduksi(t, client, testServer.URL+"/a2b/export/hm/download?format=xlsx&unit=EXC-01")
+	readBodyBytes(t, one)
+	if got := one.Header.Get("Content-Disposition"); !strings.Contains(got, "input-hm-EXC-01.xlsx") {
+		t.Fatalf("one machine: content disposition %q", got)
+	}
+
+	both := downloadProduksi(t, client, testServer.URL+"/a2b/export/hm/download?format=xlsx&unit=EXC-01&unit=BLD-02")
+	readBodyBytes(t, both)
+	if got := both.Header.Get("Content-Disposition"); !strings.Contains(got, "input-hm-2-unit.xlsx") {
+		t.Fatalf("two machines: content disposition %q", got)
+	}
+}
+
+// A list left open sits over the download buttons, so anything that says "done
+// here" closes it - while a click inside is left alone, or picking three
+// machines would be three trips.
+func TestTheUnitPickerScriptClosesOnAClickOutside(t *testing.T) {
+	testServer := newTestServer(t)
+	script := fetchPage(t, testServer.URL+"/static/js/unit-picker.js")
+
+	for _, want := range []string{
+		`addEventListener("click"`,
+		"picker.contains(event.target)",
+		`event.key !== "Escape"`,
+		// The search box is shipped hidden and unhidden here: one that does not
+		// search is worse than none.
+		"search.hidden = false",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("the picker script is missing %q", want)
+		}
+	}
+}

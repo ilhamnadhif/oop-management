@@ -411,15 +411,15 @@ type HourMeterExport struct {
 	// the wrong way round. Either may be empty, which does not bound that side.
 	From string
 	To   string
-	// IDUnit is the machine picked, empty meaning the whole fleet.
-	IDUnit string
-	Rows   []model.HourMeter
+	// IDUnits are the machines picked, empty meaning the whole fleet.
+	IDUnits []string
+	Rows    []model.HourMeter
 }
 
 // ExportRows returns the readings for a report, newest first, narrowed to a
 // date range and to one machine. Every filter left empty means all of it, which
 // is how the export page defaults.
-func (s *HourMeterService) ExportRows(ctx context.Context, from, to, idUnit string) (*HourMeterExport, error) {
+func (s *HourMeterService) ExportRows(ctx context.Context, from, to string, idUnits []string) (*HourMeterExport, error) {
 	from, err := normalizeExportDate("tanggal awal", from)
 	if err != nil {
 		return nil, err
@@ -432,13 +432,13 @@ func (s *HourMeterService) ExportRows(ctx context.Context, from, to, idUnit stri
 		// Typing the range backwards is a slip, not a request for nothing.
 		from, to = to, from
 	}
-	idUnit = strings.TrimSpace(idUnit)
+	units := newUnitFilter(idUnits)
 
 	rows, err := s.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	report := &HourMeterExport{From: from, To: to, IDUnit: idUnit, Rows: make([]model.HourMeter, 0, len(rows))}
+	report := &HourMeterExport{From: from, To: to, IDUnits: units.given, Rows: make([]model.HourMeter, 0, len(rows))}
 	for _, row := range rows {
 		tanggal := strings.TrimSpace(row.Tanggal)
 		if from != "" && tanggal < from {
@@ -447,7 +447,7 @@ func (s *HourMeterService) ExportRows(ctx context.Context, from, to, idUnit stri
 		if to != "" && tanggal > to {
 			continue
 		}
-		if idUnit != "" && !strings.EqualFold(strings.TrimSpace(row.IDUnit), idUnit) {
+		if !units.matches(row.IDUnit) {
 			continue
 		}
 		report.Rows = append(report.Rows, row)

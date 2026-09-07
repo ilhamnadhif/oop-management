@@ -18,10 +18,10 @@ type A2BPerformanceReport struct {
 	// prints. They are filled in when the person left a side open.
 	From string
 	To   string
-	// IDUnit is the filter as it was given, echoed back so the page can put the
-	// dropdown back where it was. Empty means the whole fleet.
-	IDUnit string
-	Units  []A2BUnitPerformance
+	// IDUnits are the machines picked, echoed back so the page can put the
+	// ticks back where they were. Empty means the whole fleet.
+	IDUnits []string
+	Units   []A2BUnitPerformance
 	// Readings are the shifts the summary was built from, grouped by machine
 	// and then by day. A report that says a machine ran fifty hours without
 	// saying which shifts those were has to be taken on trust.
@@ -32,10 +32,10 @@ type A2BPerformanceReport struct {
 // overview, a range left open means every reading ever taken rather than the
 // last week: an export names its own period, and somebody asking for a report
 // without saying when is asking for all of it.
-func (s *UnitOverviewService) A2BPerformance(ctx context.Context, from, to, idUnit string, workMinutes int) (*A2BPerformanceReport, error) {
+func (s *UnitOverviewService) A2BPerformance(ctx context.Context, from, to string, idUnits []string, workMinutes int) (*A2BPerformanceReport, error) {
 	from = strings.TrimSpace(from)
 	to = strings.TrimSpace(to)
-	idUnit = strings.TrimSpace(idUnit)
+	units := newUnitFilter(idUnits)
 
 	if from == "" || to == "" {
 		earliest, latest, err := s.a2bReadingRange(ctx)
@@ -61,18 +61,14 @@ func (s *UnitOverviewService) A2BPerformance(ctx context.Context, from, to, idUn
 		return nil, err
 	}
 
-	report := &A2BPerformanceReport{From: overview.From, To: overview.To, IDUnit: idUnit}
-	if idUnit == "" {
-		report.Units = overview.Units
-	} else {
-		for _, unit := range overview.Units {
-			if strings.EqualFold(strings.TrimSpace(unit.IDUnit), idUnit) {
-				report.Units = append(report.Units, unit)
-			}
+	report := &A2BPerformanceReport{From: overview.From, To: overview.To, IDUnits: units.given}
+	for _, unit := range overview.Units {
+		if units.matches(unit.IDUnit) {
+			report.Units = append(report.Units, unit)
 		}
 	}
 
-	readings, err := s.a2bReadingsIn(ctx, report.From, report.To, idUnit)
+	readings, err := s.a2bReadingsIn(ctx, report.From, report.To, units)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +79,7 @@ func (s *UnitOverviewService) A2BPerformance(ctx context.Context, from, to, idUn
 // a2bReadingsIn is the detail behind the summary: the shifts that fell inside
 // the range, for the machine asked for or for all of them. It answers the same
 // filters the summary does, or the two would describe different months.
-func (s *UnitOverviewService) a2bReadingsIn(ctx context.Context, from, to, idUnit string) ([]model.HourMeter, error) {
+func (s *UnitOverviewService) a2bReadingsIn(ctx context.Context, from, to string, units unitFilter) ([]model.HourMeter, error) {
 	rows, err := s.store.ListHourMeter(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read hour meter: %w", err)
@@ -94,7 +90,7 @@ func (s *UnitOverviewService) a2bReadingsIn(ctx context.Context, from, to, idUni
 		if tanggal < from || tanggal > to {
 			continue
 		}
-		if idUnit != "" && !strings.EqualFold(strings.TrimSpace(row.IDUnit), idUnit) {
+		if !units.matches(row.IDUnit) {
 			continue
 		}
 		readings = append(readings, row)

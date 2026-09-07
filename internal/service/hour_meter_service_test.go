@@ -499,7 +499,7 @@ func TestHourMeterExportRowsFiltersByRange(t *testing.T) {
 		t.Fatalf("create september: %v", err)
 	}
 
-	all, err := service.ExportRows(context.Background(), "", "", "")
+	all, err := service.ExportRows(context.Background(), "", "", nil)
 	if err != nil {
 		t.Fatalf("export all: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestHourMeterExportRowsFiltersByRange(t *testing.T) {
 		t.Fatalf("export all returned %d rows, want 2", len(all.Rows))
 	}
 
-	august, err := service.ExportRows(context.Background(), "2026-08-01", "2026-08-31", "")
+	august, err := service.ExportRows(context.Background(), "2026-08-01", "2026-08-31", nil)
 	if err != nil {
 		t.Fatalf("export august: %v", err)
 	}
@@ -516,7 +516,7 @@ func TestHourMeterExportRowsFiltersByRange(t *testing.T) {
 	}
 
 	// One side open runs to the edge of the sheet rather than to a default.
-	fromSeptember, err := service.ExportRows(context.Background(), "2026-09-01", "", "")
+	fromSeptember, err := service.ExportRows(context.Background(), "2026-09-01", "", nil)
 	if err != nil {
 		t.Fatalf("export from september: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestHourMeterExportRowsSwapsAReversedRange(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	report, err := service.ExportRows(context.Background(), "2026-08-31", "2026-08-01", "")
+	report, err := service.ExportRows(context.Background(), "2026-08-31", "2026-08-01", nil)
 	if err != nil {
 		t.Fatalf("export reversed: %v", err)
 	}
@@ -553,10 +553,10 @@ func TestHourMeterExportRowsRefusesAnInvalidDate(t *testing.T) {
 	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
 	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
 
-	if _, err := service.ExportRows(context.Background(), "bukan-tanggal", "", ""); !errors.Is(err, ErrValidation) {
+	if _, err := service.ExportRows(context.Background(), "bukan-tanggal", "", nil); !errors.Is(err, ErrValidation) {
 		t.Fatalf("an invalid start returned %v, want a validation error", err)
 	}
-	if _, err := service.ExportRows(context.Background(), "", "2026-13-40", ""); !errors.Is(err, ErrValidation) {
+	if _, err := service.ExportRows(context.Background(), "", "2026-13-40", nil); !errors.Is(err, ErrValidation) {
 		t.Fatalf("an invalid end returned %v, want a validation error", err)
 	}
 }
@@ -581,14 +581,44 @@ func TestHourMeterExportRowsFiltersByUnit(t *testing.T) {
 
 	// The dropdown sends the id as the register holds it; matching must not
 	// turn on the case it was typed in.
-	one, err := service.ExportRows(context.Background(), "", "", "BLD03")
+	one, err := service.ExportRows(context.Background(), "", "", []string{"BLD03"})
 	if err != nil {
 		t.Fatalf("export one unit: %v", err)
 	}
 	if len(one.Rows) != 1 || !strings.EqualFold(one.Rows[0].IDUnit, "bld03") {
 		t.Fatalf("the unit filter returned %+v", one.Rows)
 	}
-	if one.IDUnit != "BLD03" {
-		t.Fatalf("IDUnit = %q, want the filter echoed back for the page", one.IDUnit)
+	if one.IDUnits[0] != "BLD03" {
+		t.Fatalf("IDUnits = %v, want the filter echoed back for the page", one.IDUnits)
+	}
+}
+
+// The readings export narrows to several machines at once.
+func TestHourMeterExportRowsFiltersBySeveralUnits(t *testing.T) {
+	store := repository.NewTestRepository()
+	for _, id := range []string{"exc01", "bld03", "svd05"} {
+		seedFuelMachine(t, store, id, "Alat "+id)
+	}
+	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
+	user := fuelTestUser("Logistik")
+	for _, id := range []string{"exc01", "bld03", "svd05"} {
+		input := hourMeterTestInput()
+		input.IDUnit = id
+		if _, err := service.Create(context.Background(), user, input); err != nil {
+			t.Fatalf("create for %s: %v", id, err)
+		}
+	}
+
+	report, err := service.ExportRows(context.Background(), "", "", []string{"BLD03", "svd05"})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	if len(report.Rows) != 2 {
+		t.Fatalf("returned %d rows, want the two machines asked for", len(report.Rows))
+	}
+	for _, row := range report.Rows {
+		if strings.EqualFold(row.IDUnit, "exc01") {
+			t.Fatalf("a machine outside the filter was returned: %+v", report.Rows)
+		}
 	}
 }
