@@ -235,3 +235,55 @@ func TestUnitA2BHasItsOwnMenuEntry(t *testing.T) {
 		t.Fatal("Absensi is no longer first")
 	}
 }
+
+// The page that adds a machine also shows what is already on the register: an
+// operator about to register one needs to know whether it is there twice.
+func TestUnitA2BPageListsTheRegister(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClient(t, testServer)
+
+	empty := fetchAuthedPage(t, client, testServer.URL+"/unit-a2b")
+	if !strings.Contains(empty, "Belum ada unit A2B yang terdaftar") {
+		t.Fatal("an empty register does not say so")
+	}
+
+	csrf := csrfFromForm(t, empty)
+	postUnitA2B(t, client, testServer, csrf, validUnitA2BFields(), true).Body.Close()
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/unit-a2b")
+	for _, want := range []string{
+		"RIWAYAT", "1 unit terdaftar",
+		"EXCA-01", "Blok A",
+		// The figures are worded once, in Go, rather than formatted differently
+		// on each page they appear.
+		"400", "8.5", "1200.5",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the register table is missing %q", want)
+		}
+	}
+	// The photo is stored but never served, so a column for it would be a
+	// column nobody can open.
+	if strings.Contains(page, "data:image/jpeg;base64,") {
+		t.Fatal("the table carries the stored photo into the page")
+	}
+}
+
+// The register reads in its own numbered order, the way the export prints it:
+// this is a list of what the site owns, not a log of what happened.
+func TestUnitA2BRegisterKeepsItsNumberedOrder(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	client := loggedInClient(t, testServer)
+	seedMachine(t, store, 2, "BLD-02", "Caterpillar", "PIT B", 500, 26)
+	seedMachine(t, store, 1, "EXC-01", "Komatsu", "PIT A", 400, 18.5)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/unit-a2b")
+	first := strings.Index(page, "EXC-01")
+	second := strings.Index(page, "BLD-02")
+	if first < 0 || second < 0 {
+		t.Fatal("the register does not list both machines")
+	}
+	if first > second {
+		t.Fatal("the register is not in its numbered order")
+	}
+}

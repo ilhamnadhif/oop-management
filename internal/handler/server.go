@@ -216,8 +216,22 @@ type UnitA2BPageData struct {
 	Form       UnitA2BFormData
 	NextNumber int
 	Options    service.UnitA2BOptions
-	Error      string
-	Success    string
+	// Rows is the register as it stands, in its own numbered order rather than
+	// newest first: this is a list of what the site owns, not a log of things
+	// that happened, and it reads the same way the export prints it.
+	Rows    []UnitA2BView
+	Error   string
+	Success string
+}
+
+// UnitA2BView is one machine as the history table prints it. The figures come
+// pre-worded because a template that formats numbers formats them differently
+// on each page it is copied to.
+type UnitA2BView struct {
+	model.UnitA2B
+	FuelStorageLabel string
+	FRLabel          string
+	HMAwalLabel      string
 }
 
 type ProduksiFormData struct {
@@ -1776,11 +1790,30 @@ func (s *Server) renderUnitA2B(w http.ResponseWriter, r *http.Request, user *mod
 		// The pickers fall back to free typing, which still works.
 		log.Printf("load unit a2b options: %v", err)
 	}
+	units, err := s.unitA2B.List(r.Context())
+	if err != nil {
+		// Losing the history costs the page its table, not its form: somebody
+		// came here to add a machine.
+		log.Printf("list unit a2b: %v", err)
+		if errMessage == "" {
+			errMessage = "Riwayat unit gagal dimuat"
+		}
+	}
+	rows := make([]UnitA2BView, 0, len(units))
+	for _, unit := range units {
+		rows = append(rows, UnitA2BView{
+			UnitA2B:          unit,
+			FuelStorageLabel: formatLiter(unit.FuelStorage),
+			FRLabel:          formatLiter(unit.FRUnit),
+			HMAwalLabel:      formatLiter(unit.HMAwal),
+		})
+	}
 	s.render(w, "unit_a2b", UnitA2BPageData{
 		ShellPageData: s.shellData(user, sessionValue, "a2b-unit"),
 		Form:          form,
 		NextNumber:    next,
 		Options:       options,
+		Rows:          rows,
 		Error:         errMessage,
 		Success:       success,
 	}, status)

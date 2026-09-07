@@ -87,6 +87,50 @@
       {{template "icon" "save"}}<span data-submit-label>Simpan data Unit A2B</span>
     </button>
   </form>
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}RIWAYAT</p>
+        <h2>{{len .Rows}} unit terdaftar</h2>
+      </div>
+    </div>
+    {{if .Rows}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col" class="numeric">No</th>
+            <th scope="col">Tanggal input</th>
+            <th scope="col">ID unit</th>
+            <th scope="col">Nama unit</th>
+            <th scope="col">Merek / type</th>
+            <th scope="col" class="numeric">Fuel storage (L)</th>
+            <th scope="col" class="numeric">FR (L/jam)</th>
+            <th scope="col">Lokasi</th>
+            <th scope="col" class="numeric">HM awal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <td class="numeric">{{.NoUrut}}</td>
+            <td>{{.TanggalIn}}</td>
+            <th scope="row">{{.IDUnit}}</th>
+            <td class="wrap">{{.NamaUnit}}</td>
+            <td class="wrap">{{.MerekType}}</td>
+            <td class="numeric">{{.FuelStorageLabel}}</td>
+            <td class="numeric">{{.FRLabel}}</td>
+            <td class="wrap">{{.Lokasi}}</td>
+            <td class="numeric">{{.HMAwalLabel}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada unit A2B yang terdaftar.</p>
+    {{end}}
+  </section>
 {{template "appShellClose" .}}
 <script src="/static/js/auth.js" defer></script>
 <script src="/static/js/combobox.js" defer></script>
