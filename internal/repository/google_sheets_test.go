@@ -208,6 +208,7 @@ func TestHourMeterRowWritesOneColumnPerStandbyReason(t *testing.T) {
 			{Variable: "NO OPR", Menit: 20},
 		},
 		PA: 93.75, BDPersen: 6.25, UA: 86.67, Remark: "Ganti hose hidrolik",
+		Pekerjaan: "Loading OB", Lokasi: "Pit 2",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	row := hourMeterToRow(reading)
@@ -246,6 +247,9 @@ func TestHourMeterRowWritesOneColumnPerStandbyReason(t *testing.T) {
 	if byHeader["remark"] != "Ganti hose hidrolik" {
 		t.Fatalf("remark = %q", byHeader["remark"])
 	}
+	if byHeader["pekerjaan"] != "Loading OB" || byHeader["lokasi"] != "Pit 2" {
+		t.Fatalf("pekerjaan / lokasi = %q / %q", byHeader["pekerjaan"], byHeader["lokasi"])
+	}
 
 	// What was written comes back as the same two reasons and nothing else.
 	back, err := rowToHourMeter(row, testLocation(t))
@@ -273,6 +277,9 @@ func TestHourMeterRowWritesOneColumnPerStandbyReason(t *testing.T) {
 	if back.Remark != "Ganti hose hidrolik" {
 		t.Fatalf("read back remark = %q", back.Remark)
 	}
+	if back.Pekerjaan != "Loading OB" || back.Lokasi != "Pit 2" {
+		t.Fatalf("read back pekerjaan / lokasi = %q / %q", back.Pekerjaan, back.Lokasi)
+	}
 }
 
 // The audit trail sits after the standby block, so the reader has to find it by
@@ -292,6 +299,12 @@ func TestHourMeterHeaderLayoutMatchesItsOffsets(t *testing.T) {
 	}
 	if hourMeterHeaders[hourMeterAuditOffset] != "dibuat_oleh" {
 		t.Fatalf("the audit trail starts at %q", hourMeterHeaders[hourMeterAuditOffset])
+	}
+	// The work and the place came after the rest, so they sit at the end: in
+	// the middle they would move every column an existing row already fills.
+	if hourMeterHeaders[hourMeterWorkOffset] != "pekerjaan" || hourMeterHeaders[hourMeterWorkOffset+1] != "lokasi" {
+		t.Fatalf("the work and the place sit at %q and %q",
+			hourMeterHeaders[hourMeterWorkOffset], hourMeterHeaders[hourMeterWorkOffset+1])
 	}
 	if got := columnName(len(hourMeterHeaders)); got != hourMeterLastColumn {
 		t.Fatalf("last column = %q, want %q", hourMeterLastColumn, got)

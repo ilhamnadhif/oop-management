@@ -61,6 +61,28 @@
         {{range .Options.Operators}}<option value="{{.}}"></option>{{end}}
       </datalist>
 
+      {{/* Open lists, like the shift and the operator. Not marked required:
+           a machine that never moved has nothing to place, and only the HM
+           readings below say whether it moved. The server asks for both when
+           it did. */}}
+      <div class="form-grid">
+        <div>
+          <label for="pekerjaan">{{template "icon" "clipboard-list"}}Pekerjaan</label>
+          <input id="pekerjaan" name="pekerjaan" type="text" list="hmPekerjaanList" value="{{.Form.Pekerjaan}}" maxlength="{{.PlaceMaxLength}}" placeholder="Pilih atau ketik pekerjaan…" autocomplete="off">
+          <datalist id="hmPekerjaanList">
+            {{range .Options.Pekerjaan}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+        <div>
+          <label for="lokasi">{{template "icon" "pin"}}Lokasi</label>
+          <input id="lokasi" name="lokasi" type="text" list="hmLokasiList" value="{{.Form.Lokasi}}" maxlength="{{.PlaceMaxLength}}" placeholder="Pilih atau ketik lokasi…" autocomplete="off">
+          <datalist id="hmLokasiList">
+            {{range .Options.Lokasi}}<option value="{{.}}"></option>{{end}}
+          </datalist>
+        </div>
+      </div>
+      <p class="hint">Isi pekerjaan dan lokasi tempat jam kerja shift ini dihabiskan. Boleh kosong bila alat tidak bekerja sama sekali.</p>
+
       <div class="form-grid form-grid-3">
         <div>
           <label for="hm_awal">{{template "icon" "clock"}}HM awal (jam)</label>
@@ -222,6 +244,8 @@
             <th scope="col">ID unit</th>
             <th scope="col">Nama unit</th>
             <th scope="col">Operator</th>
+            <th scope="col">Pekerjaan</th>
+            <th scope="col">Lokasi</th>
             <th scope="col" class="numeric">HM awal</th>
             <th scope="col" class="numeric">HM akhir</th>
             <th scope="col" class="numeric">Total HM</th>
@@ -243,6 +267,8 @@
             <td>{{.IDUnit}}</td>
             <td class="wrap">{{.NamaUnit}}</td>
             <td class="wrap">{{.Operator}}</td>
+            <td class="wrap">{{if .Pekerjaan}}{{.Pekerjaan}}{{else}}-{{end}}</td>
+            <td class="wrap">{{if .Lokasi}}{{.Lokasi}}{{else}}-{{end}}</td>
             <td class="numeric">{{.AwalLabel}}</td>
             <td class="numeric">{{.AkhirLabel}}</td>
             <td class="numeric">{{.TotalLabel}}</td>

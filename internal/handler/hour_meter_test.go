@@ -15,6 +15,8 @@ func hourMeterFields() map[string]string {
 		"shift":      "Shift 1",
 		"id_unit":    "exc01",
 		"operator":   "kadal",
+		"pekerjaan":  "Loading OB",
+		"lokasi":     "Pit 2",
 		"hm_awal":    "1200",
 		"hm_akhir":   "1208",
 		"fuel_liter": "245",
@@ -572,5 +574,46 @@ func TestHourMeterCarriesBothRemainderStates(t *testing.T) {
 	}
 	if !strings.Contains(page, `data-idle-filled hidden>Semua 480 menit kerja sudah terisi.`) {
 		t.Fatalf("the settled remainder is missing or starts visible: %s", page)
+	}
+}
+
+// The form asks what the worked hours went on and where, and the history shows
+// both beside the operator.
+func TestHourMeterRecordsTheWorkAndThePlace(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/hm")
+	for _, want := range []string{`name="pekerjaan"`, `name="lokasi"`} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the form is missing %s", want)
+		}
+	}
+
+	response := postHourMeter(t, client, testServer, hourMeterFields())
+	body := readBody(t, response)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d:\n%s", response.StatusCode, firstLines(body))
+	}
+	rows := store.HourMeterList()
+	if len(rows) != 1 || rows[0].Pekerjaan != "Loading OB" || rows[0].Lokasi != "Pit 2" {
+		t.Fatalf("stored %+v", rows)
+	}
+	if !strings.Contains(body, "Loading OB") || !strings.Contains(body, "Pit 2") {
+		t.Fatal("the history does not show the work and the place")
+	}
+
+	// A machine that worked and does not say where is sent back with the reason.
+	fields := hourMeterFields()
+	fields["hm_awal"], fields["hm_akhir"] = "1208", "1216"
+	delete(fields, "lokasi")
+	refused := postHourMeter(t, client, testServer, fields)
+	refusedBody := readBody(t, refused)
+	if refused.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", refused.StatusCode)
+	}
+	if !strings.Contains(refusedBody, "Lokasi wajib diisi bila alat bekerja") {
+		t.Fatalf("the page does not say why:\n%s", firstLines(refusedBody))
 	}
 }

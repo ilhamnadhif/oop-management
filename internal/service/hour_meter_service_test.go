@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,8 @@ func hourMeterTestInput() HourMeterInput {
 		Shift:     "Shift 1",
 		IDUnit:    "exc01",
 		Operator:  "kadal",
+		Pekerjaan: "Loading OB",
+		Lokasi:    "Pit 2",
 		HMAwal:    "1200",
 		HMAkhir:   "1208",
 		FuelLiter: "245",
@@ -620,5 +623,86 @@ func TestHourMeterExportRowsFiltersBySeveralUnits(t *testing.T) {
 		if strings.EqualFold(row.IDUnit, "exc01") {
 			t.Fatalf("a machine outside the filter was returned: %+v", report.Rows)
 		}
+	}
+}
+
+// A machine that worked says what on and where. Both are suggested from what
+// was typed before, and a second spelling of one already in use is adopted
+// rather than stored twice.
+func TestHourMeterRecordsTheWorkAndThePlace(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
+	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
+	user := fuelTestUser("Logistik")
+
+	input := hourMeterTestInput()
+	input.Pekerjaan = "  Loading   OB "
+	saved, err := service.Create(context.Background(), user, input)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if saved.Pekerjaan != "Loading OB" || saved.Lokasi != "Pit 2" {
+		t.Fatalf("pekerjaan / lokasi = %q / %q", saved.Pekerjaan, saved.Lokasi)
+	}
+
+	options, err := service.Options(context.Background())
+	if err != nil {
+		t.Fatalf("options: %v", err)
+	}
+	if len(options.Pekerjaan) != 1 || options.Pekerjaan[0] != "Loading OB" {
+		t.Fatalf("pekerjaan options = %+v", options.Pekerjaan)
+	}
+	if len(options.Lokasi) != 1 || options.Lokasi[0] != "Pit 2" {
+		t.Fatalf("lokasi options = %+v", options.Lokasi)
+	}
+
+	repeat := hourMeterTestInput()
+	repeat.HMAwal, repeat.HMAkhir = "1208", "1216"
+	repeat.Lokasi = "pit 2"
+	again, err := service.Create(context.Background(), user, repeat)
+	if err != nil {
+		t.Fatalf("create repeat: %v", err)
+	}
+	if again.Lokasi != "Pit 2" {
+		t.Fatalf("lokasi = %q, want the spelling already in use", again.Lokasi)
+	}
+}
+
+// Hours worked have to have gone on something somewhere, so a reading with
+// hours on it needs both. One where the machine never moved has nothing to
+// place, and may leave them empty.
+func TestHourMeterRequiresTheWorkAndThePlaceOnlyWhenTheMachineWorked(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
+	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
+	user := fuelTestUser("Logistik")
+
+	for name, blank := range map[string]func(*HourMeterInput){
+		"pekerjaan": func(input *HourMeterInput) { input.Pekerjaan = "  " },
+		"lokasi":    func(input *HourMeterInput) { input.Lokasi = "" },
+	} {
+		input := hourMeterTestInput()
+		blank(&input)
+		if _, err := service.Create(context.Background(), user, input); !errors.Is(err, ErrValidation) {
+			t.Fatalf("%s left blank: error = %v, want a validation error", name, err)
+		}
+	}
+
+	long := hourMeterTestInput()
+	long.Lokasi = strings.Repeat("a", HourMeterPlaceMaxLength+1)
+	if _, err := service.Create(context.Background(), user, long); !errors.Is(err, ErrValidation) {
+		t.Fatalf("an overlong lokasi: error = %v, want a validation error", err)
+	}
+
+	idle := hourMeterTestInput()
+	idle.HMAkhir = idle.HMAwal
+	idle.Pekerjaan, idle.Lokasi = "", ""
+	idle.Standby = []HourMeterStandbyInput{{Variable: "HUJAN", Menit: strconv.Itoa(service.WorkMinutes())}}
+	saved, err := service.Create(context.Background(), user, idle)
+	if err != nil {
+		t.Fatalf("a shift that never worked was refused: %v", err)
+	}
+	if saved.Pekerjaan != "" || saved.Lokasi != "" {
+		t.Fatalf("an idle shift stored %q / %q", saved.Pekerjaan, saved.Lokasi)
 	}
 }

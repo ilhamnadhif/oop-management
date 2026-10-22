@@ -66,10 +66,13 @@ func (i HourMeterBreakdownInput) IsBlank() bool {
 // distance between the two readings and the other is the sum of the standby
 // lines, and neither is a figure anyone types.
 type HourMeterInput struct {
-	Tanggal   string
-	Shift     string
-	IDUnit    string
-	Operator  string
+	Tanggal  string
+	Shift    string
+	IDUnit   string
+	Operator string
+	// Pekerjaan and Lokasi are what the worked hours went on and where.
+	Pekerjaan string
+	Lokasi    string
 	HMAwal    string
 	HMAkhir   string
 	FuelLiter string
@@ -78,8 +81,12 @@ type HourMeterInput struct {
 	Remark    string
 }
 
-// HourMeterRemarkMaxLength bounds the one free-text field on the form.
+// HourMeterRemarkMaxLength bounds the longest free-text field on the form.
 const HourMeterRemarkMaxLength = 500
+
+// HourMeterPlaceMaxLength bounds the job and the place. Each is a name, not a
+// story: anything longer belongs in the remark.
+const HourMeterPlaceMaxLength = 100
 
 // HourMeterSummary is the shift read as three figures.
 type HourMeterSummary struct {
@@ -121,11 +128,14 @@ func (s *HourMeterService) SummaryFor(workedMinutes, breakdownMinutes float64) H
 	return summary
 }
 
-// HourMeterOptions are the open lists the form suggests from. Both grow as the
-// sheet does: a shift or an operator seen for the first time is typeable.
+// HourMeterOptions are the open lists the form suggests from. All of them grow
+// as the sheet does: a shift, an operator, a job or a place seen for the first
+// time is typeable.
 type HourMeterOptions struct {
 	Shifts    []string
 	Operators []string
+	Pekerjaan []string
+	Lokasi    []string
 }
 
 // defaultWorkMinutes is one shift, used when nothing was configured. It is the
@@ -214,6 +224,8 @@ func (s *HourMeterService) Options(ctx context.Context) (HourMeterOptions, error
 	s.options = HourMeterOptions{
 		Shifts:    distinctValues(nil, rows, func(h model.HourMeter) string { return h.Shift }),
 		Operators: distinctValues(nil, rows, func(h model.HourMeter) string { return h.Operator }),
+		Pekerjaan: distinctValues(nil, rows, func(h model.HourMeter) string { return h.Pekerjaan }),
+		Lokasi:    distinctValues(nil, rows, func(h model.HourMeter) string { return h.Lokasi }),
 	}
 	s.optionsAt = s.now()
 	return s.options, nil
@@ -338,6 +350,15 @@ func (s *HourMeterService) Create(ctx context.Context, user *model.User, input H
 			ErrValidation, trimFloat(idle), s.workMinutes, trimFloat(accounted))
 	}
 
+	pekerjaan, err := workDetail("Pekerjaan", input.Pekerjaan, options.Pekerjaan, totalHM)
+	if err != nil {
+		return nil, err
+	}
+	lokasi, err := workDetail("Lokasi", input.Lokasi, options.Lokasi, totalHM)
+	if err != nil {
+		return nil, err
+	}
+
 	remark := strings.TrimSpace(input.Remark)
 	if utf8.RuneCountInString(remark) > HourMeterRemarkMaxLength {
 		return nil, fmt.Errorf("%w: remark maksimal %d karakter", ErrValidation, HourMeterRemarkMaxLength)
@@ -359,6 +380,8 @@ func (s *HourMeterService) Create(ctx context.Context, user *model.User, input H
 		IDUnit:         unit.IDUnit,
 		NamaUnit:       unit.NamaUnit,
 		Operator:       operator,
+		Pekerjaan:      pekerjaan,
+		Lokasi:         lokasi,
 		HMAwal:         round2(awal),
 		HMAkhir:        round2(akhir),
 		TotalHM:        round2(akhir - awal),
@@ -383,6 +406,24 @@ func (s *HourMeterService) Create(ctx context.Context, user *model.User, input H
 	// the same value gets stored again under a different spelling.
 	s.invalidateOptions()
 	return reading, nil
+}
+
+// workDetail reads the job or the place off the form. Hours worked went on
+// something somewhere, so a reading with hours on it needs both; a machine
+// that never moved has nothing to place, and may leave them empty. A spelling
+// already in use is adopted, as the shift and operator are.
+func workDetail(label, value string, options []string, totalHM float64) (string, error) {
+	value = strings.Join(strings.Fields(value), " ")
+	if value == "" {
+		if totalHM > 0 {
+			return "", fmt.Errorf("%w: %s wajib diisi bila alat bekerja", ErrValidation, label)
+		}
+		return "", nil
+	}
+	if utf8.RuneCountInString(value) > HourMeterPlaceMaxLength {
+		return "", fmt.Errorf("%w: %s maksimal %d karakter", ErrValidation, label, HourMeterPlaceMaxLength)
+	}
+	return adoptOption(label, value, options)
 }
 
 // List returns the readings newest first, which is the order the page wants.

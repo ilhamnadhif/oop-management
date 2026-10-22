@@ -538,9 +538,14 @@ type HourMeter struct {
 	Shift   string
 	// IDUnit and NamaUnit are a snapshot of the A2B register at the time of
 	// reading, so a machine later renamed does not rewrite history.
-	IDUnit    string
-	NamaUnit  string
-	Operator  string
+	IDUnit   string
+	NamaUnit string
+	Operator string
+	// Pekerjaan and Lokasi are what the worked hours went on and where. Both
+	// are empty on a reading from before they were asked for, and on one where
+	// the machine never worked.
+	Pekerjaan string
+	Lokasi    string
 	HMAwal    float64
 	HMAkhir   float64
 	TotalHM   float64

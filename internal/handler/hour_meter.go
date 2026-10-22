@@ -18,6 +18,8 @@ type HourMeterFormData struct {
 	Shift     string
 	IDUnit    string
 	Operator  string
+	Pekerjaan string
+	Lokasi    string
 	HMAwal    string
 	HMAkhir   string
 	FuelLiter string
@@ -57,6 +59,7 @@ type HourMeterPageData struct {
 	BDTarget           float64
 	UATarget           float64
 	RemarkMaxLength    int
+	PlaceMaxLength     int
 	Rows               []HourMeterView
 	Error              string
 	Success            string
@@ -113,6 +116,8 @@ func (s *Server) handleHourMeterCreate(w http.ResponseWriter, r *http.Request) {
 		Shift:     strings.TrimSpace(r.FormValue("shift")),
 		IDUnit:    strings.TrimSpace(r.FormValue("id_unit")),
 		Operator:  strings.TrimSpace(r.FormValue("operator")),
+		Pekerjaan: strings.TrimSpace(r.FormValue("pekerjaan")),
+		Lokasi:    strings.TrimSpace(r.FormValue("lokasi")),
 		HMAwal:    strings.TrimSpace(r.FormValue("hm_awal")),
 		HMAkhir:   strings.TrimSpace(r.FormValue("hm_akhir")),
 		FuelLiter: strings.TrimSpace(r.FormValue("fuel_liter")),
@@ -125,6 +130,8 @@ func (s *Server) handleHourMeterCreate(w http.ResponseWriter, r *http.Request) {
 		Shift:     form.Shift,
 		IDUnit:    form.IDUnit,
 		Operator:  form.Operator,
+		Pekerjaan: form.Pekerjaan,
+		Lokasi:    form.Lokasi,
 		HMAwal:    form.HMAwal,
 		HMAkhir:   form.HMAkhir,
 		FuelLiter: form.FuelLiter,
@@ -175,6 +182,7 @@ func (s *Server) renderHourMeter(w http.ResponseWriter, r *http.Request, user *m
 		BDTarget:           bdTarget,
 		UATarget:           uaTarget,
 		RemarkMaxLength:    service.HourMeterRemarkMaxLength,
+		PlaceMaxLength:     service.HourMeterPlaceMaxLength,
 		Error:              errMessage,
 		Success:            success,
 	}

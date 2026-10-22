@@ -229,7 +229,10 @@ func buildHourMeterHeaders() []string {
 		headers = append(headers, model.BreakdownColumn(variable))
 	}
 	headers = append(headers, "pa_persen", "bd_persen", "ua_persen", "remark")
-	return append(headers, "dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at")
+	headers = append(headers, "dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at")
+	// The work and the place came after the rest, so they sit at the end:
+	// adding them in the middle would move every column an existing row fills.
+	return append(headers, "pekerjaan", "lokasi")
 }
 
 // Where the standby block starts, and the last column of the row. Both are
@@ -244,6 +247,7 @@ var (
 	// audit trail.
 	hourMeterSummaryOffset = hourMeterBreakdownOffset + len(model.BreakdownVariables)
 	hourMeterAuditOffset   = hourMeterSummaryOffset + 4
+	hourMeterWorkOffset    = hourMeterAuditOffset + 4
 	hourMeterLastColumn    = columnName(len(hourMeterHeaders))
 )
 
@@ -2228,6 +2232,7 @@ func hourMeterToRow(reading *model.HourMeter) []interface{} {
 	return append(row,
 		reading.CreatedBy, reading.CreatedByID,
 		formatDateTime(reading.CreatedAt), formatDateTime(reading.UpdatedAt),
+		reading.Pekerjaan, reading.Lokasi,
 	)
 }
 
@@ -2248,6 +2253,8 @@ func rowToHourMeter(row []interface{}, location *time.Location) (*model.HourMete
 		IDUnit:         cellString(row[3]),
 		NamaUnit:       cellString(row[4]),
 		Operator:       cellString(row[5]),
+		Pekerjaan:      cellString(row[hourMeterWorkOffset]),
+		Lokasi:         cellString(row[hourMeterWorkOffset+1]),
 		HMAwal:         parseFloatCell(row[6]),
 		HMAkhir:        parseFloatCell(row[7]),
 		TotalHM:        parseFloatCell(row[8]),
