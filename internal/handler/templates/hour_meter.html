@@ -61,28 +61,6 @@
         {{range .Options.Operators}}<option value="{{.}}"></option>{{end}}
       </datalist>
 
-      {{/* Open lists, like the shift and the operator. Not marked required:
-           a machine that never moved has nothing to place, and only the HM
-           readings below say whether it moved. The server asks for both when
-           it did. */}}
-      <div class="form-grid">
-        <div>
-          <label for="pekerjaan">{{template "icon" "clipboard-list"}}Pekerjaan</label>
-          <input id="pekerjaan" name="pekerjaan" type="text" list="hmPekerjaanList" value="{{.Form.Pekerjaan}}" maxlength="{{.PlaceMaxLength}}" placeholder="Pilih atau ketik pekerjaan…" autocomplete="off">
-          <datalist id="hmPekerjaanList">
-            {{range .Options.Pekerjaan}}<option value="{{.}}"></option>{{end}}
-          </datalist>
-        </div>
-        <div>
-          <label for="lokasi">{{template "icon" "pin"}}Lokasi</label>
-          <input id="lokasi" name="lokasi" type="text" list="hmLokasiList" value="{{.Form.Lokasi}}" maxlength="{{.PlaceMaxLength}}" placeholder="Pilih atau ketik lokasi…" autocomplete="off">
-          <datalist id="hmLokasiList">
-            {{range .Options.Lokasi}}<option value="{{.}}"></option>{{end}}
-          </datalist>
-        </div>
-      </div>
-      <p class="hint">Isi pekerjaan dan lokasi tempat jam kerja shift ini dihabiskan. Boleh kosong bila alat tidak bekerja sama sekali.</p>
-
       <div class="form-grid form-grid-3">
         <div>
           <label for="hm_awal">{{template "icon" "clock"}}HM awal (jam)</label>
@@ -101,6 +79,60 @@
       </div>
       <p class="hint">HM awal terisi dari pembacaan terakhir unit tersebut. Ubah bila angka di alat berbeda. Satu shift dihitung {{.WorkMinutes}} menit.</p>
 
+      {{/* Where the worked hours went. Right under the readings because it is
+           their difference that has to be split, and hidden while there is no
+           difference to split - before both readings are typed, and when the
+           machine never moved. Hidden rather than disabled: a field that is
+           there but cannot be used only asks why. The server holds the lines
+           to the same sum either way. */}}
+      <div data-kegiatan-section{{if le .WorkedHours 0.0}} hidden{{end}}>
+      <div class="panel-heading standby-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "clipboard-list"}}PEKERJAAN &amp; LOKASI</p>
+          <h2>Jam kerja dipakai untuk apa</h2>
+        </div>
+      </div>
+      <p class="hint">Pecah selisih HM per pekerjaan dan lokasi. Tambah baris bila alat pindah pekerjaan atau lokasi dalam shift ini.</p>
+      <p class="alert info idle-note" data-kegiatan-short>Sisa <strong data-kegiatan-remaining>—</strong> jam dari selisih HM harus terisi di pekerjaan dan lokasi.</p>
+      <p class="alert success idle-note" data-kegiatan-filled hidden>Semua jam kerja sudah terisi.</p>
+
+      <div class="line-list" data-kegiatan-list>
+        {{range $index, $row := .Form.Kegiatan}}
+        <div class="line-row kegiatan-row" data-kegiatan-row>
+          <p class="line-index">Baris <span data-kegiatan-number>{{add1 $index}}</span></p>
+          <label class="line-field">
+            <span class="field-label">{{template "icon" "clipboard-list"}}Pekerjaan</span>
+            <input name="kegiatan_pekerjaan" type="text" list="hmPekerjaanList" value="{{$row.Pekerjaan}}" maxlength="{{$.PlaceMaxLength}}" placeholder="Pilih atau ketik pekerjaan…" autocomplete="off" aria-label="Pekerjaan">
+          </label>
+          <label class="line-field">
+            <span class="field-label">{{template "icon" "pin"}}Lokasi</span>
+            <input name="kegiatan_lokasi" type="text" list="hmLokasiList" value="{{$row.Lokasi}}" maxlength="{{$.PlaceMaxLength}}" placeholder="Pilih atau ketik lokasi…" autocomplete="off" aria-label="Lokasi">
+          </label>
+          <label class="line-field">
+            <span class="field-label">{{template "icon" "clock"}}Jam</span>
+            <input name="kegiatan_jam" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 2,5" value="{{$row.Jam}}" placeholder="0" autocomplete="off" aria-label="Jam">
+          </label>
+          <div class="line-field line-action">
+            <span class="field-label" aria-hidden="true"></span>
+            <button class="icon-button danger" type="button" data-remove-kegiatan aria-label="Hapus baris pekerjaan">{{template "icon" "trash"}}</button>
+          </div>
+        </div>
+        {{end}}
+      </div>
+      {{/* One list each, shared by every row: the suggestions are the same
+           whichever line is being typed. */}}
+      <datalist id="hmPekerjaanList">
+        {{range .Options.Pekerjaan}}<option value="{{.}}"></option>{{end}}
+      </datalist>
+      <datalist id="hmLokasiList">
+        {{range .Options.Lokasi}}<option value="{{.}}"></option>{{end}}
+      </datalist>
+
+      <button class="button subtle standby-add" type="button" data-add-kegiatan>{{template "icon" "plus"}}Tambah baris</button>
+
+      <p class="standby-total"><span>Total jam pekerjaan</span><strong data-kegiatan-total>0 jam</strong></p>
+      </div>
+
       <label for="fuel_liter">{{template "icon" "fuel"}}Fuel (liter)</label>
       <input id="fuel_liter" name="fuel_liter" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.FuelLiter}}" placeholder="0" required>
 
@@ -118,11 +150,11 @@
       </div>
       <p class="hint">Kosongkan bila alat tidak pernah berhenti. Satu variable hanya boleh dipakai sekali; bila terjadi dua kali dalam satu shift, jumlahkan menitnya jadi satu baris.</p>
 
-      <div class="standby-list" data-standby-list>
+      <div class="line-list" data-standby-list>
         {{range $index, $row := .Form.Standby}}
-        <div class="standby-row" data-standby-row>
-          <p class="standby-index">Baris <span data-standby-number>{{add1 $index}}</span></p>
-          <label class="standby-field standby-field-variable">
+        <div class="line-row standby-row" data-standby-row>
+          <p class="line-index">Baris <span data-standby-number>{{add1 $index}}</span></p>
+          <label class="line-field">
             <span class="field-label">{{template "icon" "tag"}}Variable</span>
             <select name="standby_variable" aria-label="Variable standby">
               <option value="">— Pilih variable —</option>
@@ -131,11 +163,14 @@
               {{end}}
             </select>
           </label>
-          <label class="standby-field standby-field-menit">
+          <label class="line-field">
             <span class="field-label">{{template "icon" "clock"}}Menit</span>
             <input name="standby_menit" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 30,5" value="{{$row.Menit}}" placeholder="0" autocomplete="off" aria-label="Menit standby">
           </label>
-          <button class="icon-button danger standby-remove" type="button" data-remove-standby aria-label="Hapus baris standby">{{template "icon" "trash"}}</button>
+          <div class="line-field line-action">
+            <span class="field-label" aria-hidden="true"></span>
+            <button class="icon-button danger" type="button" data-remove-standby aria-label="Hapus baris standby">{{template "icon" "trash"}}</button>
+          </div>
         </div>
         {{end}}
       </div>
@@ -154,11 +189,11 @@
       </div>
       <p class="hint">Kosongkan bila alat tidak pernah rusak. Satu variable hanya boleh dipakai sekali; bila terjadi dua kali dalam satu shift, jumlahkan menitnya jadi satu baris.</p>
 
-      <div class="breakdown-list" data-breakdown-list>
+      <div class="line-list" data-breakdown-list>
         {{range $index, $row := .Form.Breakdown}}
-        <div class="breakdown-row" data-breakdown-row>
-          <p class="breakdown-index">Baris <span data-breakdown-number>{{add1 $index}}</span></p>
-          <label class="breakdown-field">
+        <div class="line-row breakdown-row" data-breakdown-row>
+          <p class="line-index">Baris <span data-breakdown-number>{{add1 $index}}</span></p>
+          <label class="line-field">
             <span class="field-label">{{template "icon" "tag"}}Variable</span>
             <select name="breakdown_variable" aria-label="Variable breakdown">
               <option value="">— Pilih variable —</option>
@@ -167,11 +202,14 @@
               {{end}}
             </select>
           </label>
-          <label class="breakdown-field">
+          <label class="line-field">
             <span class="field-label">{{template "icon" "clock"}}Menit</span>
             <input name="breakdown_menit" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 30,5" value="{{$row.Menit}}" placeholder="0" autocomplete="off" aria-label="Menit breakdown">
           </label>
-          <button class="icon-button danger breakdown-remove" type="button" data-remove-breakdown aria-label="Hapus baris breakdown">{{template "icon" "trash"}}</button>
+          <div class="line-field line-action">
+            <span class="field-label" aria-hidden="true"></span>
+            <button class="icon-button danger" type="button" data-remove-breakdown aria-label="Hapus baris breakdown">{{template "icon" "trash"}}</button>
+          </div>
         </div>
         {{end}}
       </div>
@@ -244,8 +282,7 @@
             <th scope="col">ID unit</th>
             <th scope="col">Nama unit</th>
             <th scope="col">Operator</th>
-            <th scope="col">Pekerjaan</th>
-            <th scope="col">Lokasi</th>
+            <th scope="col">Pekerjaan &amp; lokasi</th>
             <th scope="col" class="numeric">HM awal</th>
             <th scope="col" class="numeric">HM akhir</th>
             <th scope="col" class="numeric">Total HM</th>
@@ -267,8 +304,7 @@
             <td>{{.IDUnit}}</td>
             <td class="wrap">{{.NamaUnit}}</td>
             <td class="wrap">{{.Operator}}</td>
-            <td class="wrap">{{if .Pekerjaan}}{{.Pekerjaan}}{{else}}-{{end}}</td>
-            <td class="wrap">{{if .Lokasi}}{{.Lokasi}}{{else}}-{{end}}</td>
+            <td class="wrap">{{range .KegiatanLabels}}<div>{{.}}</div>{{else}}-{{end}}</td>
             <td class="numeric">{{.AwalLabel}}</td>
             <td class="numeric">{{.AkhirLabel}}</td>
             <td class="numeric">{{.TotalLabel}}</td>

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -215,6 +216,12 @@ var fuelMasukHeaders = []string{
 // reason may be given only once per reading.
 var hourMeterHeaders = buildHourMeterHeaders()
 
+// hourMeterKegiatanSheet holds what each reading's worked hours went on, one row
+// per line, the way the nota lines sit beside the nota.
+const hourMeterKegiatanSheet = "Input HM Kegiatan"
+
+var hourMeterKegiatanHeaders = []string{"no_transaksi", "baris", "pekerjaan", "lokasi", "jam"}
+
 func buildHourMeterHeaders() []string {
 	headers := []string{
 		"no_transaksi", "tanggal", "shift", "id_unit", "nama_unit", "operator",
@@ -232,6 +239,7 @@ func buildHourMeterHeaders() []string {
 	headers = append(headers, "dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at")
 	// The work and the place came after the rest, so they sit at the end:
 	// adding them in the middle would move every column an existing row fills.
+	// They are a summary; the hours behind them are in the kegiatan sheet.
 	return append(headers, "pekerjaan", "lokasi")
 }
 
@@ -331,6 +339,7 @@ var projectSheets = []sheetDefinition{
 	{name: fuelMasukSheet, headers: fuelMasukHeaders},
 	{name: fuelKeluarSheet, headers: fuelKeluarHeaders},
 	{name: hourMeterSheet, headers: hourMeterHeaders},
+	{name: hourMeterKegiatanSheet, headers: hourMeterKegiatanHeaders},
 }
 
 // EnsureSchema prepares the sheets one project's books need. It is what a
@@ -2167,12 +2176,29 @@ func (r *GoogleSheetsRepository) MaxHourMeterSequence(ctx context.Context, prefi
 	return highest, nil
 }
 
+// CreateHourMeter writes the reading first and its kegiatan lines after it, on
+// the same terms as a nota: a reading without its lines still carries the
+// summary columns, while lines without a reading belong to nothing.
 func (r *GoogleSheetsRepository) CreateHourMeter(ctx context.Context, reading *model.HourMeter) error {
-	return r.appendRow(ctx, hourMeterSheet, hourMeterToRow(reading))
+	if err := r.appendRow(ctx, hourMeterSheet, hourMeterToRow(reading)); err != nil {
+		return err
+	}
+	if len(reading.Kegiatan) == 0 {
+		return nil
+	}
+	rows := make([][]interface{}, 0, len(reading.Kegiatan))
+	for _, kegiatan := range reading.Kegiatan {
+		rows = append(rows, hourMeterKegiatanToRow(reading.HMID, kegiatan))
+	}
+	return r.appendRows(ctx, hourMeterKegiatanSheet, rows)
 }
 
 func (r *GoogleSheetsRepository) ListHourMeter(ctx context.Context) ([]model.HourMeter, error) {
 	rows, err := r.readRows(ctx, hourMeterSheet, hourMeterLastColumn)
+	if err != nil {
+		return nil, err
+	}
+	kegiatan, err := r.listHourMeterKegiatan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2185,9 +2211,62 @@ func (r *GoogleSheetsRepository) ListHourMeter(ctx context.Context) ([]model.Hou
 		if strings.TrimSpace(reading.HMID) == "" {
 			continue
 		}
+		reading.Kegiatan = kegiatanFor(reading, kegiatan[strings.TrimSpace(reading.HMID)])
 		readings = append(readings, *reading)
 	}
 	return readings, nil
+}
+
+// listHourMeterKegiatan reads every kegiatan line, grouped by the reading it
+// belongs to and kept in the order it was entered.
+func (r *GoogleSheetsRepository) listHourMeterKegiatan(ctx context.Context) (map[string][]model.HourMeterKegiatan, error) {
+	rows, err := r.readRows(ctx, hourMeterKegiatanSheet, columnName(len(hourMeterKegiatanHeaders)))
+	if err != nil {
+		return nil, err
+	}
+	byReading := make(map[string][]model.HourMeterKegiatan)
+	for _, row := range dataRows(rows) {
+		row = padRow(row, len(hourMeterKegiatanHeaders))
+		hmID := strings.TrimSpace(cellString(row[0]))
+		if hmID == "" {
+			continue
+		}
+		baris, _ := strconv.Atoi(strings.TrimSpace(cellString(row[1])))
+		byReading[hmID] = append(byReading[hmID], model.HourMeterKegiatan{
+			HMID:      hmID,
+			Baris:     baris,
+			Pekerjaan: cellString(row[2]),
+			Lokasi:    cellString(row[3]),
+			Jam:       parseFloatCell(row[4]),
+		})
+	}
+	for hmID := range byReading {
+		lines := byReading[hmID]
+		sort.SliceStable(lines, func(i, j int) bool { return lines[i].Baris < lines[j].Baris })
+	}
+	return byReading, nil
+}
+
+// kegiatanFor is a reading's lines. A reading filed in the short while the form
+// asked for one job and one place has no lines of its own, only the two
+// summary cells; it reads as one line covering every hour worked.
+func kegiatanFor(reading *model.HourMeter, lines []model.HourMeterKegiatan) []model.HourMeterKegiatan {
+	if len(lines) > 0 {
+		return lines
+	}
+	if strings.TrimSpace(reading.Pekerjaan) == "" && strings.TrimSpace(reading.Lokasi) == "" {
+		return nil
+	}
+	return []model.HourMeterKegiatan{{
+		HMID: reading.HMID, Baris: 1,
+		Pekerjaan: reading.Pekerjaan, Lokasi: reading.Lokasi, Jam: reading.TotalHM,
+	}}
+}
+
+func hourMeterKegiatanToRow(hmID string, kegiatan model.HourMeterKegiatan) []interface{} {
+	return []interface{}{
+		hmID, strconv.Itoa(kegiatan.Baris), kegiatan.Pekerjaan, kegiatan.Lokasi, formatFloat(kegiatan.Jam),
+	}
 }
 
 func hourMeterToRow(reading *model.HourMeter) []interface{} {

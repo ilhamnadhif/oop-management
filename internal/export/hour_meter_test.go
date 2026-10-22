@@ -13,7 +13,10 @@ func hourMeterFixtures() []model.HourMeter {
 		{
 			HMID: "HM-2026-0001", Tanggal: "2026-08-07", Shift: "Shift 1",
 			IDUnit: "EXC-01", NamaUnit: "Excavator PC200",
-			Pekerjaan: "Loading OB", Lokasi: "Pit 2",
+			Kegiatan: []model.HourMeterKegiatan{
+				{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: 5.5},
+				{Pekerjaan: "Hauling", Lokasi: "Disposal", Jam: 2.5},
+			},
 			HMAwal: 1200, HMAkhir: 1208, TotalHM: 8,
 			PA: 80, UA: 80,
 		},
@@ -45,11 +48,11 @@ func TestHourMeterColumnWidthsFitLandscapeA4(t *testing.T) {
 // The readings stay numbers so the spreadsheet can sort and sum them.
 func TestHourMeterValuesStayNumeric(t *testing.T) {
 	table := HourMeterTable(hourMeterFixtures())
-	if _, ok := table.Values[0][5].(float64); !ok {
-		t.Fatalf("hm awal exported as %T", table.Values[0][5])
+	if _, ok := table.Values[0][4].(float64); !ok {
+		t.Fatalf("hm awal exported as %T", table.Values[0][4])
 	}
-	if _, ok := table.Values[0][8].(float64); !ok {
-		t.Fatalf("pa exported as %T", table.Values[0][8])
+	if _, ok := table.Values[0][7].(float64); !ok {
+		t.Fatalf("pa exported as %T", table.Values[0][7])
 	}
 }
 
@@ -63,7 +66,7 @@ func TestHourMeterColumnsNameTheReading(t *testing.T) {
 	}
 	// PA and UA are percentages, and the header says so: the column of bare
 	// numbers reads as hours otherwise, which is what sits beside it.
-	want := []string{"No", "Tanggal", "ID Unit", "Pekerjaan", "Lokasi",
+	want := []string{"No", "Tanggal", "ID Unit", "Pekerjaan & Lokasi",
 		"HM Awal", "HM Akhir", "Total HM", "PA (%)", "UA (%)"}
 	for i := range want {
 		if headers[i] != want[i] {
@@ -110,18 +113,18 @@ func TestHourMeterSurvivesNoRows(t *testing.T) {
 func TestHourMeterTotalsHoursAndAveragesAvailability(t *testing.T) {
 	table := HourMeterTable(hourMeterFixtures())
 
-	if got := table.Totals[7]; got != 14 {
+	if got := table.Totals[6]; got != 14 {
 		t.Fatalf("total hm = %v, want 8 + 6", got)
 	}
-	if got := table.Totals[8]; got != 77.5 {
+	if got := table.Totals[7]; got != 77.5 {
 		t.Fatalf("pa = %v, want the mean of 80 and 75", got)
 	}
-	if got := table.Totals[9]; got != 71.25 {
+	if got := table.Totals[8]; got != 71.25 {
 		t.Fatalf("ua = %v, want the mean of 80 and 62.5", got)
 	}
 	// The meter readings themselves are not summed: adding one machine's
 	// odometer to the next reading of it means nothing.
-	for _, column := range []int{0, 1, 2, 3, 4, 5, 6} {
+	for _, column := range []int{0, 1, 2, 3, 4, 5} {
 		if _, summed := table.Totals[column]; summed {
 			t.Fatalf("column %d (%s) carries a meaningless total",
 				column, table.Columns[column].Header)
@@ -137,18 +140,19 @@ func TestHourMeterHasNoTotalsRowWithoutReadings(t *testing.T) {
 	}
 }
 
-// Each row names its machine, and what the shift was spent on and where: a
-// report covering several machines is otherwise a list of readings nobody can
-// place.
-func TestHourMeterRowsNameTheUnitTheWorkAndThePlace(t *testing.T) {
+// Each row names its machine, and what the worked hours went on and where:
+// every line of the split in one cell, so the reading stays one row and its
+// hours are summed once.
+func TestHourMeterRowsNameTheUnitAndTheWork(t *testing.T) {
 	table := HourMeterTable(hourMeterFixtures())
 	row := table.Rows[0]
-	if row[2] != "EXC-01" || row[3] != "Loading OB" || row[4] != "Pit 2" {
-		t.Fatalf("row = %q, want the unit, the work and the place", row[:5])
+	want := "Loading OB di Pit 2 (5.5 jam); Hauling di Disposal (2.5 jam)"
+	if row[2] != "EXC-01" || row[3] != want {
+		t.Fatalf("row = %q, want the unit and %q", row[:4], want)
 	}
-	// A reading from before the two were asked for prints a dash, not a blank
+	// A reading from before the split was asked for prints a dash, not a blank
 	// that reads as a missing cell.
-	if second := table.Rows[1]; second[3] != "-" || second[4] != "-" {
-		t.Fatalf("an older reading prints %q and %q", second[3], second[4])
+	if second := table.Rows[1]; second[3] != "-" {
+		t.Fatalf("an older reading prints %q", second[3])
 	}
 }

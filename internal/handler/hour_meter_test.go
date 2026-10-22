@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -15,11 +17,13 @@ func hourMeterFields() map[string]string {
 		"shift":      "Shift 1",
 		"id_unit":    "exc01",
 		"operator":   "kadal",
-		"pekerjaan":  "Loading OB",
-		"lokasi":     "Pit 2",
 		"hm_awal":    "1200",
 		"hm_akhir":   "1208",
 		"fuel_liter": "245",
+		// The eight hours worked, as one line of what and where.
+		"kegiatan_pekerjaan": "Loading OB",
+		"kegiatan_lokasi":    "Pit 2",
+		"kegiatan_jam":       "8",
 	}
 }
 
@@ -28,6 +32,9 @@ func hourMeterFields() map[string]string {
 func hourMeterFieldsWorking(hours string) map[string]string {
 	fields := hourMeterFields()
 	fields["hm_akhir"] = hours
+	if akhir, err := strconv.ParseFloat(hours, 64); err == nil {
+		fields["kegiatan_jam"] = strconv.FormatFloat(akhir-1200, 'f', -1, 64)
+	}
 	return fields
 }
 
@@ -113,6 +120,10 @@ func TestHourMeterAcceptsAnIdleShift(t *testing.T) {
 	fields := hourMeterFields()
 	fields["hm_akhir"] = fields["hm_awal"]
 	fields["fuel_liter"] = "0"
+	// Nothing worked, so nothing to place.
+	delete(fields, "kegiatan_pekerjaan")
+	delete(fields, "kegiatan_lokasi")
+	delete(fields, "kegiatan_jam")
 
 	response := postHourMeterWithStandby(t, client, testServer, fields,
 		[]string{"TUNGGU ALAT"}, []string{"480"})
@@ -183,6 +194,7 @@ func TestHourMeterAcceptsADecimalComma(t *testing.T) {
 	fields["hm_awal"] = "5064,30"
 	fields["hm_akhir"] = "5100,75"
 	fields["fuel_liter"] = "245,5"
+	fields["kegiatan_jam"] = "36,45"
 
 	response := postHourMeter(t, client, testServer, fields)
 	requireFuelResponse(t, response, http.StatusOK, "36.45 jam kerja")
@@ -577,43 +589,89 @@ func TestHourMeterCarriesBothRemainderStates(t *testing.T) {
 	}
 }
 
-// The form asks what the worked hours went on and where, and the history shows
-// both beside the operator.
-func TestHourMeterRecordsTheWorkAndThePlace(t *testing.T) {
+// The form splits the worked hours into lines of what and where, right under
+// the readings, and the history shows every line.
+func TestHourMeterSplitsTheWorkedHoursIntoLines(t *testing.T) {
 	testServer, store := newTestServerWithStore(t)
 	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
 	client := loggedInClientAs(t, testServer, "Logistik")
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/hm")
-	for _, want := range []string{`name="pekerjaan"`, `name="lokasi"`} {
+	for _, want := range []string{`name="kegiatan_pekerjaan"`, `name="kegiatan_lokasi"`, `name="kegiatan_jam"`, "data-add-kegiatan"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the form is missing %s", want)
 		}
 	}
+	// Under the readings: the hours to split are their difference.
+	if strings.Index(page, `name="kegiatan_jam"`) < strings.Index(page, `name="hm_akhir"`) {
+		t.Fatal("the work lines come before the readings they split")
+	}
 
-	response := postHourMeter(t, client, testServer, hourMeterFields())
+	values := url.Values{}
+	for key, value := range hourMeterFields() {
+		if !strings.HasPrefix(key, "kegiatan_") {
+			values.Set(key, value)
+		}
+	}
+	values["kegiatan_pekerjaan"] = []string{"Loading OB", "Hauling"}
+	values["kegiatan_lokasi"] = []string{"Pit 2", "Disposal"}
+	values["kegiatan_jam"] = []string{"5,5", "2,5"}
+	values.Set("csrf_token", csrfFromForm(t, page))
+	response, err := client.PostForm(testServer.URL+"/a2b/hm", values)
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
 	body := readBody(t, response)
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d:\n%s", response.StatusCode, firstLines(body))
 	}
 	rows := store.HourMeterList()
-	if len(rows) != 1 || rows[0].Pekerjaan != "Loading OB" || rows[0].Lokasi != "Pit 2" {
+	if len(rows) != 1 || len(rows[0].Kegiatan) != 2 {
 		t.Fatalf("stored %+v", rows)
 	}
-	if !strings.Contains(body, "Loading OB") || !strings.Contains(body, "Pit 2") {
-		t.Fatal("the history does not show the work and the place")
+	if line := rows[0].Kegiatan[1]; line.Pekerjaan != "Hauling" || line.Lokasi != "Disposal" || line.Jam != 2.5 {
+		t.Fatalf("second line = %+v", line)
+	}
+	for _, want := range []string{"Loading OB di Pit 2 (5.5 jam)", "Hauling di Disposal (2.5 jam)"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the history is missing %q", want)
+		}
 	}
 
-	// A machine that worked and does not say where is sent back with the reason.
+	// Lines that do not add up to the hours worked are sent back with why.
 	fields := hourMeterFields()
 	fields["hm_awal"], fields["hm_akhir"] = "1208", "1216"
-	delete(fields, "lokasi")
+	fields["kegiatan_jam"] = "6"
 	refused := postHourMeter(t, client, testServer, fields)
 	refusedBody := readBody(t, refused)
 	if refused.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", refused.StatusCode)
 	}
-	if !strings.Contains(refusedBody, "Lokasi wajib diisi bila alat bekerja") {
+	if !strings.Contains(refusedBody, "total jam pekerjaan 6 jam harus sama dengan selisih HM 8 jam") {
 		t.Fatalf("the page does not say why:\n%s", firstLines(refusedBody))
+	}
+}
+
+// The work lines wait for the readings: there are no hours to split until both
+// are typed. A form sent back with its readings shows them again.
+func TestHourMeterHidesTheWorkLinesUntilThereAreHours(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedNamedMachine(t, store, 1, "exc01", "Excavator PC200 Kobelco (Rent)")
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/hm")
+	if !strings.Contains(page, "<div data-kegiatan-section hidden>") {
+		t.Fatal("the work lines show before any reading is typed")
+	}
+
+	fields := hourMeterFields()
+	fields["kegiatan_jam"] = "6"
+	refused := postHourMeter(t, client, testServer, fields)
+	body := readBody(t, refused)
+	if refused.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", refused.StatusCode)
+	}
+	if !strings.Contains(body, "<div data-kegiatan-section>") {
+		t.Fatal("a form sent back with its readings hides the lines to correct")
 	}
 }

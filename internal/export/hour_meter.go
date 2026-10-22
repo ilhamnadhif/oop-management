@@ -1,6 +1,7 @@
 package export
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -18,8 +19,7 @@ var hourMeterColumns = []Column{
 	{Header: "No", Width: 12},
 	{Header: "Tanggal", Width: 30},
 	{Header: "ID Unit", Width: 28},
-	{Header: "Pekerjaan", Width: 50},
-	{Header: "Lokasi", Width: 38},
+	{Header: "Pekerjaan & Lokasi", Width: 88},
 	{Header: "HM Awal", Width: 28, Numeric: true, Decimals: 2},
 	{Header: "HM Akhir", Width: 28, Numeric: true, Decimals: 2},
 	{Header: "Total HM", Width: 25, Numeric: true, Decimals: 2},
@@ -40,14 +40,14 @@ func HourMeterTable(rows []model.HourMeter) Table {
 	var totalHM, sumPA, sumUA float64
 	for i, row := range rows {
 		number := i + 1
-		pekerjaan, lokasi := orDash(row.Pekerjaan), orDash(row.Lokasi)
+		kegiatan := kegiatanText(row)
 		table.Rows = append(table.Rows, []string{
-			strconv.Itoa(number), row.Tanggal, row.IDUnit, pekerjaan, lokasi,
+			strconv.Itoa(number), row.Tanggal, row.IDUnit, kegiatan,
 			FormatFloat(row.HMAwal, 2), FormatFloat(row.HMAkhir, 2), FormatFloat(row.TotalHM, 2),
 			FormatFloat(row.PA, 1), FormatFloat(row.UA, 1),
 		})
 		table.Values = append(table.Values, []interface{}{
-			number, row.Tanggal, row.IDUnit, pekerjaan, lokasi,
+			number, row.Tanggal, row.IDUnit, kegiatan,
 			row.HMAwal, row.HMAkhir, row.TotalHM,
 			row.PA, row.UA,
 		})
@@ -60,9 +60,9 @@ func HourMeterTable(rows []model.HourMeter) Table {
 	if len(rows) > 0 {
 		count := float64(len(rows))
 		table.Totals = map[int]float64{
-			7: roundExport(totalHM),
-			8: roundExport(sumPA / count),
-			9: roundExport(sumUA / count),
+			6: roundExport(totalHM),
+			7: roundExport(sumPA / count),
+			8: roundExport(sumUA / count),
 		}
 	}
 	return table
@@ -78,13 +78,20 @@ func HourMeterPDF(rows []model.HourMeter, meta Meta) ([]byte, error) {
 	return RenderPDF(HourMeterTable(rows), meta)
 }
 
-// orDash prints an empty text cell as a dash, so a reading from before a column
-// was asked for reads as not recorded rather than as a cell somebody missed.
-func orDash(value string) string {
-	if strings.TrimSpace(value) == "" {
+// kegiatanText words the lines a reading's worked hours were split into, in one
+// cell: "Loading OB di Pit 2 (5 jam); Hauling di Disposal (3 jam)". One row per
+// reading keeps the hours summable; a row per line would count them twice. A
+// reading with no lines prints a dash, so it reads as not recorded rather than
+// as a cell somebody missed.
+func kegiatanText(row model.HourMeter) string {
+	parts := make([]string, 0, len(row.Kegiatan))
+	for _, line := range row.Kegiatan {
+		parts = append(parts, fmt.Sprintf("%s di %s (%s jam)", line.Pekerjaan, line.Lokasi, FormatFloat(line.Jam, 2)))
+	}
+	if len(parts) == 0 {
 		return "-"
 	}
-	return value
+	return strings.Join(parts, "; ")
 }
 
 // roundExport trims the drift a running sum picks up, so a total of hours reads

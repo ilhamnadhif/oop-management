@@ -52,6 +52,20 @@ func (i HourMeterStandbyInput) IsBlank() bool {
 	return strings.TrimSpace(i.Variable) == "" && strings.TrimSpace(i.Menit) == ""
 }
 
+// HourMeterKegiatanInput is one line of the worked hours as the form submits
+// it: what the machine did, where, and for how many hours.
+type HourMeterKegiatanInput struct {
+	Pekerjaan string
+	Lokasi    string
+	Jam       string
+}
+
+// IsBlank reports a line nobody filled in, on the same terms as a standby one.
+func (i HourMeterKegiatanInput) IsBlank() bool {
+	return strings.TrimSpace(i.Pekerjaan) == "" && strings.TrimSpace(i.Lokasi) == "" &&
+		strings.TrimSpace(i.Jam) == ""
+}
+
 // HourMeterBreakdownInput is one breakdown line as the form submits it.
 type HourMeterBreakdownInput struct {
 	Variable string
@@ -70,9 +84,8 @@ type HourMeterInput struct {
 	Shift    string
 	IDUnit   string
 	Operator string
-	// Pekerjaan and Lokasi are what the worked hours went on and where.
-	Pekerjaan string
-	Lokasi    string
+	// Kegiatan is the worked hours split by job and place.
+	Kegiatan  []HourMeterKegiatanInput
 	HMAwal    string
 	HMAkhir   string
 	FuelLiter string
@@ -84,7 +97,7 @@ type HourMeterInput struct {
 // HourMeterRemarkMaxLength bounds the longest free-text field on the form.
 const HourMeterRemarkMaxLength = 500
 
-// HourMeterPlaceMaxLength bounds the job and the place. Each is a name, not a
+// HourMeterPlaceMaxLength bounds a line's job and place. Each is a name, not a
 // story: anything longer belongs in the remark.
 const HourMeterPlaceMaxLength = 100
 
@@ -210,7 +223,7 @@ func (s *HourMeterService) NextHMID(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%s%04d", prefix, highest+1), nil
 }
 
-// Options lists the shifts and operators already recorded.
+// Options lists the shifts, operators, jobs and places already recorded.
 func (s *HourMeterService) Options(ctx context.Context) (HourMeterOptions, error) {
 	s.optionsMu.Lock()
 	defer s.optionsMu.Unlock()
@@ -221,11 +234,15 @@ func (s *HourMeterService) Options(ctx context.Context) (HourMeterOptions, error
 	if err != nil {
 		return HourMeterOptions{}, fmt.Errorf("read hour meter options: %w", err)
 	}
+	var lines []model.HourMeterKegiatan
+	for _, row := range rows {
+		lines = append(lines, row.Kegiatan...)
+	}
 	s.options = HourMeterOptions{
 		Shifts:    distinctValues(nil, rows, func(h model.HourMeter) string { return h.Shift }),
 		Operators: distinctValues(nil, rows, func(h model.HourMeter) string { return h.Operator }),
-		Pekerjaan: distinctValues(nil, rows, func(h model.HourMeter) string { return h.Pekerjaan }),
-		Lokasi:    distinctValues(nil, rows, func(h model.HourMeter) string { return h.Lokasi }),
+		Pekerjaan: distinctValues(nil, lines, func(k model.HourMeterKegiatan) string { return k.Pekerjaan }),
+		Lokasi:    distinctValues(nil, lines, func(k model.HourMeterKegiatan) string { return k.Lokasi }),
 	}
 	s.optionsAt = s.now()
 	return s.options, nil
@@ -350,11 +367,7 @@ func (s *HourMeterService) Create(ctx context.Context, user *model.User, input H
 			ErrValidation, trimFloat(idle), s.workMinutes, trimFloat(accounted))
 	}
 
-	pekerjaan, err := workDetail("Pekerjaan", input.Pekerjaan, options.Pekerjaan, totalHM)
-	if err != nil {
-		return nil, err
-	}
-	lokasi, err := workDetail("Lokasi", input.Lokasi, options.Lokasi, totalHM)
+	kegiatan, err := normalizeKegiatan(input.Kegiatan, options, totalHM)
 	if err != nil {
 		return nil, err
 	}
@@ -380,8 +393,9 @@ func (s *HourMeterService) Create(ctx context.Context, user *model.User, input H
 		IDUnit:         unit.IDUnit,
 		NamaUnit:       unit.NamaUnit,
 		Operator:       operator,
-		Pekerjaan:      pekerjaan,
-		Lokasi:         lokasi,
+		Kegiatan:       kegiatan,
+		Pekerjaan:      summarizeKegiatan(kegiatan, func(k model.HourMeterKegiatan) string { return k.Pekerjaan }),
+		Lokasi:         summarizeKegiatan(kegiatan, func(k model.HourMeterKegiatan) string { return k.Lokasi }),
 		HMAwal:         round2(awal),
 		HMAkhir:        round2(akhir),
 		TotalHM:        round2(akhir - awal),
@@ -399,6 +413,9 @@ func (s *HourMeterService) Create(ctx context.Context, user *model.User, input H
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
+	for i := range reading.Kegiatan {
+		reading.Kegiatan[i].HMID = reading.HMID
+	}
 	if err := s.store.CreateHourMeter(ctx, reading); err != nil {
 		return nil, fmt.Errorf("create hour meter: %w", err)
 	}
@@ -408,22 +425,78 @@ func (s *HourMeterService) Create(ctx context.Context, user *model.User, input H
 	return reading, nil
 }
 
-// workDetail reads the job or the place off the form. Hours worked went on
-// something somewhere, so a reading with hours on it needs both; a machine
-// that never moved has nothing to place, and may leave them empty. A spelling
-// already in use is adopted, as the shift and operator are.
-func workDetail(label, value string, options []string, totalHM float64) (string, error) {
-	value = strings.Join(strings.Fields(value), " ")
-	if value == "" {
-		if totalHM > 0 {
-			return "", fmt.Errorf("%w: %s wajib diisi bila alat bekerja", ErrValidation, label)
+// normalizeKegiatan reads the lines the worked hours were split into. The hours
+// worked went on something somewhere, so a reading with hours on it needs at
+// least one line, and the lines have to add up to the hours - the same rule the
+// standby and breakdown minutes are held to for the rest of the shift. A
+// machine that never moved has nothing to split, and may carry no line.
+//
+// A job or place already in use is adopted in its existing spelling, as the
+// shift and operator are, so one pit does not end up under two names.
+func normalizeKegiatan(rows []HourMeterKegiatanInput, options HourMeterOptions, totalHM float64) ([]model.HourMeterKegiatan, error) {
+	lines := make([]model.HourMeterKegiatan, 0, len(rows))
+	total := 0.0
+	for _, row := range rows {
+		if row.IsBlank() {
+			continue
 		}
-		return "", nil
+		number := len(lines) + 1
+		pekerjaan, err := kegiatanName(fmt.Sprintf("Pekerjaan baris %d", number), row.Pekerjaan, options.Pekerjaan)
+		if err != nil {
+			return nil, err
+		}
+		lokasi, err := kegiatanName(fmt.Sprintf("Lokasi baris %d", number), row.Lokasi, options.Lokasi)
+		if err != nil {
+			return nil, err
+		}
+		jam, err := parseDimension(fmt.Sprintf("Jam baris %d", number), row.Jam)
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines, model.HourMeterKegiatan{
+			Baris: number, Pekerjaan: pekerjaan, Lokasi: lokasi, Jam: round2(jam),
+		})
+		total += round2(jam)
 	}
+	total = round2(total)
+	switch {
+	case totalHM == 0 && len(lines) > 0:
+		return nil, fmt.Errorf("%w: HM tidak bertambah, pekerjaan dan lokasi harus kosong", ErrValidation)
+	case totalHM > 0 && len(lines) == 0:
+		return nil, fmt.Errorf("%w: pekerjaan dan lokasi wajib diisi bila alat bekerja", ErrValidation)
+	case total != totalHM:
+		return nil, fmt.Errorf("%w: total jam pekerjaan %s jam harus sama dengan selisih HM %s jam",
+			ErrValidation, trimFloat(total), trimFloat(totalHM))
+	}
+	return lines, nil
+}
+
+// kegiatanName reads a line's job or place: required, bounded, and adopted in
+// the spelling already in use.
+func kegiatanName(label, value string, options []string) (string, error) {
+	value = strings.Join(strings.Fields(value), " ")
 	if utf8.RuneCountInString(value) > HourMeterPlaceMaxLength {
 		return "", fmt.Errorf("%w: %s maksimal %d karakter", ErrValidation, label, HourMeterPlaceMaxLength)
 	}
 	return adoptOption(label, value, options)
+}
+
+// summarizeKegiatan names every job, or every place, once in the order first
+// given. It is what the reading's own row on the sheet carries, so the sheet
+// reads without the kegiatan sheet beside it.
+func summarizeKegiatan(lines []model.HourMeterKegiatan, pick func(model.HourMeterKegiatan) string) string {
+	seen := make(map[string]bool, len(lines))
+	names := make([]string, 0, len(lines))
+	for _, line := range lines {
+		name := pick(line)
+		key := strings.ToUpper(name)
+		if name == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // List returns the readings newest first, which is the order the page wants.

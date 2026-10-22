@@ -14,16 +14,23 @@ import (
 
 func hourMeterTestInput() HourMeterInput {
 	return HourMeterInput{
-		Tanggal:   "2026-08-07",
-		Shift:     "Shift 1",
-		IDUnit:    "exc01",
-		Operator:  "kadal",
-		Pekerjaan: "Loading OB",
-		Lokasi:    "Pit 2",
+		Tanggal:  "2026-08-07",
+		Shift:    "Shift 1",
+		IDUnit:   "exc01",
+		Operator: "kadal",
+		// The machine worked the whole eight hours, so the eight hours are what
+		// the lines have to account for.
+		Kegiatan:  []HourMeterKegiatanInput{{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: "8"}},
 		HMAwal:    "1200",
 		HMAkhir:   "1208",
 		FuelLiter: "245",
 	}
+}
+
+// workedLines is one line accounting for every hour of a reading that did not
+// work the fixture's eight.
+func workedLines(jam string) []HourMeterKegiatanInput {
+	return []HourMeterKegiatanInput{{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: jam}}
 }
 
 func newHourMeterService(store repository.Store, now time.Time) *HourMeterService {
@@ -172,6 +179,7 @@ func TestHourMeterStandbyIsBoundedAndOrdered(t *testing.T) {
 	// reason on the list at once.
 	tooMany := hourMeterTestInput()
 	tooMany.HMAkhir = "1207.5"
+	tooMany.Kegiatan = workedLines("7.5")
 	for index, variable := range StandbyVariables {
 		menit := "1"
 		if index == 0 {
@@ -209,6 +217,7 @@ func TestHourMeterStandbyIsBoundedAndOrdered(t *testing.T) {
 	}
 	sparse.HMAwal = "1216"
 	sparse.HMAkhir = "1222.75"
+	sparse.Kegiatan = workedLines("6.75")
 	saved, err := service.Create(context.Background(), fuelTestUser("Logistik"), sparse)
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -231,6 +240,7 @@ func TestHourMeterStandbyAdoptsTheListedSpelling(t *testing.T) {
 	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
 	input := hourMeterTestInput()
 	input.HMAkhir = "1207.25"
+	input.Kegiatan = workedLines("7.25")
 	input.Standby = []HourMeterStandbyInput{{Variable: "tunggu  alat", Menit: "45"}}
 
 	saved, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
@@ -250,6 +260,7 @@ func TestHourMeterStandbyAcceptsTheTimesheetCode(t *testing.T) {
 	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
 	input := hourMeterTestInput()
 	input.HMAkhir = "1207.5"
+	input.Kegiatan = workedLines("7.5")
 	input.Standby = []HourMeterStandbyInput{{Variable: "I15", Menit: "30"}}
 
 	saved, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
@@ -312,6 +323,7 @@ func TestHourMeterBalancesTheShift(t *testing.T) {
 	t.Run("a machine that ran longer than the shift is still full", func(t *testing.T) {
 		input := hourMeterTestInput()
 		input.HMAkhir = "1210"
+		input.Kegiatan = workedLines("10")
 		saved, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
 		if err != nil {
 			t.Fatalf("create: %v", err)
@@ -325,6 +337,7 @@ func TestHourMeterBalancesTheShift(t *testing.T) {
 		input := hourMeterTestInput()
 		input.HMAwal = "1210"
 		input.HMAkhir = "1217"
+		input.Kegiatan = workedLines("7")
 		_, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
 		if !errors.Is(err, ErrValidation) || !strings.Contains(err.Error(), "sisa 60 menit") {
 			t.Fatalf("error = %v, want the remaining hour to be demanded", err)
@@ -335,6 +348,7 @@ func TestHourMeterBalancesTheShift(t *testing.T) {
 		input := hourMeterTestInput()
 		input.HMAwal = "1210"
 		input.HMAkhir = "1217"
+		input.Kegiatan = workedLines("7")
 		input.Standby = []HourMeterStandbyInput{{Variable: "ISTIRAHAT", Menit: "45"}}
 		input.Breakdown = []HourMeterBreakdownInput{{Variable: "SCM", Menit: "15"}}
 		saved, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
@@ -350,6 +364,7 @@ func TestHourMeterBalancesTheShift(t *testing.T) {
 		input := hourMeterTestInput()
 		input.HMAwal = "1217"
 		input.HMAkhir = "1224"
+		input.Kegiatan = workedLines("7")
 		input.Standby = []HourMeterStandbyInput{{Variable: "ISTIRAHAT", Menit: "90"}}
 		_, err := service.Create(context.Background(), fuelTestUser("Logistik"), input)
 		if !errors.Is(err, ErrValidation) || !strings.Contains(err.Error(), "saat ini 90 menit") {
@@ -435,6 +450,7 @@ func TestHourMeterStoresItsFiguresAndRemark(t *testing.T) {
 
 	input := hourMeterTestInput()
 	input.HMAkhir = "1206.5"
+	input.Kegiatan = workedLines("6.5")
 	input.Standby = []HourMeterStandbyInput{{Variable: "ISTIRAHAT", Menit: "60"}}
 	input.Breakdown = []HourMeterBreakdownInput{{Variable: "SCM", Menit: "30"}}
 	input.Remark = "  Ganti hose hidrolik  "
@@ -626,83 +642,102 @@ func TestHourMeterExportRowsFiltersBySeveralUnits(t *testing.T) {
 	}
 }
 
-// A machine that worked says what on and where. Both are suggested from what
-// was typed before, and a second spelling of one already in use is adopted
-// rather than stored twice.
-func TestHourMeterRecordsTheWorkAndThePlace(t *testing.T) {
+// A machine that worked says what the hours went on and where, split over as
+// many lines as the shift took. Jobs and places are suggested from what was
+// typed before, and a second spelling of one already in use is adopted rather
+// than stored twice.
+func TestHourMeterSplitsTheWorkedHoursByJobAndPlace(t *testing.T) {
 	store := repository.NewTestRepository()
 	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
 	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
 	user := fuelTestUser("Logistik")
 
 	input := hourMeterTestInput()
-	input.Pekerjaan = "  Loading   OB "
+	input.Kegiatan = []HourMeterKegiatanInput{
+		{Pekerjaan: "  Loading   OB ", Lokasi: "Pit 2", Jam: "5,5"},
+		{},
+		{Pekerjaan: "Hauling", Lokasi: "Disposal", Jam: "2.5"},
+	}
 	saved, err := service.Create(context.Background(), user, input)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if saved.Pekerjaan != "Loading OB" || saved.Lokasi != "Pit 2" {
-		t.Fatalf("pekerjaan / lokasi = %q / %q", saved.Pekerjaan, saved.Lokasi)
+	if len(saved.Kegiatan) != 2 {
+		t.Fatalf("stored %d lines, want the two filled in: %+v", len(saved.Kegiatan), saved.Kegiatan)
+	}
+	first, second := saved.Kegiatan[0], saved.Kegiatan[1]
+	if first.Pekerjaan != "Loading OB" || first.Lokasi != "Pit 2" || first.Jam != 5.5 || first.Baris != 1 {
+		t.Fatalf("first line = %+v", first)
+	}
+	if second.Pekerjaan != "Hauling" || second.Jam != 2.5 || second.Baris != 2 || second.HMID != saved.HMID {
+		t.Fatalf("second line = %+v", second)
+	}
+	if saved.Pekerjaan != "Loading OB, Hauling" || saved.Lokasi != "Pit 2, Disposal" {
+		t.Fatalf("summary = %q / %q", saved.Pekerjaan, saved.Lokasi)
 	}
 
 	options, err := service.Options(context.Background())
 	if err != nil {
 		t.Fatalf("options: %v", err)
 	}
-	if len(options.Pekerjaan) != 1 || options.Pekerjaan[0] != "Loading OB" {
-		t.Fatalf("pekerjaan options = %+v", options.Pekerjaan)
-	}
-	if len(options.Lokasi) != 1 || options.Lokasi[0] != "Pit 2" {
-		t.Fatalf("lokasi options = %+v", options.Lokasi)
+	if len(options.Pekerjaan) != 2 || len(options.Lokasi) != 2 {
+		t.Fatalf("options = %+v / %+v", options.Pekerjaan, options.Lokasi)
 	}
 
 	repeat := hourMeterTestInput()
 	repeat.HMAwal, repeat.HMAkhir = "1208", "1216"
-	repeat.Lokasi = "pit 2"
+	repeat.Kegiatan = []HourMeterKegiatanInput{{Pekerjaan: "hauling", Lokasi: "pit 2", Jam: "8"}}
 	again, err := service.Create(context.Background(), user, repeat)
 	if err != nil {
 		t.Fatalf("create repeat: %v", err)
 	}
-	if again.Lokasi != "Pit 2" {
-		t.Fatalf("lokasi = %q, want the spelling already in use", again.Lokasi)
+	if again.Kegiatan[0].Pekerjaan != "Hauling" || again.Kegiatan[0].Lokasi != "Pit 2" {
+		t.Fatalf("line = %+v, want the spellings already in use", again.Kegiatan[0])
 	}
 }
 
-// Hours worked have to have gone on something somewhere, so a reading with
-// hours on it needs both. One where the machine never moved has nothing to
-// place, and may leave them empty.
-func TestHourMeterRequiresTheWorkAndThePlaceOnlyWhenTheMachineWorked(t *testing.T) {
+// The lines account for the hours worked exactly, the way standby and
+// breakdown account for the rest of the shift. A machine that never moved has
+// nothing to account for, and carries no line.
+func TestHourMeterKegiatanMustAddUpToTheHoursWorked(t *testing.T) {
 	store := repository.NewTestRepository()
 	seedFuelMachine(t, store, "exc01", "Excavator PC200 Kobelco (Rent)")
 	service := newHourMeterService(store, time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC))
 	user := fuelTestUser("Logistik")
 
-	for name, blank := range map[string]func(*HourMeterInput){
-		"pekerjaan": func(input *HourMeterInput) { input.Pekerjaan = "  " },
-		"lokasi":    func(input *HourMeterInput) { input.Lokasi = "" },
+	for name, lines := range map[string][]HourMeterKegiatanInput{
+		"no line":         nil,
+		"short of the HM": {{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: "6"}},
+		"past the HM":     {{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: "9"}},
+		"no job":          {{Lokasi: "Pit 2", Jam: "8"}},
+		"no place":        {{Pekerjaan: "Loading OB", Jam: "8"}},
+		"no hours":        {{Pekerjaan: "Loading OB", Lokasi: "Pit 2"}},
+		"zero hours": {
+			{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: "8"},
+			{Pekerjaan: "Hauling", Lokasi: "Disposal", Jam: "0"},
+		},
+		"an overlong place": {{Pekerjaan: "Loading OB", Lokasi: strings.Repeat("a", HourMeterPlaceMaxLength+1), Jam: "8"}},
 	} {
 		input := hourMeterTestInput()
-		blank(&input)
+		input.Kegiatan = lines
 		if _, err := service.Create(context.Background(), user, input); !errors.Is(err, ErrValidation) {
-			t.Fatalf("%s left blank: error = %v, want a validation error", name, err)
+			t.Fatalf("%s: error = %v, want a validation error", name, err)
 		}
-	}
-
-	long := hourMeterTestInput()
-	long.Lokasi = strings.Repeat("a", HourMeterPlaceMaxLength+1)
-	if _, err := service.Create(context.Background(), user, long); !errors.Is(err, ErrValidation) {
-		t.Fatalf("an overlong lokasi: error = %v, want a validation error", err)
 	}
 
 	idle := hourMeterTestInput()
 	idle.HMAkhir = idle.HMAwal
-	idle.Pekerjaan, idle.Lokasi = "", ""
 	idle.Standby = []HourMeterStandbyInput{{Variable: "HUJAN", Menit: strconv.Itoa(service.WorkMinutes())}}
+	idle.Kegiatan = []HourMeterKegiatanInput{{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: "1"}}
+	if _, err := service.Create(context.Background(), user, idle); !errors.Is(err, ErrValidation) {
+		t.Fatalf("an idle shift with a line: error = %v, want a validation error", err)
+	}
+	idle.Kegiatan = nil
 	saved, err := service.Create(context.Background(), user, idle)
 	if err != nil {
 		t.Fatalf("a shift that never worked was refused: %v", err)
 	}
-	if saved.Pekerjaan != "" || saved.Lokasi != "" {
-		t.Fatalf("an idle shift stored %q / %q", saved.Pekerjaan, saved.Lokasi)
+	if len(saved.Kegiatan) != 0 || saved.Pekerjaan != "" || saved.Lokasi != "" {
+		t.Fatalf("an idle shift stored %+v / %q / %q", saved.Kegiatan, saved.Pekerjaan, saved.Lokasi)
 	}
 }

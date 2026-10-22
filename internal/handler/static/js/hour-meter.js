@@ -47,10 +47,12 @@
   applyUnit(awal ? awal.value === "" : false);
   syncTotal();
 
-  // Standby and breakdown are the same widget twice: a list of reasons with
-  // minutes against them, a running total, and rows that can be added or
-  // dropped. The server totals both for itself, so this is display only.
-  const durationList = (name, satuan) => {
+  // Standby, breakdown and the worked hours are the same widget three times: a
+  // list of lines with a duration against each, a running total, and rows that
+  // can be added or dropped. The server totals all three for itself, so this is
+  // display only. amount names the duration field: minutes for the two stopped
+  // sections, hours for the worked one.
+  const durationList = (name, satuan, amount = "menit") => {
     const list = form.querySelector(`[data-${name}-list]`);
     const totalCell = form.querySelector(`[data-${name}-total]`);
     if (!list) return;
@@ -60,7 +62,7 @@
     const syncListTotal = () => {
       let minutes = 0;
       rows().forEach((row) => {
-        const field = row.querySelector(`[name='${name}_menit']`);
+        const field = row.querySelector(`[name='${name}_${amount}']`);
         const value = decimal(field && field.value);
         if (Number.isFinite(value) && value > 0) minutes += value;
       });
@@ -90,8 +92,8 @@
       list.appendChild(row);
       renumber();
       syncListTotal();
-      const variable = row.querySelector(`[name='${name}_variable']`);
-      if (variable) variable.focus();
+      const field = row.querySelector("select, input");
+      if (field) field.focus();
     };
 
     // The last row is emptied rather than removed: a list with no rows leaves
@@ -119,7 +121,7 @@
     });
 
     list.addEventListener("input", (event) => {
-      if (event.target.name === `${name}_menit`) syncListTotal();
+      if (event.target.name === `${name}_${amount}`) syncListTotal();
     });
 
     syncListTotal();
@@ -128,7 +130,7 @@
       total: () => {
         let minutes = 0;
         rows().forEach((row) => {
-          const field = row.querySelector(`[name='${name}_menit']`);
+          const field = row.querySelector(`[name='${name}_${amount}']`);
           const value = decimal(field && field.value);
           if (Number.isFinite(value) && value > 0) minutes += value;
         });
@@ -156,6 +158,38 @@
 
   const standby = durationList("standby", "menit");
   const breakdown = durationList("breakdown", "menit");
+  const kegiatan = durationList("kegiatan", "jam", "jam");
+
+  // The worked hours are split across the lines, down to the hour. Until both
+  // readings are in, or when they show no hours worked, there is nothing to
+  // split and the section stays out of the way. Otherwise the hours still to
+  // place are counted down as they are.
+  const kegiatanSection = form.querySelector("[data-kegiatan-section]");
+  const kegiatanShort = form.querySelector("[data-kegiatan-short]");
+  const kegiatanFilled = form.querySelector("[data-kegiatan-filled]");
+  const kegiatanRemaining = form.querySelector("[data-kegiatan-remaining]");
+
+  const syncKegiatan = () => {
+    if (!kegiatanSection || !kegiatan) return;
+    // The total is blank until both readings are typed and the closing one is
+    // not below the opening one. Either way there are no hours to split yet.
+    const hours = decimal(total ? total.value : "");
+    if (!Number.isFinite(hours) || hours <= 0) {
+      kegiatanSection.hidden = true;
+      // A machine that never moved carries no line, and the server refuses one
+      // that does. Lines typed against readings still being corrected are kept.
+      if (hours === 0) kegiatan.clear();
+      return;
+    }
+    kegiatanSection.hidden = false;
+    const short = Math.round((hours - kegiatan.total()) * 100) / 100;
+    if (kegiatanRemaining) kegiatanRemaining.textContent = String(short > 0 ? short : hours);
+    if (kegiatanShort) {
+      kegiatanShort.hidden = short === 0;
+      kegiatanShort.classList.toggle("short", short < 0);
+    }
+    if (kegiatanFilled) kegiatanFilled.hidden = short !== 0;
+  };
 
   // The shift is either worked or accounted for. Once the hour meter covers the
   // whole shift there is nothing left to explain, so both sections go away and
@@ -250,4 +284,11 @@
   });
   if (unit) unit.addEventListener("change", syncIdle);
   syncIdle();
+
+  if (kegiatan) kegiatan.onChange(syncKegiatan);
+  [awal, akhir].forEach((field) => {
+    if (field) field.addEventListener("input", syncKegiatan);
+  });
+  if (unit) unit.addEventListener("change", syncKegiatan);
+  syncKegiatan();
 })();

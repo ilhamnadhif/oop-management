@@ -1124,6 +1124,7 @@ func (r *TestRepository) CreateHourMeter(_ context.Context, reading *model.HourM
 	defer r.mu.Unlock()
 	stored := *reading
 	stored.Standby = append([]model.HourMeterStandby(nil), reading.Standby...)
+	stored.Kegiatan = append([]model.HourMeterKegiatan(nil), reading.Kegiatan...)
 	r.hourMeters = append(r.hourMeters, &stored)
 	return nil
 }
@@ -1132,7 +1133,8 @@ func (r *TestRepository) ListHourMeter(context.Context) ([]model.HourMeter, erro
 	return r.HourMeterList(), nil
 }
 
-// HourMeterList exposes the stored readings to tests, standby lines included.
+// HourMeterList exposes the stored readings to tests, standby and kegiatan
+// lines included.
 func (r *TestRepository) HourMeterList() []model.HourMeter {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -1140,6 +1142,7 @@ func (r *TestRepository) HourMeterList() []model.HourMeter {
 	for _, reading := range r.hourMeters {
 		stored := *reading
 		stored.Standby = append([]model.HourMeterStandby(nil), reading.Standby...)
+		stored.Kegiatan = append([]model.HourMeterKegiatan(nil), reading.Kegiatan...)
 		rows = append(rows, stored)
 	}
 	return rows

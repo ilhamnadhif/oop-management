@@ -443,3 +443,39 @@ func TestHeaderNeedsWriting(t *testing.T) {
 		t.Fatal("an unexpected extra column was accepted")
 	}
 }
+
+// A kegiatan line is written against the reading it belongs to, in order.
+func TestHourMeterKegiatanRowCarriesItsReading(t *testing.T) {
+	row := hourMeterKegiatanToRow("HM-20260807-0001", model.HourMeterKegiatan{
+		Baris: 2, Pekerjaan: "Hauling", Lokasi: "Disposal", Jam: 2.5,
+	})
+	if len(row) != len(hourMeterKegiatanHeaders) {
+		t.Fatalf("row has %d cells for %d headers", len(row), len(hourMeterKegiatanHeaders))
+	}
+	want := []string{"HM-20260807-0001", "2", "Hauling", "Disposal", "2.500000"}
+	for index := range want {
+		if cellString(row[index]) != want[index] {
+			t.Fatalf("%s = %q, want %q", hourMeterKegiatanHeaders[index], cellString(row[index]), want[index])
+		}
+	}
+}
+
+// A reading filed while the form asked for one job and one place has no lines
+// of its own; it reads as one line covering every hour worked. A reading with
+// lines keeps them, and one with neither has none.
+func TestHourMeterKegiatanFallsBackToTheSummary(t *testing.T) {
+	legacy := &model.HourMeter{HMID: "HM-1", TotalHM: 8, Pekerjaan: "Loading OB", Lokasi: "Pit 2"}
+	lines := kegiatanFor(legacy, nil)
+	if len(lines) != 1 || lines[0].Pekerjaan != "Loading OB" || lines[0].Lokasi != "Pit 2" || lines[0].Jam != 8 {
+		t.Fatalf("legacy reading read as %+v", lines)
+	}
+
+	own := []model.HourMeterKegiatan{{HMID: "HM-2", Baris: 1, Pekerjaan: "Hauling", Lokasi: "Disposal", Jam: 8}}
+	if got := kegiatanFor(&model.HourMeter{HMID: "HM-2", Pekerjaan: "Hauling"}, own); len(got) != 1 || got[0].Pekerjaan != "Hauling" {
+		t.Fatalf("a reading's own lines read as %+v", got)
+	}
+
+	if got := kegiatanFor(&model.HourMeter{HMID: "HM-3", TotalHM: 8}, nil); got != nil {
+		t.Fatalf("a reading with nothing recorded read as %+v", got)
+	}
+}

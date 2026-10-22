@@ -541,9 +541,12 @@ type HourMeter struct {
 	IDUnit   string
 	NamaUnit string
 	Operator string
-	// Pekerjaan and Lokasi are what the worked hours went on and where. Both
-	// are empty on a reading from before they were asked for, and on one where
-	// the machine never worked.
+	// Kegiatan is the worked hours split by what the machine did and where,
+	// adding up to TotalHM. It is empty on a reading from before it was asked
+	// for, and on one where the machine never worked.
+	Kegiatan []HourMeterKegiatan
+	// Pekerjaan and Lokasi are Kegiatan summed up for a reader of the sheet:
+	// every job, and every place, named once in the order first given.
 	Pekerjaan string
 	Lokasi    string
 	HMAwal    float64
@@ -636,6 +639,17 @@ var BreakdownVariables = []string{"SCM", "USM", "TRM", "ICM", "NO OPR"}
 // on. The prefix keeps them apart from every other column in the row.
 func BreakdownColumn(variable string) string {
 	return "bd_" + strings.ToLower(strings.Join(strings.Fields(variable), "_"))
+}
+
+// HourMeterKegiatan is one stretch of the worked hours: what the machine did,
+// where, and for how many hours. It lives in its own sheet, one row per line,
+// because a shift can be split across any number of them.
+type HourMeterKegiatan struct {
+	HMID      string
+	Baris     int
+	Pekerjaan string
+	Lokasi    string
+	Jam       float64
 }
 
 // HourMeterStandby is one standby reason and the minutes spent on it.

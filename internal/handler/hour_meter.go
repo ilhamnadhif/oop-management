@@ -18,8 +18,7 @@ type HourMeterFormData struct {
 	Shift     string
 	IDUnit    string
 	Operator  string
-	Pekerjaan string
-	Lokasi    string
+	Kegiatan  []service.HourMeterKegiatanInput
 	HMAwal    string
 	HMAkhir   string
 	FuelLiter string
@@ -43,6 +42,9 @@ type HourMeterView struct {
 	PAClass        string
 	BDClass        string
 	UAClass        string
+	// KegiatanLabels words each line of the worked hours, "Loading OB di Pit 2
+	// (5 jam)", one per line of the cell.
+	KegiatanLabels []string
 }
 
 type HourMeterPageData struct {
@@ -55,14 +57,18 @@ type HourMeterPageData struct {
 	NextHMID           string
 	WorkMinutes        int
 	IdleMinutes        float64
-	PATarget           float64
-	BDTarget           float64
-	UATarget           float64
-	RemarkMaxLength    int
-	PlaceMaxLength     int
-	Rows               []HourMeterView
-	Error              string
-	Success            string
+	// WorkedHours is the difference between the two readings typed so far, and
+	// zero until both are there. The work lines are shown only once it is above
+	// zero: until then there are no hours to split.
+	WorkedHours     float64
+	PATarget        float64
+	BDTarget        float64
+	UATarget        float64
+	RemarkMaxLength int
+	PlaceMaxLength  int
+	Rows            []HourMeterView
+	Error           string
+	Success         string
 }
 
 func (s *Server) handleA2BHourMeter(w http.ResponseWriter, r *http.Request) {
@@ -116,8 +122,7 @@ func (s *Server) handleHourMeterCreate(w http.ResponseWriter, r *http.Request) {
 		Shift:     strings.TrimSpace(r.FormValue("shift")),
 		IDUnit:    strings.TrimSpace(r.FormValue("id_unit")),
 		Operator:  strings.TrimSpace(r.FormValue("operator")),
-		Pekerjaan: strings.TrimSpace(r.FormValue("pekerjaan")),
-		Lokasi:    strings.TrimSpace(r.FormValue("lokasi")),
+		Kegiatan:  kegiatanFromForm(r),
 		HMAwal:    strings.TrimSpace(r.FormValue("hm_awal")),
 		HMAkhir:   strings.TrimSpace(r.FormValue("hm_akhir")),
 		FuelLiter: strings.TrimSpace(r.FormValue("fuel_liter")),
@@ -130,8 +135,7 @@ func (s *Server) handleHourMeterCreate(w http.ResponseWriter, r *http.Request) {
 		Shift:     form.Shift,
 		IDUnit:    form.IDUnit,
 		Operator:  form.Operator,
-		Pekerjaan: form.Pekerjaan,
-		Lokasi:    form.Lokasi,
+		Kegiatan:  form.Kegiatan,
 		HMAwal:    form.HMAwal,
 		HMAkhir:   form.HMAkhir,
 		FuelLiter: form.FuelLiter,
@@ -172,6 +176,9 @@ func (s *Server) renderHourMeter(w http.ResponseWriter, r *http.Request, user *m
 	if len(form.Breakdown) == 0 {
 		form.Breakdown = []service.HourMeterBreakdownInput{{}}
 	}
+	if len(form.Kegiatan) == 0 {
+		form.Kegiatan = []service.HourMeterKegiatanInput{{}}
+	}
 	data := HourMeterPageData{
 		ShellPageData:      s.shellData(user, sessionValue, "a2b-hm"),
 		Form:               form,
@@ -209,6 +216,7 @@ func (s *Server) renderHourMeter(w http.ResponseWriter, r *http.Request, user *m
 	if hours, err := strconv.ParseFloat(strings.ReplaceAll(form.HMAwal, ",", "."), 64); err == nil {
 		if akhir, err := strconv.ParseFloat(strings.ReplaceAll(form.HMAkhir, ",", "."), 64); err == nil && akhir >= hours {
 			data.IdleMinutes = s.hourMeter.IdleMinutesFor(akhir - hours)
+			data.WorkedHours = akhir - hours
 		}
 	}
 	nextID, err := s.hourMeter.NextHMID(r.Context())
@@ -244,6 +252,24 @@ func standbyFromForm(r *http.Request) []service.HourMeterStandbyInput {
 		rows = append(rows, service.HourMeterStandbyInput{
 			Variable: strings.TrimSpace(variables[i]),
 			Menit:    strings.TrimSpace(menit[i]),
+		})
+	}
+	return rows
+}
+
+// kegiatanFromForm reads the repeated job, place and hours inputs, on the same
+// terms as the standby ones: the shortest array decides how many lines arrived.
+func kegiatanFromForm(r *http.Request) []service.HourMeterKegiatanInput {
+	pekerjaan := r.Form["kegiatan_pekerjaan"]
+	lokasi := r.Form["kegiatan_lokasi"]
+	jam := r.Form["kegiatan_jam"]
+	count := min(len(pekerjaan), len(lokasi), len(jam))
+	rows := make([]service.HourMeterKegiatanInput, 0, count)
+	for i := 0; i < count; i++ {
+		rows = append(rows, service.HourMeterKegiatanInput{
+			Pekerjaan: strings.TrimSpace(pekerjaan[i]),
+			Lokasi:    strings.TrimSpace(lokasi[i]),
+			Jam:       strings.TrimSpace(jam[i]),
 		})
 	}
 	return rows
@@ -303,7 +329,17 @@ func hourMeterViews(rows []model.HourMeter) []HourMeterView {
 			PAClass:        figureClass(row.PA >= paTarget),
 			BDClass:        figureClass(row.BDPersen <= bdTarget),
 			UAClass:        figureClass(row.UA >= uaTarget),
+			KegiatanLabels: kegiatanLabels(row.Kegiatan),
 		})
 	}
 	return views
+}
+
+// kegiatanLabels words the lines a reading's worked hours were split into.
+func kegiatanLabels(lines []model.HourMeterKegiatan) []string {
+	labels := make([]string, 0, len(lines))
+	for _, line := range lines {
+		labels = append(labels, fmt.Sprintf("%s di %s (%s jam)", line.Pekerjaan, line.Lokasi, formatLiter(line.Jam)))
+	}
+	return labels
 }

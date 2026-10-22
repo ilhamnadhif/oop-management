@@ -466,18 +466,25 @@ input:disabled { color: var(--muted); background: #eef2f4; cursor: not-allowed; 
 /* Standby is a list of reasons the machine stood still. Same shape as the nota
    lines: a two-column row on a wide screen, a labelled card on a phone. */
 .standby-heading { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px solid var(--line); }
-.standby-list,
-.breakdown-list { display: grid; gap: 0.6rem; }
+/* The repeated lines on the hour meter form - standby, breakdown and the worked
+   hours - are one widget. Every cell is a label over its field, the remove
+   button included - its label is an empty spacer - so a row's cells share one
+   height and the button stretches to exactly the height of the inputs beside
+   it. Written as .stack-form .line-field to outweigh the plain label rule,
+   which lays a label out as a wrapping flex row with a margin above: a field
+   at full width wraps under it, but the combobox wrapper does not, and sat
+   beside its label. Only the column widths differ from list to list. */
+.line-list { display: grid; gap: 0.6rem; }
+.line-row { display: grid; gap: 0.6rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
 .standby-row,
-.breakdown-row { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; padding: 0.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
-.standby-row input, .standby-row select,
-.breakdown-row input, .breakdown-row select { width: 100%; background: var(--white); }
-.standby-field,
-.breakdown-field { display: grid; gap: 0.3rem; min-width: 0; }
-.standby-field .field-label,
-.breakdown-field .field-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.74rem; font-weight: 600; }
-.standby-index,
-.breakdown-index { display: none; }
+.breakdown-row { grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) auto; }
+.kegiatan-row { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.4fr) minmax(0, 0.8fr) auto; }
+.line-row input, .line-row select { width: 100%; background: var(--white); }
+.stack-form .line-field { display: grid; grid-template-rows: auto 1fr; gap: 0.3rem; min-width: 0; margin: 0; }
+.line-field .combobox { width: 100%; }
+.line-field .field-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; min-height: 1.2rem; color: var(--muted); font-size: 0.74rem; font-weight: 600; }
+.line-action .icon-button { width: 3.4rem; height: 100%; }
+.line-index { display: none; }
 .standby-add,
 .breakdown-add { margin-top: 0.7rem; }
 .standby-total,
@@ -686,12 +693,17 @@ dialog.upload-sheet { width: min(420px, calc(100vw - 1.5rem)); margin-top: auto;
   .nota-item-total .field-label { color: var(--muted); }
   /* Thumb-width on a phone, where it is the button pressed most on this page. */
   .nota-add { width: 100%; justify-content: center; }
-  .standby-row { grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; padding: 0.9rem; }
-  .standby-index { display: block; margin-bottom: 0; color: var(--navy); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-  .standby-remove,
-.breakdown-remove { justify-self: end; grid-row: 1; grid-column: 2; }
-  .standby-field { grid-column: 1 / -1; }
-  .standby-add { width: 100%; justify-content: center; }
+  /* Each line becomes a card: numbered, its fields stacked, and the remove
+     button up beside the number, where the spacer label has nothing to line
+     up with. */
+  .line-row { grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; padding: 0.9rem; }
+  .line-index { display: block; align-self: center; margin-bottom: 0; color: var(--navy); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .stack-form .line-field { grid-column: 1 / -1; }
+  .stack-form .line-action { display: block; grid-row: 1; grid-column: 2; justify-self: end; }
+  .line-action .field-label { display: none; }
+  .line-action .icon-button { width: auto; height: auto; }
+  .standby-add,
+  .breakdown-add { width: 100%; justify-content: center; }
   .calc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { flex-direction: row; align-items: center; }
   .video-frame, .video-frame video { min-height: 220px; }
