@@ -49,6 +49,12 @@
           <label for="jumlah_liter">{{template "icon" "fuel"}}Jumlah fuel masuk (liter)</label>
           <input id="jumlah_liter" name="jumlah_liter" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.JumlahLiter}}" placeholder="8010" required>
         </div>
+        <div>
+          <label for="harga_per_liter">{{template "icon" "wallet"}}Harga per liter (Rp)
+            {{template "fieldHelp" "Harga beli solar ini. Biaya dibebankan saat solarnya dipakai, bukan saat dibeli, jadi harga ikut stok yang masuk."}}
+          </label>
+          <input id="harga_per_liter" name="harga_per_liter" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 20500,50" value="{{.Form.HargaPerLiter}}" placeholder="20000" required>
+        </div>
       </div>
 
       <label for="keterangan">{{template "icon" "check"}}Keterangan</label>

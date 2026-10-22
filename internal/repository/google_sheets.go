@@ -204,6 +204,9 @@ var fuelMasukHeaders = []string{
 	"foto_tangki_setelah_bongkar",
 	"catatan_approval", "diproses_oleh", "diproses_oleh_user_id", "diproses_pada",
 	"dibuat_oleh", "dibuat_oleh_user_id", "created_at", "updated_at",
+	// The price came after the rest, so it sits at the end: adding it in the
+	// middle would move every column an existing row already fills.
+	"harga_per_liter",
 }
 
 // The hour meter log carries no photo, so it is read in one range. Every
@@ -278,12 +281,12 @@ const (
 // of a hundred deliveries would otherwise be several hundred megabytes.
 const (
 	fuelHeadColumn = "I"
-	fuelTailRange  = "N:U"
+	fuelTailRange  = "N:V"
 	// Columns in the head range, and the count of the tail range, so the two
 	// reads can be stitched back into one row.
 	fuelHeadWidth  = 9
 	fuelPhotoCount = 4
-	fuelTailWidth  = 8
+	fuelTailWidth  = 9
 	// The photos sit at J, K, L and M.
 	fuelPhotoFirstColumn = 'J'
 	fuelStatusColumn     = "I"
@@ -1933,6 +1936,7 @@ func fuelMasukToRow(fuel *model.FuelMasuk) []interface{} {
 		fuel.CatatanApproval, fuel.DiprosesOleh, fuel.DiprosesOlehUserID,
 		formatNullableDateTime(fuel.DiprosesPada),
 		fuel.CreatedBy, fuel.CreatedByID, formatDateTime(fuel.CreatedAt), formatDateTime(fuel.UpdatedAt),
+		formatFloat(fuel.HargaPerLiter),
 	}
 }
 
@@ -1961,6 +1965,7 @@ func rowToFuelMasuk(row []interface{}, location *time.Location) (*model.FuelMasu
 		Driver:             cellString(row[3]),
 		Nopol:              cellString(row[4]),
 		JumlahLiter:        parseFloatCell(row[5]),
+		HargaPerLiter:      parseFloatCell(row[21]),
 		Keterangan:         cellString(row[6]),
 		LiterTidakSesuai:   parseFloatCell(row[7]),
 		StatusApproval:     cellString(row[8]),

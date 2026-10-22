@@ -281,3 +281,56 @@ func TestFuelMasukHasNoApprovalPage(t *testing.T) {
 		t.Fatalf("the approval menu entry is still shown: %s", nav)
 	}
 }
+
+// The delivery carries what it cost, because fuel is charged to the month it is
+// burned in rather than the month it arrived.
+func TestFuelMasukStoresThePricePaid(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/fuel-masuk")
+	if !strings.Contains(page, `name="harga_per_liter"`) {
+		t.Fatal("the form does not ask what the fuel cost")
+	}
+	// Offered rather than assumed: a field somebody retypes every time is a
+	// field somebody eventually gets wrong.
+	if !strings.Contains(page, `value="20000"`) {
+		t.Fatalf("the price is not prefilled:\n%s", firstLines(page))
+	}
+
+	fields := fuelFields()
+	fields["harga_per_liter"] = "20500"
+	response := postFuelMasuk(t, client, testServer, csrfFromForm(t, page), fields, testJPEG(t))
+	response.Body.Close()
+
+	rows := store.FuelMasukList()
+	if len(rows) != 1 {
+		t.Fatalf("stored %d deliveries, want 1", len(rows))
+	}
+	if rows[0].HargaPerLiter != 20500 {
+		t.Fatalf("price = %v, want what was typed", rows[0].HargaPerLiter)
+	}
+}
+
+// Fuel nobody paid for is a typo, not a delivery.
+func TestFuelMasukRefusesAPriceOfZero(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	client := loggedInClientAs(t, testServer, "Logistik")
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/fuel-masuk")
+	fields := fuelFields()
+	fields["harga_per_liter"] = "0"
+	response := postFuelMasuk(t, client, testServer, csrfFromForm(t, page), fields, testJPEG(t))
+	body := readBody(t, response)
+	response.Body.Close()
+
+	if response.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", response.StatusCode)
+	}
+	if !strings.Contains(body, "Harga per liter harus lebih dari 0") {
+		t.Fatalf("the page does not say why:\n%s", firstLines(body))
+	}
+	if len(store.FuelMasukList()) != 0 {
+		t.Fatal("a delivery with no price was stored")
+	}
+}

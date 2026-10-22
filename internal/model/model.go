@@ -213,13 +213,15 @@ const (
 	ExportUnitA2B    ExportTypeKey = "unit-a2b"
 	ExportInputHM    ExportTypeKey = "input-hm"
 	ExportFuelKeluar ExportTypeKey = "fuel-keluar"
+	ExportBiayaFuel  ExportTypeKey = "biaya-fuel"
 	ExportAbsensi    ExportTypeKey = "absensi"
 )
 
 // ExportTypeKeys is every configurable export, in the order the settings form
 // lists them.
 var ExportTypeKeys = []ExportTypeKey{
-	ExportProduksi, ExportNota, ExportUnitDT, ExportUnitA2B, ExportInputHM, ExportFuelKeluar, ExportAbsensi,
+	ExportProduksi, ExportNota, ExportUnitDT, ExportUnitA2B, ExportInputHM, ExportFuelKeluar,
+	ExportBiayaFuel, ExportAbsensi,
 }
 
 // ExportConfigFor returns one export's config, or the defaults when the
@@ -469,11 +471,18 @@ type FuelMasuk struct {
 	FuelID string
 	// TanggalInput is when the delivery was recorded. It is entered rather than
 	// stamped, because a delivery that arrives after hours is written up later.
-	TanggalInput     time.Time
-	Vendor           string
-	Driver           string
-	Nopol            string
-	JumlahLiter      float64
+	TanggalInput time.Time
+	Vendor       string
+	Driver       string
+	Nopol        string
+	JumlahLiter  float64
+	// HargaPerLiter is what this delivery was bought at. Fuel is costed when it
+	// is burned rather than when it is bought, so the price rides with the
+	// stock it came in on: a month is charged for what it used, not for what
+	// happened to be delivered that month.
+	//
+	// Zero is a delivery written before the column existed, not free fuel.
+	HargaPerLiter    float64
 	Keterangan       string
 	LiterTidakSesuai float64
 	StatusApproval   string

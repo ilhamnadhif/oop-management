@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"opp-management/internal/model"
 	"opp-management/internal/repository"
@@ -525,5 +526,85 @@ func TestTheUnitPickerScriptClosesOnAClickOutside(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Fatalf("the picker script is missing %q", want)
 		}
+	}
+}
+
+// seedFuelMasukRow files one approved delivery, which is what puts stock in the
+// tank for the bill to draw on.
+func seedFuelMasukRow(t *testing.T, store *repository.TestRepository, id, tanggal string, liter, harga float64) {
+	t.Helper()
+	day, err := time.Parse("2006-01-02", tanggal)
+	if err != nil {
+		t.Fatalf("seed delivery date: %v", err)
+	}
+	location := time.FixedZone("WIB", 7*60*60)
+	if err := store.CreateFuelMasuk(context.Background(), &model.FuelMasuk{
+		FuelID:       "FUEL-" + id,
+		TanggalInput: time.Date(day.Year(), day.Month(), day.Day(), 8, 0, 0, 0, location),
+		Vendor:       "Vendor", Driver: "Driver", Nopol: "B 1 A",
+		JumlahLiter: liter, HargaPerLiter: harga,
+		StatusApproval: model.FuelStatusDisetujui,
+	}); err != nil {
+		t.Fatalf("seed delivery %s: %v", id, err)
+	}
+}
+
+// The bill is a fourth card, filtered by range alone: it is about the tank, and
+// the tank belongs to the site rather than to any one machine.
+func TestA2BExportShowsTheFuelBill(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedFuelMasukRow(t, store, "1", "2026-08-01", 10000, 20000)
+	seedFuelKeluarRow(t, store, "FO-1", "2026-08-05", "EXC-01", 6000)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b/export?bf_from=2026-08-01&bf_to=2026-08-31")
+	for _, want := range []string{
+		"BIAYA FUEL",
+		`name="bf_from"`, `name="bf_to"`,
+		"/a2b/export/biaya-fuel/download?format=xlsx",
+		"1 bulan siap diunduh",
+		// Six thousand litres at twenty thousand, not the whole delivery.
+		"Rp 120.000.000",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the page is missing %q:\n%s", want, firstLines(page))
+		}
+	}
+	// The bill takes no machine: it is the tank, not the fleet.
+	if strings.Contains(page, `name="bf_unit"`) {
+		t.Fatal("the bill offers a machine filter")
+	}
+}
+
+// The bill downloads in both formats, and answers to its own project setting.
+func TestFuelCostExportDownloadsAndIsGuarded(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	seedFuelMasukRow(t, store, "1", "2026-08-01", 10000, 20000)
+	seedFuelKeluarRow(t, store, "FO-1", "2026-08-05", "EXC-01", 6000)
+	client := loggedInClient(t, testServer)
+
+	for format, magic := range map[string][]byte{"xlsx": []byte("PK"), "pdf": []byte("%PDF-")} {
+		response := downloadProduksi(t, client,
+			testServer.URL+"/a2b/export/biaya-fuel/download?format="+format+"&from=2026-08-01&to=2026-08-31")
+		body := readBodyBytes(t, response)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d", format, response.StatusCode)
+		}
+		if !bytes.HasPrefix(body, magic) {
+			t.Fatalf("%s: body does not start with %q", format, magic)
+		}
+	}
+
+	response := saveExportConfig(t, client, testServer, store.ProjectList()[0].ProjectID, testProjectName,
+		map[string]string{"export_key": string(model.ExportBiayaFuel), "ttd_count": "1"})
+	response.Body.Close()
+
+	download, err := client.Get(testServer.URL + "/a2b/export/biaya-fuel/download?format=xlsx")
+	if err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	defer download.Body.Close()
+	if download.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 for a report the project switched off", download.StatusCode)
 	}
 }

@@ -22,6 +22,7 @@ type FuelMasukFormData struct {
 	Driver           string
 	Nopol            string
 	JumlahLiter      string
+	HargaPerLiter    string
 	Keterangan       string
 	LiterTidakSesuai string
 }
@@ -116,6 +117,7 @@ func (s *Server) handleFuelMasukCreate(w http.ResponseWriter, r *http.Request) {
 		Driver:           strings.TrimSpace(r.FormValue("driver")),
 		Nopol:            strings.TrimSpace(r.FormValue("nopol")),
 		JumlahLiter:      strings.TrimSpace(r.FormValue("jumlah_liter")),
+		HargaPerLiter:    strings.TrimSpace(r.FormValue("harga_per_liter")),
 		Keterangan:       strings.TrimSpace(r.FormValue("keterangan")),
 		LiterTidakSesuai: strings.TrimSpace(r.FormValue("liter_tidak_sesuai")),
 	}
@@ -125,6 +127,7 @@ func (s *Server) handleFuelMasukCreate(w http.ResponseWriter, r *http.Request) {
 		Driver:           form.Driver,
 		Nopol:            form.Nopol,
 		JumlahLiter:      form.JumlahLiter,
+		HargaPerLiter:    form.HargaPerLiter,
 		Keterangan:       form.Keterangan,
 		LiterTidakSesuai: form.LiterTidakSesuai,
 	}
@@ -164,6 +167,12 @@ func (s *Server) renderFuelMasuk(w http.ResponseWriter, r *http.Request, user *m
 	}
 	if form.Keterangan == "" {
 		form.Keterangan = model.FuelKeteranganSesuai
+	}
+	if form.HargaPerLiter == "" {
+		// Offered rather than assumed: the price is usually the same delivery
+		// after delivery, and a field somebody has to retype every time is a
+		// field somebody eventually gets wrong.
+		form.HargaPerLiter = strconv.FormatFloat(service.DefaultHargaPerLiter, 'f', -1, 64)
 	}
 	data := FuelMasukPageData{
 		ShellPageData:     s.shellData(user, sessionValue, "a2b-fuel-masuk"),

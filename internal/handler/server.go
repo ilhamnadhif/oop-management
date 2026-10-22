@@ -466,6 +466,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/a2b/export/download", s.handleA2BPerformanceDownload)
 	mux.HandleFunc("/a2b/export/hm/download", s.handleA2BHMExportDownload)
 	mux.HandleFunc("/a2b/export/fuel-keluar/download", s.handleFuelKeluarExportDownload)
+	mux.HandleFunc("/a2b/export/biaya-fuel/download", s.handleFuelCostExportDownload)
 	mux.HandleFunc("/unit-dt", s.handleUnitDT)
 	mux.HandleFunc("/unit-a2b", s.handleUnitA2B)
 	mux.HandleFunc("/nota", s.handleNota)
@@ -1487,7 +1488,10 @@ type A2BOverviewPageData struct {
 	UnitChart   *Chart
 	FuelChart   *Chart
 	DelaySlices []DelaySlice
-	Error       string
+	// Cost is the fuel bill over the same range: what the fuel burned in it
+	// cost, rather than what the fuel bought in it cost.
+	Cost  *service.FuelCostReport
+	Error string
 }
 
 // DelaySlice is one wedge of the delay donut, ready to draw.
@@ -1529,6 +1533,14 @@ func (s *Server) handleA2BOverview(w http.ResponseWriter, r *http.Request) {
 	data.From = overview.From
 	data.To = overview.To
 	data.DelaySlices = buildDelaySlices(overview.TopDelay)
+
+	cost, err := s.unitOverview.BuildFuelCost(r.Context(), overview.From, overview.To)
+	if err != nil {
+		// Losing the bill costs the page one card, not the dashboard.
+		log.Printf("build fuel cost: %v", err)
+	} else {
+		data.Cost = cost
+	}
 
 	labels := make([]string, 0, len(overview.Series))
 	active := make([]float64, 0, len(overview.Series))

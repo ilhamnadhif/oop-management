@@ -26,6 +26,7 @@
            somebody changes the range up here. */}}
       {{template "a2bHourMeterFilters" .}}
       {{template "a2bFuelKeluarFilters" .}}
+      {{template "a2bFuelCostFilters" .}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
       <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
@@ -67,6 +68,7 @@
       {{template "unitPicker" .HMPicker}}
       {{template "a2bPerformanceFilters" .}}
       {{template "a2bFuelKeluarFilters" .}}
+      {{template "a2bFuelCostFilters" .}}
       <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
       <a class="button subtle" href="/a2b/export">Reset</a>
       <p class="hint filter-note">Default: semua unit, seluruh periode.</p>
@@ -123,6 +125,47 @@
     <p class="panel-empty">Tidak ada pemakaian pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
     {{end}}
   </section>
+  {{/* The fuel bill. Charged to the month the fuel was burned in rather than
+       the month it arrived, which is the whole point of keeping the deliveries
+       as stock: a month that buys the next month's fuel has not overspent. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "wallet"}}BIAYA FUEL</p>
+        <h2>Export biaya bahan bakar</h2>
+      </div>
+    </div>
+    <form class="filter-form" method="get" action="/a2b/export">
+      <div>
+        <label for="bf-from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <input id="bf-from" name="bf_from" type="date" value="{{.BFFrom}}">
+      </div>
+      <div>
+        <label for="bf-to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <input id="bf-to" name="bf_to" type="date" value="{{.BFTo}}">
+      </div>
+      {{template "a2bPerformanceFilters" .}}
+      {{template "a2bHourMeterFilters" .}}
+      {{template "a2bFuelKeluarFilters" .}}
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/a2b/export">Reset</a>
+      <p class="hint filter-note">Default: rentang tujuh hari terakhir.</p>
+    </form>
+    {{if not .BFAktif}}
+    <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
+    {{else if .BFRows}}
+    <p class="panel-empty">
+      {{.BFRows}} bulan siap diunduh{{if .BFPeriod}} untuk {{.BFPeriod}}{{end}},
+      total biaya Rp {{rupiah .BFBiaya}}. {{.BFNote}}
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="/a2b/export/biaya-fuel/download?format=xlsx{{if .BFFrom}}&amp;from={{.BFFrom}}{{end}}{{if .BFTo}}&amp;to={{.BFTo}}{{end}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="/a2b/export/biaya-fuel/download?format=pdf{{if .BFFrom}}&amp;from={{.BFFrom}}{{end}}{{if .BFTo}}&amp;to={{.BFTo}}{{end}}">{{template "icon" "save"}}Unduh PDF</a>
+    </div>
+    {{else}}
+    <p class="panel-empty">Tidak ada bulan pada rentang ini, jadi tidak ada yang bisa diunduh.</p>
+    {{end}}
+  </section>
 {{template "appShellClose" .}}
 <script src="/static/js/unit-picker.js" defer></script>
 {{template "pageFoot" .}}
@@ -140,6 +183,11 @@
       {{if .HMFrom}}<input type="hidden" name="hm_from" value="{{.HMFrom}}">{{end}}
       {{if .HMTo}}<input type="hidden" name="hm_to" value="{{.HMTo}}">{{end}}
       {{range .HMUnits}}<input type="hidden" name="hm_unit" value="{{.}}">{{end}}
+{{end}}
+
+{{define "a2bFuelCostFilters"}}
+      {{if .BFFrom}}<input type="hidden" name="bf_from" value="{{.BFFrom}}">{{end}}
+      {{if .BFTo}}<input type="hidden" name="bf_to" value="{{.BFTo}}">{{end}}
 {{end}}
 
 {{define "a2bFuelKeluarFilters"}}

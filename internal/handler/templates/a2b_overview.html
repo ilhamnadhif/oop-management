@@ -62,6 +62,58 @@
     </article>
   </section>
 
+  {{/* The fuel bill sits with the stock it comes out of. Fuel is charged to the
+       month it is burned in rather than the month it arrived: a site that buys
+       a month's fuel in one go and takes five weeks to burn it would otherwise
+       read as one month overspending and the next spending nothing. */}}
+  {{/* Reached through $ because this sits inside the overview block. */}}
+  {{with $.Cost}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "wallet"}}BIAYA FUEL</p>
+        <h2>Rp {{rupiah .Biaya}} terpakai {{$.From}} – {{$.To}}</h2>
+      </div>
+    </div>
+    <p class="hint">
+      Dihitung dari {{.KeluarLiter}} liter yang keluar, bukan dari
+      {{.MasukLiter}} liter yang masuk (Rp {{rupiah .MasukBiaya}}). Sisa stok
+      {{.SisaLiter}} liter senilai Rp {{rupiah .SisaNilai}}, rata-rata
+      Rp {{rupiah .HargaRataRata}} per liter.
+    </p>
+    {{if .Months}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Bulan</th>
+            <th scope="col" class="numeric">Masuk (L)</th>
+            <th scope="col" class="numeric">Pembelian (Rp)</th>
+            <th scope="col" class="numeric">Keluar (L)</th>
+            <th scope="col" class="numeric">Biaya (Rp)</th>
+            <th scope="col" class="numeric">Sisa (L)</th>
+            <th scope="col" class="numeric">Nilai sisa (Rp)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Months}}
+          <tr>
+            <th scope="row">{{.Label}}</th>
+            <td class="numeric">{{.MasukLiter}}</td>
+            <td class="numeric">{{rupiah .MasukBiaya}}</td>
+            <td class="numeric">{{.KeluarLiter}}</td>
+            <td class="numeric">{{rupiah .Biaya}}</td>
+            <td class="numeric">{{.SisaLiter}}</td>
+            <td class="numeric">{{rupiah .SisaNilai}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+  </section>
+  {{end}}
+
   <section class="chart-grid">
     <article class="panel">
       <div class="panel-heading">

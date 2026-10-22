@@ -60,6 +60,16 @@ type A2BExportPageData struct {
 	FKRows   int
 	FKNote   string
 
+	// The fuel bill is filtered by range only: it is about the tank, and the
+	// tank belongs to the site rather than to any one machine.
+	BFAktif  bool
+	BFFrom   string
+	BFTo     string
+	BFPeriod string
+	BFRows   int
+	BFBiaya  float64
+	BFNote   string
+
 	Error string
 }
 
@@ -145,6 +155,11 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 		FKUnits:   pickedUnits(r, "fk_unit"),
 		FKNote: "Fuel keluar: satu baris per pemakaian, berisi pembacaan flow meter, " +
 			"liter yang keluar, hour meter alat berat, dan operatornya.",
+		BFAktif: s.exportAktif(model.ExportBiayaFuel),
+		BFFrom:  strings.TrimSpace(r.URL.Query().Get("bf_from")),
+		BFTo:    strings.TrimSpace(r.URL.Query().Get("bf_to")),
+		BFNote: "Biaya fuel: satu baris per bulan. Solar dibebankan ke bulan " +
+			"pemakaiannya, bukan bulan pembeliannya, dengan harga rata-rata tangki.",
 		HMNote: "Input hour meter: satu baris per pembacaan, berisi tanggal, HM awal, " +
 			"HM akhir, total HM, PA, dan UA.",
 	}
@@ -189,6 +204,24 @@ func (s *Server) handleA2BExport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		data.HMRows = len(readings.Rows)
 		data.HMPeriod = exportPeriodLabel(readings.From, readings.To)
+	}
+
+	bill, err := s.unitOverview.BuildFuelCost(r.Context(), data.BFFrom, data.BFTo)
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			if data.Error == "" {
+				data.Error = strings.TrimPrefix(err.Error(), "validation error: ")
+			}
+		} else {
+			log.Printf("build fuel cost for export: %v", err)
+			if data.Error == "" {
+				data.Error = "Gagal memuat biaya fuel"
+			}
+		}
+	} else {
+		data.BFRows = len(bill.Months)
+		data.BFBiaya = bill.Biaya
+		data.BFPeriod = exportPeriodLabel(bill.From, bill.To)
 	}
 
 	dispenses, err := s.fuelKeluar.ExportRows(r.Context(), data.FKFrom, data.FKTo, data.FKUnits)
@@ -408,4 +441,41 @@ func unitFilenameSuffix(idUnits []string) string {
 	default:
 		return fmt.Sprintf("-%d-unit", len(idUnits))
 	}
+}
+
+// handleFuelCostExportDownload streams the monthly fuel bill. It takes a range
+// and no machine: the bill is about the tank, and the tank belongs to the site.
+func (s *Server) handleFuelCostExportDownload(w http.ResponseWriter, r *http.Request) {
+	s, _, _, ok := s.requireAccess(w, r, "a2b-export")
+	if !ok {
+		return
+	}
+	if !s.requireExportAktif(w, model.ExportBiayaFuel) {
+		return
+	}
+	format, ok := downloadFormat(w, r)
+	if !ok {
+		return
+	}
+	report, err := s.unitOverview.BuildFuelCost(r.Context(),
+		r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			http.Error(w, strings.TrimPrefix(err.Error(), "validation error: "), http.StatusUnprocessableEntity)
+			return
+		}
+		log.Printf("build fuel cost for export: %v", err)
+		http.Error(w, "Gagal memuat biaya fuel", http.StatusInternalServerError)
+		return
+	}
+
+	meta := s.exportMetaFor(model.ExportBiayaFuel, "Biaya Fuel", report.From, report.To)
+
+	var payload []byte
+	if format == "xlsx" {
+		payload, err = export.FuelCostXLSX(report, meta)
+	} else {
+		payload, err = export.FuelCostPDF(report, meta)
+	}
+	s.writeRegister(w, "biaya-fuel-"+report.From+"_"+report.To, format, payload, err)
 }

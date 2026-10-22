@@ -17,6 +17,7 @@ var exportLabels = map[model.ExportTypeKey]string{
 	model.ExportUnitA2B:    "Performance Unit A2B",
 	model.ExportInputHM:    "Input Hour Meter",
 	model.ExportFuelKeluar: "Fuel Keluar",
+	model.ExportBiayaFuel:  "Biaya Fuel",
 	model.ExportAbsensi:    "Rekap Absensi Bulanan",
 }
 
@@ -29,6 +30,7 @@ var exportLedes = map[model.ExportTypeKey]string{
 	model.ExportUnitA2B:    "Performance per alat berat: shift, total HM, fuel, fuel ratio, PA, UA.",
 	model.ExportInputHM:    "Pembacaan hour meter per bulan, dengan PA dan UA.",
 	model.ExportFuelKeluar: "Pemakaian bahan bakar per alat berat, dengan pembacaan flow meter.",
+	model.ExportBiayaFuel:  "Biaya bahan bakar per bulan, dihitung dari yang dipakai.",
 	model.ExportAbsensi:    "Matriks absensi bulanan per karyawan.",
 }
 

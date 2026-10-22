@@ -53,11 +53,15 @@ var FuelKeteranganOptions = []string{model.FuelKeteranganSesuai, model.FuelKeter
 // The transaction number, the status and the audit trail are absent: the
 // service derives those rather than trusting a form post.
 type FuelMasukInput struct {
-	TanggalInput     string
-	Vendor           string
-	Driver           string
-	Nopol            string
-	JumlahLiter      string
+	TanggalInput string
+	Vendor       string
+	Driver       string
+	Nopol        string
+	JumlahLiter  string
+	// HargaPerLiter is what this delivery cost. Fuel is charged to the month it
+	// is burned in rather than the month it arrived, so the price has to ride
+	// with the stock it came in on.
+	HargaPerLiter    string
 	Keterangan       string
 	LiterTidakSesuai string
 	// Photos are indexed by FuelPhotoKind.Index.
@@ -180,6 +184,10 @@ func (s *FuelMasukService) Create(ctx context.Context, user *model.User, input F
 	if err != nil {
 		return nil, err
 	}
+	harga, err := parseFuelPrice(input.HargaPerLiter)
+	if err != nil {
+		return nil, err
+	}
 	keterangan, err := canonicalFuelKeterangan(input.Keterangan)
 	if err != nil {
 		return nil, err
@@ -216,6 +224,7 @@ func (s *FuelMasukService) Create(ctx context.Context, user *model.User, input F
 		Driver:           driver,
 		Nopol:            nopol,
 		JumlahLiter:      round2(jumlah),
+		HargaPerLiter:    round2(harga),
 		Keterangan:       keterangan,
 		LiterTidakSesuai: round2(selisih),
 		// Nobody signs a delivery off any more: the four photos are the check,
@@ -375,4 +384,33 @@ func fuelMatchesQuery(row model.FuelMasuk, query string) bool {
 		row.FuelID, row.Vendor, row.Driver, row.Nopol, row.Keterangan, row.CreatedBy,
 	}, " "))
 	return strings.Contains(haystack, query)
+}
+
+// DefaultHargaPerLiter is what a delivery costs unless somebody says otherwise,
+// and what the deliveries recorded before the column existed were bought at.
+//
+// It is a constant rather than a setting because it is a fact about the past as
+// much as a convenience for the present: a stored zero is a row from before
+// this was recorded, not fuel that was free. When every delivery on the sheet
+// carries its own price, the fallback can go.
+const DefaultHargaPerLiter = 20000
+
+// HargaPerLiterOf is the price to cost a delivery at: its own, or the default
+// for one written before the price was asked for.
+func HargaPerLiterOf(delivery model.FuelMasuk) float64 {
+	if delivery.HargaPerLiter > 0 {
+		return delivery.HargaPerLiter
+	}
+	return DefaultHargaPerLiter
+}
+
+// parseFuelPrice reads the price off the form. Left blank it is the default,
+// which is what the form itself offers. A price of zero is refused by
+// parseDimension along with every other figure that cannot be one: fuel nobody
+// paid for is a typo rather than a delivery.
+func parseFuelPrice(value string) (float64, error) {
+	if strings.TrimSpace(value) == "" {
+		return DefaultHargaPerLiter, nil
+	}
+	return parseDimension("Harga per liter", value)
 }
