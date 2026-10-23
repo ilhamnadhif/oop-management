@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +103,44 @@ func TestA2BOverviewRecomputesPerUnitFigures(t *testing.T) {
 	}
 	if unit.UA != 73.44 {
 		t.Fatalf("UA = %v, want 73.44", unit.UA)
+	}
+}
+
+// Each machine names where its meter closed and what its hours went on, each
+// job and place once however many shifts recorded it.
+func TestA2BOverviewNamesTheWorkPerUnit(t *testing.T) {
+	store := repository.NewTestRepository()
+	seedFuelMachine(t, store, "exc01", "Excavator PC200")
+	service := newA2BOverviewService(store, time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC))
+
+	readings := []*model.HourMeter{
+		{HMID: "a", Tanggal: "2026-08-05", IDUnit: "exc01", HMAwal: 1200, HMAkhir: 1208, TotalHM: 8,
+			Kegiatan: []model.HourMeterKegiatan{
+				{Pekerjaan: "Loading OB", Lokasi: "Pit 2", Jam: 5},
+				{Pekerjaan: "Hauling", Lokasi: "Disposal", Jam: 3},
+			}},
+		{HMID: "b", Tanggal: "2026-08-06", IDUnit: "exc01", HMAwal: 1208, HMAkhir: 1214, TotalHM: 6,
+			Kegiatan: []model.HourMeterKegiatan{{Pekerjaan: "loading ob", Lokasi: "Pit 3", Jam: 6}}},
+	}
+	for _, reading := range readings {
+		if err := store.CreateHourMeter(context.Background(), reading); err != nil {
+			t.Fatalf("seed hour meter: %v", err)
+		}
+	}
+
+	overview, err := service.BuildA2B(context.Background(), "2026-08-01", "2026-08-10", 720)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	unit := overview.Units[0]
+	if unit.HMAkhir != 1214 {
+		t.Fatalf("hm akhir = %v, want the last reading's 1214", unit.HMAkhir)
+	}
+	if got := strings.Join(unit.Pekerjaan, ", "); got != "Loading OB, Hauling" {
+		t.Fatalf("pekerjaan = %q", got)
+	}
+	if got := strings.Join(unit.Lokasi, ", "); got != "Pit 2, Disposal, Pit 3" {
+		t.Fatalf("lokasi = %q", got)
 	}
 }
 

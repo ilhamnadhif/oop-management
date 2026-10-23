@@ -25,6 +25,13 @@ type A2BUnitPerformance struct {
 	BreakdownMinutes float64
 	PA               float64
 	UA               float64
+	// HMAkhir is the highest closing reading in the range: the meter only runs
+	// forward, so that is where it stood when the range closed.
+	HMAkhir float64
+	// Pekerjaan and Lokasi name what the worked hours went on and where, each
+	// once, in the order they were first recorded.
+	Pekerjaan []string
+	Lokasi    []string
 }
 
 // A2BDelayShare is one standby reason and how much of the fleet's idle time it
@@ -168,6 +175,13 @@ func (s *UnitOverviewService) BuildA2B(ctx context.Context, from, to string, wor
 		unit.TotalHM += reading.TotalHM
 		unit.StandbyMinutes += reading.TotalStandby
 		unit.BreakdownMinutes += reading.TotalBreakdown
+		if reading.HMAkhir > unit.HMAkhir {
+			unit.HMAkhir = reading.HMAkhir
+		}
+		for _, line := range reading.Kegiatan {
+			unit.Pekerjaan = appendDistinct(unit.Pekerjaan, line.Pekerjaan)
+			unit.Lokasi = appendDistinct(unit.Lokasi, line.Lokasi)
+		}
 
 		for _, standby := range reading.Standby {
 			variable := strings.TrimSpace(standby.Variable)
@@ -451,4 +465,19 @@ func fuelBurnedPerUnit(dispenses []model.FuelKeluar, from, to string) map[string
 		tally.hasLast = true
 	}
 	return burn
+}
+
+// appendDistinct adds a name unless it is blank or already listed, ignoring
+// case, so "Pit 2" and "pit 2" read as the one place.
+func appendDistinct(names []string, name string) []string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return names
+	}
+	for _, existing := range names {
+		if strings.EqualFold(existing, name) {
+			return names
+		}
+	}
+	return append(names, name)
 }

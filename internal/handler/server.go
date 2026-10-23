@@ -1488,10 +1488,7 @@ type A2BOverviewPageData struct {
 	UnitChart   *Chart
 	FuelChart   *Chart
 	DelaySlices []DelaySlice
-	// Cost is the fuel bill over the same range: what the fuel burned in it
-	// cost, rather than what the fuel bought in it cost.
-	Cost  *service.FuelCostReport
-	Error string
+	Error       string
 }
 
 // DelaySlice is one wedge of the delay donut, ready to draw.
@@ -1533,14 +1530,6 @@ func (s *Server) handleA2BOverview(w http.ResponseWriter, r *http.Request) {
 	data.From = overview.From
 	data.To = overview.To
 	data.DelaySlices = buildDelaySlices(overview.TopDelay)
-
-	cost, err := s.unitOverview.BuildFuelCost(r.Context(), overview.From, overview.To)
-	if err != nil {
-		// Losing the bill costs the page one card, not the dashboard.
-		log.Printf("build fuel cost: %v", err)
-	} else {
-		data.Cost = cost
-	}
 
 	labels := make([]string, 0, len(overview.Series))
 	active := make([]float64, 0, len(overview.Series))

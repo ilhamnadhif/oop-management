@@ -62,58 +62,6 @@
     </article>
   </section>
 
-  {{/* The fuel bill sits with the stock it comes out of. Fuel is charged to the
-       month it is burned in rather than the month it arrived: a site that buys
-       a month's fuel in one go and takes five weeks to burn it would otherwise
-       read as one month overspending and the next spending nothing. */}}
-  {{/* Reached through $ because this sits inside the overview block. */}}
-  {{with $.Cost}}
-  <section class="panel">
-    <div class="panel-heading">
-      <div>
-        <p class="eyebrow">{{template "icon" "wallet"}}BIAYA FUEL</p>
-        <h2>Rp {{rupiah .Biaya}} terpakai {{$.From}} – {{$.To}}</h2>
-      </div>
-    </div>
-    <p class="hint">
-      Dihitung dari {{.KeluarLiter}} liter yang keluar, bukan dari
-      {{.MasukLiter}} liter yang masuk (Rp {{rupiah .MasukBiaya}}). Sisa stok
-      {{.SisaLiter}} liter senilai Rp {{rupiah .SisaNilai}}, rata-rata
-      Rp {{rupiah .HargaRataRata}} per liter.
-    </p>
-    {{if .Months}}
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th scope="col">Bulan</th>
-            <th scope="col" class="numeric">Masuk (L)</th>
-            <th scope="col" class="numeric">Pembelian (Rp)</th>
-            <th scope="col" class="numeric">Keluar (L)</th>
-            <th scope="col" class="numeric">Biaya (Rp)</th>
-            <th scope="col" class="numeric">Sisa (L)</th>
-            <th scope="col" class="numeric">Nilai sisa (Rp)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Months}}
-          <tr>
-            <th scope="row">{{.Label}}</th>
-            <td class="numeric">{{.MasukLiter}}</td>
-            <td class="numeric">{{rupiah .MasukBiaya}}</td>
-            <td class="numeric">{{.KeluarLiter}}</td>
-            <td class="numeric">{{rupiah .Biaya}}</td>
-            <td class="numeric">{{.SisaLiter}}</td>
-            <td class="numeric">{{rupiah .SisaNilai}}</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
-    {{end}}
-  </section>
-  {{end}}
-
   <section class="chart-grid">
     <article class="panel">
       <div class="panel-heading">
@@ -173,6 +121,49 @@
             <td class="numeric">{{$unit.FuelRatio}}</td>
             <td class="numeric">{{$unit.PA}}%</td>
             <td class="numeric">{{$unit.UA}}%</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada pembacaan hour meter pada rentang ini. Catat lewat <a href="/a2b/hm">Input HM</a>.</p>
+    {{end}}
+  </section>
+
+  {{/* What the worked hours went on and where, per machine. The performance
+       table above says how much a machine ran; this one says on what. */}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "cube"}}PEKERJAAN PER UNIT</p>
+        <h2>{{len .Units}} unit tercatat {{$.From}} – {{$.To}}</h2>
+      </div>
+    </div>
+    {{if .Units}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">No</th>
+            <th scope="col">Unit ID</th>
+            <th scope="col">Nama unit</th>
+            <th scope="col" class="numeric">HM akhir</th>
+            <th scope="col" class="numeric">Total HM (jam)</th>
+            <th scope="col">Pekerjaan</th>
+            <th scope="col">Lokasi pekerjaan</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $index, $unit := .Units}}
+          <tr>
+            <td class="numeric">{{add1 $index}}</td>
+            <td>{{$unit.IDUnit}}</td>
+            <td class="wrap">{{$unit.NamaUnit}}</td>
+            <td class="numeric">{{$unit.HMAkhir}}</td>
+            <td class="numeric">{{$unit.TotalHM}}</td>
+            <td class="wrap">{{range $i, $name := $unit.Pekerjaan}}{{if $i}}, {{end}}{{$name}}{{else}}-{{end}}</td>
+            <td class="wrap">{{range $i, $name := $unit.Lokasi}}{{if $i}}, {{end}}{{$name}}{{else}}-{{end}}</td>
           </tr>
           {{end}}
         </tbody>
