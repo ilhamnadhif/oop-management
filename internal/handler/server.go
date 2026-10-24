@@ -72,6 +72,9 @@ type Server struct {
 	// copied mutex would guard a copy of nothing.
 	scan      *scanGate
 	templates *template.Template
+	// widya is the weighbridge feed Produksi New reads. It is the deployment's,
+	// like the scan gate, and nil when no account is configured.
+	widya WidyaFeed
 
 	// Bound per request by forProject. Nil until then.
 	project model.Project
@@ -453,6 +456,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/produksi/overview", s.handleProduksiOverview)
 	mux.HandleFunc("/produksi/export", s.handleProduksiExport)
 	mux.HandleFunc("/produksi/export/download", s.handleProduksiDownload)
+	mux.HandleFunc("/produksi-new/overview", s.handleProduksiNewOverview)
+	mux.HandleFunc("/produksi-new/overview/data", s.handleProduksiNewData)
 	mux.HandleFunc("/unit/overview", s.handleUnitOverview)
 	mux.HandleFunc("/a2b/overview", s.handleA2BOverview)
 	mux.HandleFunc("/a2b/hm", s.handleA2BHourMeter)

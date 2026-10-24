@@ -1,0 +1,73 @@
+{{/* Produksi New reads Widya Load Scanner, where the site's tickets are cut,
+     and shows its figures as they stand. Nothing is stored: the page asks the
+     server again every interval, and the server reads the scanner at most once
+     per interval however many screens are asking. */}}
+{{define "produksi_new_overview"}}
+{{template "appShellOpen" .}}
+  {{with .View}}
+  {{if not .Configured}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "info"}}BELUM DIATUR</p>
+        <h2>Widya Load Scanner belum terhubung</h2>
+      </div>
+    </div>
+    <p class="panel-empty">
+      Akun Widya belum diatur di server. Isi <code>WIDYA_URL</code>,
+      <code>WIDYA_EMAIL</code> dan <code>WIDYA_PASSWORD</code> lalu jalankan ulang aplikasi.
+    </p>
+  </section>
+  {{else}}
+  <div data-widya data-refresh-ms="{{$.RefreshMS}}">
+    <div class="alert warn" role="status" data-widya-error{{if not .Error}} hidden{{end}}>{{.Error}}</div>
+
+    <section class="panel filter-panel">
+      <div>
+        <p class="eyebrow">{{template "icon" "refresh"}}DATA TERAKHIR DIBACA</p>
+        <h2 data-widya-updated>{{if .UpdatedAt}}{{.UpdatedAt}}{{else}}-{{end}}</h2>
+      </div>
+      <p class="hint filter-note">
+        Langsung dari Widya Load Scanner, diperbarui otomatis setiap
+        {{$.RefreshSeconds}} detik selama halaman ini terbuka.
+      </p>
+    </section>
+
+    <section class="kpi-grid kpi-grid-4">
+      {{range .Stats}}
+      <article class="panel kpi-card">
+        <div>
+          <p class="eyebrow">{{.Label}}</p>
+          <p class="kpi-value" data-widya-stat="{{.Key}}">{{.Value}}</p>
+          <p class="kpi-note">{{.Note}}</p>
+        </div>
+        <span class="kpi-icon {{.Tone}}">{{template "icon" .Icon}}</span>
+      </article>
+      {{end}}
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "layers"}}VOLUME PER MATERIAL</p>
+          <h2>Total <span data-widya-total>{{if .TotalVolume}}{{.TotalVolume}}{{else}}0{{end}}</span></h2>
+        </div>
+      </div>
+      <ul class="share-list" data-widya-materials>
+        {{range .Materials}}
+        <li>
+          <div class="share-head"><span>{{.Name}}</span><strong>{{.Volume}}</strong></div>
+          <div class="share-track"><progress class="share-progress" max="100" value="{{.Percent}}">{{.Percent}}%</progress></div>
+          <p class="share-note">{{.Percent}}% dari total volume</p>
+        </li>
+        {{end}}
+      </ul>
+      <p class="panel-empty" data-widya-materials-empty{{if .Materials}} hidden{{end}}>Belum ada volume material yang tercatat.</p>
+    </section>
+  </div>
+  {{end}}
+  {{end}}
+{{template "appShellClose" .}}
+<script src="/static/js/produksi-new.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

@@ -26,6 +26,7 @@ import (
 	"opp-management/internal/service"
 	"opp-management/internal/session"
 	"opp-management/internal/tally"
+	"opp-management/internal/widya"
 )
 
 func main() {
@@ -161,6 +162,17 @@ func main() {
 			cfg.MiMoTimeout, cfg.MiMoSheetTimeout, cfg.MiMoModel)
 	} else {
 		log.Printf("Scan MiMo nonaktif: MIMO_API_KEY belum diatur")
+	}
+
+	// Produksi New reads the weighbridge's own figures. It is optional: without
+	// an account the page renders and says it has not been set up.
+	if cfg.WidyaURL != "" && cfg.WidyaEmail != "" && cfg.WidyaPassword != "" {
+		client := widya.NewClient(cfg.WidyaURL, cfg.WidyaEmail, cfg.WidyaPassword,
+			cfg.WidyaLoginCompany, &http.Client{Timeout: 15 * time.Second})
+		webServer.WithWidya(widya.NewFeed(client, cfg.WidyaRefresh, nil))
+		log.Printf("Widya Load Scanner aktif (%s, refresh %s)", cfg.WidyaURL, cfg.WidyaRefresh)
+	} else {
+		log.Printf("Widya Load Scanner nonaktif: WIDYA_URL, WIDYA_EMAIL atau WIDYA_PASSWORD belum diatur")
 	}
 
 	httpServer := &http.Server{

@@ -40,6 +40,13 @@ type Config struct {
 	// meter readings are judged against it: whatever the machine did not spend
 	// working has to be accounted for as standby or breakdown.
 	A2BWorkMinutes int
+	// Widya Load Scanner is where the site's tickets are cut. Produksi New reads
+	// its figures; without a URL and an account the page says it is not set up.
+	WidyaURL          string
+	WidyaEmail        string
+	WidyaPassword     string
+	WidyaLoginCompany string
+	WidyaRefresh      time.Duration
 }
 
 func Load() (Config, error) {
@@ -97,6 +104,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("A2B_WORK_MINUTES harus lebih dari 0")
 	}
 
+	widyaRefresh, err := time.ParseDuration(getenv("WIDYA_REFRESH", "30s"))
+	if err != nil || widyaRefresh < 5*time.Second {
+		return Config{}, fmt.Errorf("WIDYA_REFRESH must be a duration of at least 5s")
+	}
+
 	lateTolerance, err := parseInt("ATTENDANCE_LATE_TOLERANCE_MINUTES", getenv("ATTENDANCE_LATE_TOLERANCE_MINUTES", "15"))
 	if err != nil || lateTolerance < 0 {
 		return Config{}, fmt.Errorf("ATTENDANCE_LATE_TOLERANCE_MINUTES must be a non-negative integer")
@@ -124,6 +136,11 @@ func Load() (Config, error) {
 		WorkEnd:               getenv("ATTENDANCE_END", "17:00"),
 		LateToleranceMinutes:  lateTolerance,
 		A2BWorkMinutes:        a2bWorkMinutes,
+		WidyaURL:              strings.TrimSpace(os.Getenv("WIDYA_URL")),
+		WidyaEmail:            strings.TrimSpace(os.Getenv("WIDYA_EMAIL")),
+		WidyaPassword:         os.Getenv("WIDYA_PASSWORD"),
+		WidyaLoginCompany:     strings.TrimSpace(os.Getenv("WIDYA_LOGIN_COMPANY")),
+		WidyaRefresh:          widyaRefresh,
 	}
 
 	if cfg.GoogleSpreadsheetID == "" {

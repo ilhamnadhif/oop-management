@@ -60,6 +60,13 @@ var navItems = []NavItem{
 		{Key: "produksi-export", Label: "Export Data", Path: "/produksi/export", Icon: "save",
 			Lede: "Unduh laporan produksi bertanda tangan dalam XLSX atau PDF."},
 	}},
+	// Produksi New reads the weighbridge system the tickets are cut in, rather
+	// than the tallies typed in here. It sits beside Produksi until it can
+	// replace it.
+	{Key: "produksi-new", Label: "Produksi New", Icon: "layers", Children: []NavItem{
+		{Key: "produksi-new-overview", Label: "Overview", Path: "/produksi-new/overview", Icon: "activity",
+			Lede: "Statistik langsung dari Widya Load Scanner: tiket, kendaraan, dan volume per material."},
+	}},
 	{Key: "nota", Label: "Nota", Icon: "receipt", Children: []NavItem{
 		{Key: "nota-overview", Label: "Overview", Path: "/nota/overview", Icon: "activity",
 			Lede: "Ringkasan pengeluaran dan nota yang masih menunggu pembayaran."},
@@ -140,6 +147,9 @@ var menuAccess = map[string][]string{
 	// Nobody but Management, which CanAccess lets through before this map is
 	// consulted. An empty list is how a menu is closed to every other position.
 	"project-settings": {},
+
+	// The same figures from the weighbridge, so the same positions as Produksi.
+	"produksi-new": {"Surveyor", "Produksi", "SPV"},
 }
 
 // menuRules is the effective per-menu position list, defaults overlaid with
