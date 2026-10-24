@@ -65,7 +65,7 @@ var navItems = []NavItem{
 	// replace it.
 	{Key: "produksi-new", Label: "Produksi New", Icon: "layers", Children: []NavItem{
 		{Key: "produksi-new-overview", Label: "Overview", Path: "/produksi-new/overview", Icon: "activity",
-			Lede: "Statistik langsung dari Widya Load Scanner: tiket, kendaraan, dan volume per material."},
+			Lede: "Statistik langsung dari Widya Load Scanner dan summary ritase dari tiketnya."},
 	}},
 	{Key: "nota", Label: "Nota", Icon: "receipt", Children: []NavItem{
 		{Key: "nota-overview", Label: "Overview", Path: "/nota/overview", Icon: "activity",

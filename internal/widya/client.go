@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,18 +29,15 @@ type Stats struct {
 	Webhooks  int `json:"webhooksCount"`
 }
 
-// MaterialVolume is how much of one material has crossed the scanner.
-type MaterialVolume struct {
-	Name   string
-	Volume float64
-}
-
 // Snapshot is one reading of the scanner, and when it was taken.
 type Snapshot struct {
 	Stats     Stats
-	Materials []MaterialVolume
 	FetchedAt time.Time
 }
+
+// maxResponseBytes bounds one answer. A page of tickets carries every scan's
+// file paths and is several megabytes; anything past this is not a ticket page.
+const maxResponseBytes = 64 << 20
 
 // errUnauthorized is a token the scanner no longer accepts. It is answered by
 // signing in again, once.
@@ -77,7 +73,7 @@ func NewClient(baseURL, email, password, loginCompany string, httpClient *http.C
 	}
 }
 
-// Fetch reads the dashboard figures and the volume per material.
+// Fetch reads the dashboard figures.
 func (c *Client) Fetch(ctx context.Context) (Snapshot, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -101,21 +97,7 @@ func (c *Client) fetch(ctx context.Context) (Snapshot, error) {
 	if err := c.get(ctx, "/api/v1/dashboard/statistics", &stats); err != nil {
 		return Snapshot{}, fmt.Errorf("read statistics: %w", err)
 	}
-	var volumes []struct {
-		Name   string          `json:"name"`
-		Volume json.RawMessage `json:"volume"`
-	}
-	if err := c.get(ctx, "/api/v1/dashboard/volume-per-materials", &volumes); err != nil {
-		return Snapshot{}, fmt.Errorf("read volume per material: %w", err)
-	}
-	snapshot := Snapshot{Stats: stats, FetchedAt: time.Now()}
-	for _, line := range volumes {
-		snapshot.Materials = append(snapshot.Materials, MaterialVolume{
-			Name:   strings.TrimSpace(line.Name),
-			Volume: parseVolume(line.Volume),
-		})
-	}
-	return snapshot, nil
+	return Snapshot{Stats: stats, FetchedAt: time.Now()}, nil
 }
 
 // signIn trades the account for a token, then asks who that token is, because
@@ -186,11 +168,19 @@ func (c *Client) discoverLoginCompany(ctx context.Context) (string, error) {
 }
 
 func (c *Client) get(ctx context.Context, path string, into interface{}) error {
-	url := c.baseURL + path
+	query := url.Values{}
 	if c.companyID != "" {
-		url += "?companyId=" + c.companyID
+		query.Set("companyId", c.companyID)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	return c.getQuery(ctx, path, query, into)
+}
+
+func (c *Client) getQuery(ctx context.Context, path string, query url.Values, into interface{}) error {
+	address := c.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		address += "?" + encoded
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return err
 	}
@@ -211,7 +201,7 @@ func (c *Client) do(request *http.Request, into interface{}) error {
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		return fmt.Errorf("status %d", response.StatusCode)
 	}
-	raw, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
 	if err != nil {
 		return err
 	}
@@ -219,17 +209,6 @@ func (c *Client) do(request *http.Request, into interface{}) error {
 		return fmt.Errorf("decode: %w", err)
 	}
 	return nil
-}
-
-// parseVolume reads a volume the scanner sends as a quoted decimal
-// ("342008.7793...") and would be within its rights to send as a number.
-func parseVolume(raw json.RawMessage) float64 {
-	text := strings.Trim(strings.TrimSpace(string(raw)), `"`)
-	value, err := strconv.ParseFloat(text, 64)
-	if err != nil {
-		return 0
-	}
-	return value
 }
 
 // siteRoot keeps only the scheme and host of the address it is given. The API

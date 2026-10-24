@@ -2029,3 +2029,42 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
   .kpi-icon { width: 46px; height: 46px; }
   .kpi-icon .icon { width: 23px; height: 23px; }
 }
+
+/* Produksi New: the daily ritase summary, laid out like the site's own sheet.
+   It stands apart from the running totals above it. */
+.ritase-panel { margin-top: 1.6rem; }
+.ritase-panel .panel-heading { flex-wrap: wrap; align-items: flex-end; gap: 1rem; }
+.ritase-date { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem; }
+.ritase-date > div { display: grid; gap: 0.3rem; }
+.ritase-date label { display: flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--muted); font-size: 0.82rem; font-weight: 600; }
+.ritase-date input { width: auto; min-width: 11rem; }
+.ritase-summary { max-width: 46rem; }
+.ritase-date-label { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.9rem; }
+.ritase-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.ritase-table th, .ritase-table td { padding: 0.7rem 0.95rem; border: 1px solid var(--line); text-align: left; }
+.ritase-table thead th { color: #2563eb; background: #eaf1fb; font-weight: 700; }
+.ritase-table thead th.ritase-value { text-align: center; }
+.ritase-table tbody th { color: var(--navy-dark); font-weight: 500; }
+.ritase-table .ritase-head { background: #f7f8f9; }
+.ritase-table .ritase-head th { font-weight: 700; }
+.ritase-table .ritase-child th { padding-left: 2.2rem; color: var(--muted); font-weight: 500; }
+.ritase-table td.ritase-value { text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ritase-table td.ritase-unit { font-weight: 600; }
+.ritase-table .tone-accent { color: #2563eb; }
+.ritase-table .tone-good, .ritase-legend .tone-good { color: #2f7d32; background: #e8f5e4; }
+.ritase-table .tone-bad, .ritase-legend .tone-bad { color: #b42318; background: #fdecec; }
+.ritase-table .tone-peak, .ritase-legend .tone-peak { color: #9a5b0b; background: #fdf1de; }
+.ritase-table .tone-muted { color: #8a94a0; }
+.ritase-legend { margin-top: 1.2rem; }
+.ritase-legend ul { display: grid; gap: 0.35rem; margin: 0.4rem 0 0; padding: 0; list-style: none; }
+.ritase-legend li { display: grid; grid-template-columns: 9rem 1fr; align-items: center; gap: 1rem; color: var(--muted); font-size: 0.85rem; }
+.ritase-legend li span { padding: 0.3rem 0.6rem; border-radius: 6px; text-align: center; font-weight: 700; }
+.ritase-source { margin: 1rem 0 0; font-style: italic; }
+@media (max-width: 640px) {
+  .ritase-table th, .ritase-table td { padding: 0.55rem 0.6rem; }
+  .ritase-table .ritase-child th { padding-left: 1.3rem; }
+  .ritase-legend li { grid-template-columns: 6.5rem 1fr; }
+}
+[data-ritase].is-loading { opacity: 0.5; transition: opacity 0.2s; }
+.ritase-loading { display: flex; align-items: center; gap: 0.2rem; padding: 2.2rem 0; color: var(--muted); font-size: 0.92rem; }
+.ritase-loading .spinner { width: 18px; height: 18px; border-color: var(--line); border-top-color: var(--navy); }

@@ -19,7 +19,7 @@
     </p>
   </section>
   {{else}}
-  <div data-widya data-refresh-ms="{{$.RefreshMS}}">
+  <div data-widya data-refresh-ms="{{$.RefreshMS}}" data-from="{{.From}}" data-to="{{.To}}">
     <div class="alert warn" role="status" data-widya-error{{if not .Error}} hidden{{end}}>{{.Error}}</div>
 
     <section class="panel filter-panel">
@@ -46,23 +46,43 @@
       {{end}}
     </section>
 
-    <section class="panel">
+    {{/* The day's hauling, read off the scanner's tickets. The section stands
+         apart from the running totals above: those count everything, this
+         counts one day. */}}
+    <section class="panel ritase-panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">{{template "icon" "layers"}}VOLUME PER MATERIAL</p>
-          <h2>Total <span data-widya-total>{{if .TotalVolume}}{{.TotalVolume}}{{else}}0{{end}}</span></h2>
+          <p class="eyebrow">{{template "icon" "truck"}}SUMMARY RITASE</p>
+          <h2>Ritase dari tiket Widya</h2>
         </div>
+        <form class="ritase-date" method="get" action="/produksi-new/overview">
+          <div>
+            <label for="ritaseFrom">{{template "icon" "calendar"}}Dari tanggal</label>
+            <input id="ritaseFrom" name="from" type="date" value="{{.From}}" max="{{$.Today}}" data-ritase-from>
+          </div>
+          <div>
+            <label for="ritaseTo">{{template "icon" "calendar"}}Sampai tanggal</label>
+            <input id="ritaseTo" name="to" type="date" value="{{.To}}" max="{{$.Today}}" data-ritase-to>
+          </div>
+          <button class="button primary" type="submit" data-ritase-date-fallback>Tampilkan</button>
+        </form>
       </div>
-      <ul class="share-list" data-widya-materials>
-        {{range .Materials}}
-        <li>
-          <div class="share-head"><span>{{.Name}}</span><strong>{{.Volume}}</strong></div>
-          <div class="share-track"><progress class="share-progress" max="100" value="{{.Percent}}">{{.Percent}}%</progress></div>
-          <p class="share-note">{{.Percent}}% dari total volume</p>
-        </li>
+      <div data-ritase>
+        {{if .Ritase}}{{template "produksiNewRitase" .Ritase}}{{else}}
+        {{/* Filled by the page script as soon as the page opens: the summary
+             can be a month of tickets, and the page should not wait for it. */}}
+        <div class="ritase-loading" role="status" data-ritase-loading>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Memuat tiket dari Widya…</span>
+        </div>
         {{end}}
-      </ul>
-      <p class="panel-empty" data-widya-materials-empty{{if .Materials}} hidden{{end}}>Belum ada volume material yang tercatat.</p>
+      </div>
+      <p class="hint ritase-source">
+        Sumber: tiket Widya Load Scanner, dihitung berdasarkan jam scan penuh pada rentang yang dipilih
+        (maksimal 62 hari). Lebih dari satu hari, jam operasi dan jam puncak dibaca sebagai jam dalam sehari.
+        Jenis DT dari rata-rata volume per rit: DTK di bawah 14 m³, DTE 14–20 m³, DTT di atas 20 m³.
+        Rest 1 ditetapkan pukul 12:00–13:00.
+      </p>
     </section>
   </div>
   {{end}}
@@ -70,4 +90,40 @@
 {{template "appShellClose" .}}
 <script src="/static/js/produksi-new.js" defer></script>
 {{template "pageFoot" .}}
+{{end}}
+
+{{/* produksiNewRitase is the summary table alone. The page draws it on load
+     and the refresh draws it again, so both come from this one template. */}}
+{{define "produksiNewRitase"}}
+<div class="ritase-summary">
+  <p class="ritase-date-label">{{.DateLabel}}</p>
+  <div class="table-scroll">
+    <table class="ritase-table">
+      <thead>
+        <tr>
+          <th scope="col">Deskripsi</th>
+          <th scope="col" class="ritase-value">Nilai</th>
+          <th scope="col">Satuan</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rows}}
+        <tr class="{{if .Head}}ritase-head{{end}}{{if .Child}} ritase-child{{end}}">
+          <th scope="row">{{.Label}}</th>
+          <td class="ritase-value{{if .Tone}} tone-{{.Tone}}{{end}}">{{.Value}}</td>
+          <td class="ritase-unit{{if eq .Tone "peak" "muted"}} tone-{{.Tone}}{{end}}">{{.Satuan}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="ritase-legend" aria-label="Keterangan warna">
+    <p class="eyebrow">Keterangan</p>
+    <ul>
+      <li><span class="tone-good">Hijau</span>Vendor aktif</li>
+      <li><span class="tone-bad">Merah</span>Tidak ada vendor aktif / unit 0</li>
+      <li><span class="tone-peak">Kuning</span>Jam puncak</li>
+    </ul>
+  </div>
+</div>
 {{end}}

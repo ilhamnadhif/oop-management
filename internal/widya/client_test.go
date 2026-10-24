@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -52,10 +53,21 @@ func fakeScanner(t *testing.T, logins *int32) *httptest.Server {
 		}
 		_, _ = w.Write([]byte(`{"ticketsCount":6803,"vehiclesCount":324,"materialsCount":5,"suppliersCount":8,"operatorsCount":10,"unitsCount":3,"usersCount":4,"webhooksCount":0}`))
 	})
-	mux.HandleFunc("/api/v1/dashboard/volume-per-materials", func(w http.ResponseWriter, r *http.Request) {
-		if authorized(w, r) {
-			_, _ = w.Write([]byte(`[{"name":"pasir","volume":"342008.779348019999995"},{"name":"batu","volume":178.5}]`))
+	mux.HandleFunc("/api/v1/tickets", func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(w, r) {
+			return
 		}
+		query := r.URL.Query()
+		if query.Get("filter.companyId") != "co-9" || !strings.HasPrefix(query.Get("filter.createdAt"), "$btw:") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		// Two pages: the client has to follow totalPages.
+		if query.Get("page") == "1" {
+			_, _ = w.Write([]byte(`{"data":[{"number":"LS-1","vehicleVrm":"\t b 1  A","supplierName":"HPP","scanLoadVolume":27.5,"scanFullAt":"2026-10-18T01:06:00.000Z"},{"number":"LS-2","vehicleVrm":"B 2 A","supplierName":"MNP","scanLoadVolume":10,"scanFullAt":null}],"meta":{"totalPages":2}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"number":"LS-3","vehicleVrm":"B 1 A","supplierName":"HPP","scanLoadVolume":28,"scanFullAt":"2026-10-18T09:36:00.000Z"}],"meta":{"totalPages":2}}`))
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -74,9 +86,16 @@ func TestClientSignsInAndReadsTheDashboard(t *testing.T) {
 	if snapshot.Stats.Tickets != 6803 || snapshot.Stats.Vehicles != 324 || snapshot.Stats.Users != 4 {
 		t.Fatalf("stats = %+v", snapshot.Stats)
 	}
-	if len(snapshot.Materials) != 2 || snapshot.Materials[0].Name != "pasir" ||
-		snapshot.Materials[0].Volume < 342008.77 || snapshot.Materials[1].Volume != 178.5 {
-		t.Fatalf("materials = %+v", snapshot.Materials)
+
+	from := time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
+	tickets, err := client.Tickets(context.Background(), from, from.AddDate(0, 0, 3))
+	if err != nil {
+		t.Fatalf("tickets: %v", err)
+	}
+	// The unscanned ticket is dropped, both pages are read, and the plate's
+	// stray spacing is folded so the truck counts once.
+	if len(tickets) != 2 || tickets[0].Vehicle != "B 1 A" || tickets[1].Vehicle != "B 1 A" || tickets[1].Volume != 28 {
+		t.Fatalf("tickets = %+v", tickets)
 	}
 
 	// The token is kept: a second read does not sign in again.
@@ -114,9 +133,16 @@ func TestClientReportsAWrongPassword(t *testing.T) {
 }
 
 type stubSource struct {
-	calls    int
-	snapshot Snapshot
-	err      error
+	calls       int
+	ticketCalls int
+	snapshot    Snapshot
+	tickets     []Ticket
+	err         error
+}
+
+func (s *stubSource) Tickets(context.Context, time.Time, time.Time) ([]Ticket, error) {
+	s.ticketCalls++
+	return s.tickets, s.err
 }
 
 func (s *stubSource) Fetch(context.Context) (Snapshot, error) {

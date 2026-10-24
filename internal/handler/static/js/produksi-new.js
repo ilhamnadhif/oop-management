@@ -1,6 +1,7 @@
 // Produksi New keeps its figures current while the page is open: it asks the
-// server again every interval and writes the answer into the cards. The server
-// caches the scanner, so asking costs nothing when nothing has changed.
+// server again every interval and writes the answer into the cards and the
+// ritase summary. The server caches the scanner, so asking costs nothing when
+// nothing has changed.
 (() => {
   const root = document.querySelector("[data-widya]");
   if (!root) return;
@@ -8,68 +9,99 @@
   const interval = Number(root.dataset.refreshMs) || 30000;
   const errorBox = root.querySelector("[data-widya-error]");
   const updated = root.querySelector("[data-widya-updated]");
-  const total = root.querySelector("[data-widya-total]");
-  const list = root.querySelector("[data-widya-materials]");
-  const empty = root.querySelector("[data-widya-materials-empty]");
+  const ritase = root.querySelector("[data-ritase]");
+  const fromInput = root.querySelector("[data-ritase-from]");
+  const toInput = root.querySelector("[data-ritase-to]");
+  let range = { from: root.dataset.from || "", to: root.dataset.to || "" };
+  // The latest request wins: a slow answer for the date before must not
+  // overwrite the date just picked.
+  let sequence = 0;
 
-  const materialRow = (material) => {
-    const item = document.createElement("li");
-    const head = document.createElement("div");
-    head.className = "share-head";
-    const name = document.createElement("span");
-    name.textContent = material.name;
-    const volume = document.createElement("strong");
-    volume.textContent = material.volume;
-    head.append(name, volume);
-
-    const track = document.createElement("div");
-    track.className = "share-track";
-    const bar = document.createElement("progress");
-    bar.className = "share-progress";
-    bar.max = 100;
-    bar.value = Number(material.percent) || 0;
-    bar.textContent = `${material.percent}%`;
-    track.append(bar);
-
-    const note = document.createElement("p");
-    note.className = "share-note";
-    note.textContent = `${material.percent}% dari total volume`;
-    item.append(head, track, note);
-    return item;
-  };
+  // The date submits the form without script; with it, the summary is swapped
+  // in place and the button is not needed.
+  const fallback = root.querySelector("[data-ritase-date-fallback]");
+  if (fallback) fallback.remove();
 
   const apply = (view) => {
     errorBox.textContent = view.error || "";
     errorBox.hidden = !view.error;
-    if (!view.available) return;
-    updated.textContent = view.updatedAt;
-    for (const stat of view.stats || []) {
-      const cell = root.querySelector(`[data-widya-stat="${stat.key}"]`);
-      if (cell) cell.textContent = stat.value;
+    if (view.available) {
+      updated.textContent = view.updatedAt;
+      for (const stat of view.stats || []) {
+        const cell = root.querySelector(`[data-widya-stat="${stat.key}"]`);
+        if (cell) cell.textContent = stat.value;
+      }
     }
-    total.textContent = view.totalVolume || "0";
-    const materials = view.materials || [];
-    list.replaceChildren(...materials.map(materialRow));
-    empty.hidden = materials.length > 0;
+    // The fragment is the server's own template, escaped there.
+    if (view.ritaseHtml) {
+      ritase.innerHTML = view.ritaseHtml;
+    } else {
+      settleLoading("Tiket rentang ini belum bisa dibaca. Dicoba lagi otomatis.");
+    }
+    // The server settles the range - a reversed or too long one comes back
+    // corrected - so the inputs show what was actually summarised.
+    if (view.from && view.to) {
+      range = { from: view.from, to: view.to };
+      // Not while somebody is in the middle of picking a date.
+      if (fromInput && document.activeElement !== fromInput) fromInput.value = view.from;
+      if (toInput && document.activeElement !== toInput) toInput.value = view.to;
+    }
+  };
+
+  // The first load replaces the spinner; if it fails the spinner must not spin
+  // on, so it is swapped for a message and the next tick tries again.
+  const settleLoading = (message) => {
+    const loading = ritase.querySelector("[data-ritase-loading]");
+    if (!loading) return;
+    const note = document.createElement("p");
+    note.className = "panel-empty";
+    note.setAttribute("data-ritase-loading", "");
+    note.textContent = message;
+    loading.replaceWith(note);
   };
 
   const refresh = async () => {
-    // A hidden tab has nobody reading it; it catches up when shown again.
-    if (document.hidden) return;
+    const mine = ++sequence;
     try {
-      const response = await fetch("/produksi-new/overview/data", {
+      const query = new URLSearchParams(range);
+      const response = await fetch(`/produksi-new/overview/data?${query}`, {
         headers: { Accept: "application/json" },
         credentials: "same-origin",
       });
       if (!response.ok) throw new Error(`status ${response.status}`);
-      apply(await response.json());
+      const view = await response.json();
+      if (mine === sequence) apply(view);
     } catch {
+      if (mine !== sequence) return;
       errorBox.textContent = "Gagal memperbarui data. Angka di bawah adalah pembacaan terakhir.";
       errorBox.hidden = false;
+      settleLoading("Tiket rentang ini belum bisa dibaca. Dicoba lagi otomatis.");
     }
   };
 
-  setInterval(refresh, interval);
+  const pick = () => {
+    if (!fromInput.value || !toInput.value) return;
+    range = { from: fromInput.value, to: toInput.value };
+    // Keep the address in step, so a reload or a shared link opens the same range.
+    const address = new URL(window.location.href);
+    address.searchParams.set("from", range.from);
+    address.searchParams.set("to", range.to);
+    window.history.replaceState(null, "", address);
+    ritase.classList.add("is-loading");
+    refresh().finally(() => ritase.classList.remove("is-loading"));
+  };
+  if (fromInput && toInput) {
+    fromInput.addEventListener("change", pick);
+    toInput.addEventListener("change", pick);
+  }
+
+  // The page came without the summary; fetch it now.
+  refresh();
+
+  setInterval(() => {
+    // A hidden tab has nobody reading it; it catches up when shown again.
+    if (!document.hidden) refresh();
+  }, interval);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refresh();
   });
