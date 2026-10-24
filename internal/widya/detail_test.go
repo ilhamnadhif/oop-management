@@ -33,6 +33,9 @@ func TestDetailUnitsListsEachTruck(t *testing.T) {
 	if busiest.IntervalMinutes != 127 || !busiest.RestLoads[2] || busiest.RestLoads[0] {
 		t.Fatalf("interval %d, rest %v", busiest.IntervalMinutes, busiest.RestLoads)
 	}
+	if loads := busiest.Loads; len(loads) != 3 || loads[0] != (LoadDetail{Clock: "08:06:00", Volume: 28}) || loads[1].Volume != 27 {
+		t.Fatalf("loads = %+v", loads)
+	}
 	if single := report.Vendors[0].Units[1]; single.IntervalMinutes != -1 || single.Ritase != 1 {
 		t.Fatalf("a single load = %+v", single)
 	}

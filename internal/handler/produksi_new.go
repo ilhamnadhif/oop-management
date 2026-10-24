@@ -121,6 +121,25 @@ type DetailView struct {
 	Rows       []DetailRow
 }
 
+// RitRow is one line of the per-load list: a vendor, one of its trucks, or
+// one load. Key names the line and Parent the line it folds under, which is
+// what the page's expand and collapse work by.
+type RitRow struct {
+	Kind     string
+	Key      string
+	Parent   string
+	Label    string
+	Rit      string
+	Volume   string
+	Kategori string
+}
+
+// RitView is one day's loads, vendor by vendor and truck by truck.
+type RitView struct {
+	DateLabel string
+	Rows      []RitRow
+}
+
 // ProduksiNewView is the figures as both the page and its refresh read them,
 // so the first paint and every refresh after it say the same thing.
 type ProduksiNewView struct {
@@ -131,15 +150,20 @@ type ProduksiNewView struct {
 	Stats      []WidyaStat `json:"stats"`
 	From       string      `json:"from"`
 	To         string      `json:"to"`
+	RekapFrom  string      `json:"rekapFrom"`
+	RekapTo    string      `json:"rekapTo"`
 	Ritase     *RitaseView `json:"-"`
 	Rekap      *RekapView  `json:"-"`
 	Day        string      `json:"day"`
 	Detail     *DetailView `json:"-"`
+	RitDay     string      `json:"ritDay"`
+	Rit        *RitView    `json:"-"`
 	// RitaseHTML is the summary table as the page draws it, so a refresh swaps
 	// in exactly what a reload would have shown.
 	RitaseHTML string `json:"ritaseHtml"`
 	RekapHTML  string `json:"rekapHtml"`
 	DetailHTML string `json:"detailHtml"`
+	RitHTML    string `json:"ritHtml"`
 }
 
 type ProduksiNewPageData struct {
@@ -190,20 +214,27 @@ func (s *Server) handleProduksiNewData(w http.ResponseWriter, r *http.Request) {
 	if view.Detail != nil {
 		view.DetailHTML = s.renderFragment("produksiNewDetail", view.Detail)
 	}
+	if view.Rit != nil {
+		view.RitHTML = s.renderFragment("produksiNewRit", view.Rit)
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, view)
 }
 
 // produksiNewView reads the figures, and the ticket tables when withTickets is
-// set. The summary and rekap read the from-to range; the unit detail reads the
-// one day in day.
+// set. Each table reads dates of its own: the summary the from-to range, the
+// rekap the rekap_from-rekap_to range, the unit detail the one day in day, and
+// the per-load list the one day in rit_day.
 func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTickets bool) ProduksiNewView {
 	from, to := s.ritaseRange(query.Get("from"), query.Get("to"))
 	day := s.detailDay(query.Get("day"))
+	ritDay := s.detailDay(query.Get("rit_day"))
+	rekapFrom, rekapTo := s.ritaseRange(query.Get("rekap_from"), query.Get("rekap_to"))
+	view := ProduksiNewView{Configured: s.widya != nil, From: from, To: to,
+		RekapFrom: rekapFrom, RekapTo: rekapTo, Day: day, RitDay: ritDay}
 	if s.widya == nil {
-		return ProduksiNewView{From: from, To: to, Day: day}
+		return view
 	}
-	view := ProduksiNewView{Configured: true, From: from, To: to, Day: day}
 	var problems []string
 
 	snapshot, has, err := s.widya.Latest(ctx)
@@ -237,7 +268,18 @@ func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTick
 		}
 		if hasDay {
 			view.Ritase = ritaseView(summary, s.location)
-			view.Rekap = rekapView(summary, s.location)
+		}
+		// The feed keeps each day's loads, so a rekap range that overlaps the
+		// summary's costs no second read of the scanner.
+		rekap, hasRekap, err := s.widya.Ritase(ctx, rekapFrom, rekapTo, s.location)
+		if err != nil {
+			log.Printf("read widya tickets %s - %s: %v", rekapFrom, rekapTo, err)
+			if len(problems) == 0 || problems[len(problems)-1] != "tiket" {
+				problems = append(problems, "tiket")
+			}
+		}
+		if hasRekap {
+			view.Rekap = rekapView(rekap, s.location)
 		}
 		report, hasDetail, err := s.widya.Detail(ctx, day, s.location)
 		if err != nil {
@@ -248,6 +290,18 @@ func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTick
 		}
 		if hasDetail {
 			view.Detail = detailView(report, s.location)
+		}
+		// The per-load list has a day of its own. The feed keeps each day's
+		// loads, so the same day twice is read once.
+		ritReport, hasRit, err := s.widya.Detail(ctx, ritDay, s.location)
+		if err != nil {
+			log.Printf("read widya tickets %s: %v", ritDay, err)
+			if len(problems) == 0 || problems[len(problems)-1] != "tiket" {
+				problems = append(problems, "tiket")
+			}
+		}
+		if hasRit {
+			view.Rit = ritView(ritReport, s.location)
 		}
 	}
 
@@ -428,6 +482,29 @@ func detailView(report widya.UnitDetailReport, location *time.Location) *DetailV
 		Avg: avg(report.Volume, report.Ritase), Porsi: porsi(report.Volume),
 		Note: "Jam operasi " + operasi,
 	})
+	return view
+}
+
+// ritView lists every load of the day under its truck and vendor, like the
+// site's per-rit sheet.
+func ritView(report widya.UnitDetailReport, location *time.Location) *RitView {
+	view := &RitView{DateLabel: rangeLabel(report.Day, report.Day, location)}
+	// Keys are names rather than positions, so a line stays open across a
+	// refresh that reorders the trucks.
+	for _, vendor := range report.Vendors {
+		vendorKey := "v:" + vendor.Name
+		view.Rows = append(view.Rows, RitRow{Kind: "vendor", Key: vendorKey, Label: vendor.Name,
+			Rit: formatCount(vendor.Ritase), Volume: formatRitaseVolume(vendor.Volume)})
+		for _, unit := range vendor.Units {
+			unitKey := vendorKey + "|" + unit.Vehicle
+			view.Rows = append(view.Rows, RitRow{Kind: "unit", Key: unitKey, Parent: vendorKey,
+				Label: unit.Vehicle, Rit: formatCount(unit.Ritase), Volume: formatRitaseVolume(unit.Volume), Kategori: unit.Class})
+			for l, load := range unit.Loads {
+				view.Rows = append(view.Rows, RitRow{Kind: "load", Parent: unitKey,
+					Label: load.Clock, Rit: formatCount(l + 1), Volume: formatRitaseVolume(load.Volume)})
+			}
+		}
+	}
 	return view
 }
 

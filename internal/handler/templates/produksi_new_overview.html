@@ -19,7 +19,7 @@
     </p>
   </section>
   {{else}}
-  <div data-widya data-refresh-ms="{{$.RefreshMS}}" data-from="{{.From}}" data-to="{{.To}}" data-day="{{.Day}}">
+  <div data-widya data-refresh-ms="{{$.RefreshMS}}" data-from="{{.From}}" data-to="{{.To}}" data-day="{{.Day}}" data-rit-day="{{.RitDay}}" data-rekap-from="{{.RekapFrom}}" data-rekap-to="{{.RekapTo}}">
     <div class="alert warn" role="status" data-widya-error{{if not .Error}} hidden{{end}}>{{.Error}}</div>
 
     <section class="panel filter-panel">
@@ -56,6 +56,10 @@
           <h2>Ritase dari tiket Widya</h2>
         </div>
         <form class="ritase-date" method="get" action="/produksi-new/overview">
+          <input type="hidden" name="rekap_from" value="{{.RekapFrom}}">
+          <input type="hidden" name="rekap_to" value="{{.RekapTo}}">
+          <input type="hidden" name="day" value="{{.Day}}">
+          <input type="hidden" name="rit_day" value="{{.RitDay}}">
           <div>
             <label for="ritaseFrom">{{template "icon" "calendar"}}Dari tanggal</label>
             <input id="ritaseFrom" name="from" type="date" value="{{.From}}" max="{{$.Today}}" data-ritase-from>
@@ -93,6 +97,21 @@
           <p class="eyebrow">{{template "icon" "users"}}REKAP VENDOR &amp; ARMADA</p>
           <h2>Ritase per vendor dan jenis DT</h2>
         </div>
+        <form class="ritase-date" method="get" action="/produksi-new/overview">
+          <input type="hidden" name="from" value="{{.From}}">
+          <input type="hidden" name="to" value="{{.To}}">
+          <input type="hidden" name="day" value="{{.Day}}">
+          <input type="hidden" name="rit_day" value="{{.RitDay}}">
+          <div>
+            <label for="rekapFrom">{{template "icon" "calendar"}}Dari tanggal</label>
+            <input id="rekapFrom" name="rekap_from" type="date" value="{{.RekapFrom}}" max="{{$.Today}}" data-rekap-from>
+          </div>
+          <div>
+            <label for="rekapTo">{{template "icon" "calendar"}}Sampai tanggal</label>
+            <input id="rekapTo" name="rekap_to" type="date" value="{{.RekapTo}}" max="{{$.Today}}" data-rekap-to>
+          </div>
+          <button class="button primary" type="submit" data-ritase-date-fallback>Tampilkan</button>
+        </form>
       </div>
       <div data-rekap>
         {{if .Rekap}}{{template "produksiNewRekap" .Rekap}}{{else}}
@@ -103,7 +122,7 @@
         {{end}}
       </div>
       <p class="hint ritase-source">
-        Rentang tanggal mengikuti Summary Ritase di atas. Unit dihitung sekali per vendor; truk yang
+        Rentang maksimal 62 hari. Unit dihitung sekali per vendor; truk yang
         bekerja untuk dua vendor muncul di keduanya, tetapi dihitung sekali di total.
       </p>
     </section>
@@ -119,6 +138,9 @@
         <form class="ritase-date" method="get" action="/produksi-new/overview">
           <input type="hidden" name="from" value="{{.From}}">
           <input type="hidden" name="to" value="{{.To}}">
+          <input type="hidden" name="rit_day" value="{{.RitDay}}">
+          <input type="hidden" name="rekap_from" value="{{.RekapFrom}}">
+          <input type="hidden" name="rekap_to" value="{{.RekapTo}}">
           <div>
             <label for="detailDay">{{template "icon" "calendar"}}Tanggal</label>
             <input id="detailDay" name="day" type="date" value="{{.Day}}" max="{{$.Today}}" data-detail-day>
@@ -137,6 +159,54 @@
       <p class="hint ritase-source">
         Jam per rit berdasarkan jam scan penuh. Interval rata-rata = (rit terakhir − rit pertama) ÷ (jumlah rit − 1),
         termasuk waktu istirahat dan antrean, jadi bukan cycle time murni. Jenis DT dari rata-rata muatan unit pada hari itu.
+      </p>
+    </section>
+
+    {{/* Every load of the day, folded under its truck and vendor. A busy day
+         is hundreds of lines, so the lines fold, and two switches open or
+         fold them all, or keep only one open at a time. */}}
+    <section class="panel ritase-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "list"}}DETAIL RIT PER UNIT</p>
+          <h2>Setiap rit, per unit</h2>
+        </div>
+        <form class="ritase-date" method="get" action="/produksi-new/overview">
+          <input type="hidden" name="from" value="{{.From}}">
+          <input type="hidden" name="to" value="{{.To}}">
+          <input type="hidden" name="day" value="{{.Day}}">
+          <input type="hidden" name="rekap_from" value="{{.RekapFrom}}">
+          <input type="hidden" name="rekap_to" value="{{.RekapTo}}">
+          <div>
+            <label for="ritDay">{{template "icon" "calendar"}}Tanggal</label>
+            <input id="ritDay" name="rit_day" type="date" value="{{.RitDay}}" max="{{$.Today}}" data-rit-day>
+          </div>
+          <button class="button primary" type="submit" data-ritase-date-fallback>Tampilkan</button>
+        </form>
+      </div>
+      {{/* The two switches sit on their own bar above the list, where they read
+           as what they are: ways to show the list, not more dates. */}}
+      <div class="rit-toolbar" data-rit-switches hidden>
+        <span class="rit-toolbar-label">Tampilan</span>
+        <label class="rit-switch">
+          <input type="checkbox" role="switch" data-rit-expand-all>
+          <span>Expand semua</span>
+        </label>
+        <label class="rit-switch">
+          <input type="checkbox" role="switch" data-rit-auto-collapse>
+          <span>Auto collapse</span>
+        </label>
+      </div>
+      <div data-rit>
+        {{if .Rit}}{{template "produksiNewRit" .Rit}}{{else}}
+        <div class="ritase-loading" role="status" data-ritase-loading>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Memuat tiket dari Widya…</span>
+        </div>
+        {{end}}
+      </div>
+      <p class="hint ritase-source">
+        Klik vendor atau unit untuk membuka rincian di bawahnya. Jam sampai detik berdasarkan jam scan penuh.
       </p>
     </section>
   </div>
@@ -298,6 +368,40 @@
       <li><span class="tone-peak">Kuning</span>Rit yang tercatat saat Rest 1 (12:00–13:00)</li>
       <li><span class="tone-bad">Merah</span>Unit dengan hanya 1 rit</li>
     </ul>
+  </div>
+</div>
+{{end}}
+
+{{/* produksiNewRit is the per-load list alone, for the same reason
+     produksiNewRitase is. Every line is drawn; the page script folds them. */}}
+{{define "produksiNewRit"}}
+<div class="ritase-summary rit-summary">
+  <p class="ritase-date-label">{{.DateLabel}}</p>
+  <div class="table-scroll">
+    <table class="ritase-table rit-table">
+      <thead>
+        <tr>
+          <th scope="col">Vendor / Unit / Waktu</th>
+          <th scope="col" class="ritase-value">Rit ke</th>
+          <th scope="col" class="ritase-value">Volume (m³)</th>
+          <th scope="col" class="ritase-value">Kategori</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rows}}
+        <tr class="rit-{{.Kind}}" data-rit-row="{{.Kind}}"{{if .Key}} data-key="{{.Key}}"{{end}}{{if .Parent}} data-parent="{{.Parent}}"{{end}}>
+          <th scope="row">
+            {{if .Key}}<button type="button" class="rit-toggle" data-rit-toggle="{{.Key}}" aria-expanded="true"><span class="rit-caret" aria-hidden="true"></span>{{.Label}}</button>{{else}}{{.Label}}{{end}}
+          </th>
+          <td class="ritase-value">{{.Rit}}</td>
+          <td class="ritase-value">{{.Volume}}</td>
+          <td class="ritase-value">{{.Kategori}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="4" class="panel-empty">Tidak ada rit pada tanggal ini.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
   </div>
 </div>
 {{end}}

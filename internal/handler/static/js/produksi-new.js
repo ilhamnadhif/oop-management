@@ -13,10 +13,19 @@
   const rekap = root.querySelector("[data-rekap]");
   const detail = root.querySelector("[data-detail]");
   const dayInput = root.querySelector("[data-detail-day]");
+  const rit = root.querySelector("[data-rit]");
+  const ritDayInput = root.querySelector("[data-rit-day]");
+  const rekapFromInput = root.querySelector("[data-rekap-from]");
+  const rekapToInput = root.querySelector("[data-rekap-to]");
+  const switches = root.querySelector("[data-rit-switches]");
+  const expandAll = root.querySelector("[data-rit-expand-all]");
+  const autoCollapse = root.querySelector("[data-rit-auto-collapse]");
   const fromInput = root.querySelector("[data-ritase-from]");
   const toInput = root.querySelector("[data-ritase-to]");
   let range = { from: root.dataset.from || "", to: root.dataset.to || "" };
   let day = root.dataset.day || "";
+  let ritDay = root.dataset.ritDay || "";
+  let rekapRange = { rekap_from: root.dataset.rekapFrom || "", rekap_to: root.dataset.rekapTo || "" };
   // The latest request wins: a slow answer for the date before must not
   // overwrite the date just picked.
   let sequence = 0;
@@ -38,14 +47,20 @@
     // The fragment is the server's own template, escaped there.
     if (view.ritaseHtml) {
       ritase.innerHTML = view.ritaseHtml;
-      if (rekap && view.rekapHtml) rekap.innerHTML = view.rekapHtml;
+    }
+    if (rekap && view.rekapHtml) {
+      rekap.innerHTML = view.rekapHtml;
     }
     if (detail && view.detailHtml) {
       detail.innerHTML = view.detailHtml;
     }
+    if (rit && view.ritHtml) {
+      rit.innerHTML = view.ritHtml;
+      fold();
+    }
     // Whatever is still waiting on a spinner could not be read; say so, and
     // the next tick tries again. Tables already drawn are left as they are.
-    if (!view.ritaseHtml || !view.detailHtml) {
+    if (!view.ritaseHtml || !view.rekapHtml || !view.detailHtml || !view.ritHtml) {
       settleLoading("Tiket belum bisa dibaca. Dicoba lagi otomatis.");
     }
     // The server settles the range - a reversed or too long one comes back
@@ -59,6 +74,15 @@
     if (view.day) {
       day = view.day;
       if (dayInput && document.activeElement !== dayInput) dayInput.value = view.day;
+    }
+    if (view.rekapFrom && view.rekapTo) {
+      rekapRange = { rekap_from: view.rekapFrom, rekap_to: view.rekapTo };
+      if (rekapFromInput && document.activeElement !== rekapFromInput) rekapFromInput.value = view.rekapFrom;
+      if (rekapToInput && document.activeElement !== rekapToInput) rekapToInput.value = view.rekapTo;
+    }
+    if (view.ritDay) {
+      ritDay = view.ritDay;
+      if (ritDayInput && document.activeElement !== ritDayInput) ritDayInput.value = view.ritDay;
     }
   };
 
@@ -77,7 +101,7 @@
   const refresh = async () => {
     const mine = ++sequence;
     try {
-      const query = new URLSearchParams({ ...range, day });
+      const query = new URLSearchParams({ ...range, ...rekapRange, day, rit_day: ritDay });
       const response = await fetch(`/produksi-new/overview/data?${query}`, {
         headers: { Accept: "application/json" },
         credentials: "same-origin",
@@ -100,6 +124,9 @@
     address.searchParams.set("from", range.from);
     address.searchParams.set("to", range.to);
     address.searchParams.set("day", day);
+    address.searchParams.set("rit_day", ritDay);
+    address.searchParams.set("rekap_from", rekapRange.rekap_from);
+    address.searchParams.set("rekap_to", rekapRange.rekap_to);
     window.history.replaceState(null, "", address);
   };
 
@@ -112,7 +139,7 @@
     if (!fromInput.value || !toInput.value) return;
     range = { from: fromInput.value, to: toInput.value };
     remember();
-    reload([ritase, rekap]);
+    reload([ritase]);
   };
   if (fromInput && toInput) {
     fromInput.addEventListener("change", pick);
@@ -127,7 +154,124 @@
     });
   }
 
-  // The page came without the summary; fetch it now.
+
+  const pickRekap = () => {
+    if (!rekapFromInput.value || !rekapToInput.value) return;
+    rekapRange = { rekap_from: rekapFromInput.value, rekap_to: rekapToInput.value };
+    remember();
+    reload([rekap]);
+  };
+  if (rekapFromInput && rekapToInput) {
+    rekapFromInput.addEventListener("change", pickRekap);
+    rekapToInput.addEventListener("change", pickRekap);
+  }
+
+  if (ritDayInput) {
+    ritDayInput.addEventListener("change", () => {
+      if (!ritDayInput.value) return;
+      ritDay = ritDayInput.value;
+      remember();
+      reload([rit]);
+    });
+  }
+
+  // Detail Rit per Unit folds: a vendor opens onto its trucks, a truck onto
+  // its loads. The open lines are kept by name, so a refresh that redraws the
+  // table leaves them open.
+  const open = new Set();
+  const stored = (key) => {
+    try {
+      return window.localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  };
+  const store = (key, on) => {
+    try {
+      window.localStorage.setItem(key, on ? "1" : "0");
+    } catch {
+      // Private windows refuse storage; the switch still works for this visit.
+    }
+  };
+
+  const rows = () => (rit ? [...rit.querySelectorAll("[data-rit-row]")] : []);
+
+  const fold = () => {
+    if (expandAll && expandAll.checked) {
+      rows().forEach((row) => row.dataset.key && open.add(row.dataset.key));
+    }
+    const byKey = new Map(rows().filter((row) => row.dataset.key).map((row) => [row.dataset.key, row]));
+    for (const row of rows()) {
+      let visible = true;
+      // A line shows when every line above it is open.
+      for (let parent = row.dataset.parent; parent; parent = byKey.get(parent)?.dataset.parent) {
+        if (!open.has(parent)) {
+          visible = false;
+          break;
+        }
+      }
+      row.hidden = !visible;
+      const toggle = row.querySelector("[data-rit-toggle]");
+      if (toggle) toggle.setAttribute("aria-expanded", String(open.has(row.dataset.key)));
+    }
+  };
+
+  if (rit) {
+    rit.addEventListener("click", (event) => {
+      const toggle = event.target.closest("[data-rit-toggle]");
+      if (!toggle) return;
+      const key = toggle.dataset.ritToggle;
+      if (open.has(key)) {
+        open.delete(key);
+        // Folding a line by hand means not everything is open any more.
+        if (expandAll) expandAll.checked = false;
+        store("produksiNew.ritExpandAll", false);
+      } else {
+        if (autoCollapse && autoCollapse.checked) {
+          // One open at a time on each level: close the lines beside this one.
+          const row = toggle.closest("[data-rit-row]");
+          for (const sibling of rows()) {
+            if (sibling.dataset.key && sibling !== row && sibling.dataset.parent === row.dataset.parent &&
+                sibling.dataset.ritRow === row.dataset.ritRow) {
+              open.delete(sibling.dataset.key);
+            }
+          }
+        }
+        open.add(key);
+      }
+      fold();
+    });
+  }
+
+  if (switches && expandAll && autoCollapse) {
+    switches.hidden = false;
+    expandAll.checked = stored("produksiNew.ritExpandAll");
+    autoCollapse.checked = stored("produksiNew.ritAutoCollapse") && !expandAll.checked;
+    // Opening everything and keeping only one open contradict each other, so
+    // turning one on turns the other off.
+    expandAll.addEventListener("change", () => {
+      if (expandAll.checked) {
+        autoCollapse.checked = false;
+      } else {
+        open.clear();
+      }
+      store("produksiNew.ritExpandAll", expandAll.checked);
+      store("produksiNew.ritAutoCollapse", autoCollapse.checked);
+      fold();
+    });
+    autoCollapse.addEventListener("change", () => {
+      if (autoCollapse.checked) {
+        expandAll.checked = false;
+        open.clear();
+      }
+      store("produksiNew.ritExpandAll", expandAll.checked);
+      store("produksiNew.ritAutoCollapse", autoCollapse.checked);
+      fold();
+    });
+  }
+  fold();
+
+  // The page came without the ticket tables; fetch them now.
   refresh();
 
   setInterval(() => {

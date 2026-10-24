@@ -174,7 +174,7 @@ func TestProduksiNewOpensBeforeTheSummary(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
-	if len(feed.ranges) != 0 || strings.Contains(page, "ritase-table") || strings.Count(page, "data-ritase-loading") != 3 {
+	if len(feed.ranges) != 0 || strings.Contains(page, "ritase-table") || strings.Count(page, "data-ritase-loading") != 4 {
 		t.Fatal("the page waited for the tickets")
 	}
 	if !strings.Contains(page, ">6.803<") {
@@ -216,7 +216,9 @@ func TestProduksiNewReadsTheRangePicked(t *testing.T) {
 		{"?from=2026-01-01&to=2026-10-24", "2026-08-24", "2026-10-24"},
 	} {
 		fetchRitaseHTML(t, client, testServer.URL+"/produksi-new/overview/data"+c.query)
-		if got := feed.ranges[len(feed.ranges)-1]; got != [2]string{c.from, c.to} {
+		// Each refresh reads the summary's range and then the rekap's; the
+		// summary's is the one before last.
+		if got := feed.ranges[len(feed.ranges)-2]; got != [2]string{c.from, c.to} {
 			t.Fatalf("%q read %v, want %s - %s", c.query, got, c.from, c.to)
 		}
 	}
@@ -292,7 +294,7 @@ func TestProduksiNewDetailsEachTruckForOneDay(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if view.Day != "2026-10-24" || feed.days[len(feed.days)-1] != "2026-10-24" {
+	if view.Day != "2026-10-24" || feed.days[len(feed.days)-2] != "2026-10-24" {
 		t.Fatalf("detail day = %q, want today", view.Day)
 	}
 	compact := strings.Join(strings.Fields(view.DetailHTML), " ")
@@ -310,12 +312,110 @@ func TestProduksiNewDetailsEachTruckForOneDay(t *testing.T) {
 		}
 	}
 
+	// Each refresh reads the detail's day and then the per-load list's; the
+	// detail's is the one before last.
 	fetchRitaseHTML(t, client, testServer.URL+"/produksi-new/overview/data?day=2026-10-30")
-	if last := feed.days[len(feed.days)-1]; last != "2026-10-24" {
+	if last := feed.days[len(feed.days)-2]; last != "2026-10-24" {
 		t.Fatalf("a day to come read %q, want today", last)
 	}
 	fetchRitaseHTML(t, client, testServer.URL+"/produksi-new/overview/data?day=2026-10-18")
-	if last := feed.days[len(feed.days)-1]; last != "2026-10-18" {
+	if last := feed.days[len(feed.days)-2]; last != "2026-10-18" {
 		t.Fatalf("the picked day read %q", last)
+	}
+}
+
+// Every load of the detail day is listed under its truck and vendor, keyed by
+// name so the page can fold them and keep them folded across a refresh.
+func TestProduksiNewListsEveryLoad(t *testing.T) {
+	testServer := newProduksiNewServer(t, widyaFixture())
+	client := loggedInClient(t, testServer)
+
+	response, err := client.Get(testServer.URL + "/produksi-new/overview/data")
+	if err != nil {
+		t.Fatalf("get data: %v", err)
+	}
+	defer response.Body.Close()
+	var view ProduksiNewView
+	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	compact := strings.Join(strings.Fields(view.RitHTML), " ")
+	for _, fragment := range []string{
+		"Vendor / Unit / Waktu", "Rit ke",
+		`<tr class="rit-vendor" data-rit-row="vendor" data-key="v:HPP">`,
+		`<button type="button" class="rit-toggle" data-rit-toggle="v:HPP" aria-expanded="true"><span class="rit-caret" aria-hidden="true"></span>HPP</button> </th> <td class="ritase-value">2</td> <td class="ritase-value">55.50</td>`,
+		`<tr class="rit-unit" data-rit-row="unit" data-key="v:HPP|B 1 A" data-parent="v:HPP">`,
+		`<td class="ritase-value">DTT</td>`,
+		// The first load of B 1 A, to the second.
+		`<tr class="rit-load" data-rit-row="load" data-parent="v:HPP|B 1 A"> <th scope="row"> 08:06:00 </th> <td class="ritase-value">1</td> <td class="ritase-value">27.50</td>`,
+	} {
+		if !strings.Contains(compact, fragment) {
+			t.Fatalf("the per-load list is missing %q\n%s", fragment, compact)
+		}
+	}
+}
+
+// The per-load list has a day of its own, apart from the unit detail's.
+func TestProduksiNewListsLoadsForItsOwnDay(t *testing.T) {
+	feed := widyaFixture()
+	testServer := newProduksiNewServer(t, feed)
+	client := loggedInClient(t, testServer)
+
+	response, err := client.Get(testServer.URL + "/produksi-new/overview/data?day=2026-10-24&rit_day=2026-10-18")
+	if err != nil {
+		t.Fatalf("get data: %v", err)
+	}
+	defer response.Body.Close()
+	var view ProduksiNewView
+	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if view.Day != "2026-10-24" || view.RitDay != "2026-10-18" {
+		t.Fatalf("days = %q and %q", view.Day, view.RitDay)
+	}
+	if !strings.Contains(view.DetailHTML, "24 Oktober 2026") || !strings.Contains(view.RitHTML, "18 Oktober 2026") {
+		t.Fatal("the two tables do not read their own days")
+	}
+	// Nothing was hauled on the 18th in the fixture.
+	if !strings.Contains(view.RitHTML, "Tidak ada rit pada tanggal ini.") || strings.Contains(view.RitHTML, "B 1 A") {
+		t.Fatal("the per-load list read the detail's day")
+	}
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview?rit_day=2026-10-18")
+	if !strings.Contains(page, `name="rit_day" type="date" value="2026-10-18"`) {
+		t.Fatal("the page does not carry the per-load day")
+	}
+}
+
+// The rekap reads a range of its own, apart from the summary's.
+func TestProduksiNewRekapHasItsOwnRange(t *testing.T) {
+	feed := widyaFixture()
+	testServer := newProduksiNewServer(t, feed)
+	client := loggedInClient(t, testServer)
+
+	response, err := client.Get(testServer.URL + "/produksi-new/overview/data?from=2026-10-01&to=2026-10-24&rekap_from=2026-10-18&rekap_to=2026-10-18")
+	if err != nil {
+		t.Fatalf("get data: %v", err)
+	}
+	defer response.Body.Close()
+	var view ProduksiNewView
+	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if view.From != "2026-10-01" || view.RekapFrom != "2026-10-18" || view.RekapTo != "2026-10-18" {
+		t.Fatalf("ranges = %s-%s and %s-%s", view.From, view.To, view.RekapFrom, view.RekapTo)
+	}
+	if !strings.Contains(view.RitaseHTML, "1 – 24 Oktober 2026") || !strings.Contains(view.RekapHTML, "18 Oktober 2026") {
+		t.Fatal("the summary and rekap do not read their own ranges")
+	}
+	// Nothing hauled on the 18th: the rekap is its total alone.
+	if strings.Contains(view.RekapHTML, "HPP") {
+		t.Fatal("the rekap read the summary's range")
+	}
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
+	if !strings.Contains(page, `name="rekap_from" type="date" value="2026-10-01"`) ||
+		!strings.Contains(page, `name="rekap_to" type="date" value="2026-10-24"`) {
+		t.Fatal("the rekap range does not default to the month so far")
 	}
 }

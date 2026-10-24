@@ -2096,3 +2096,35 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 [data-detail].is-loading { opacity: 0.5; transition: opacity 0.2s; }
 .detail-table .rekap-total { background: #eaf1fb; }
 .detail-table .rekap-total th, .detail-table .rekap-total td.ritase-value { color: #2563eb; font-weight: 700; }
+.rit-summary { max-width: 46rem; }
+.rit-table th, .rit-table td { padding: 0.5rem 0.8rem; }
+.rit-table thead th { text-align: center; }
+.rit-table thead th:first-child { text-align: left; }
+.rit-table tr[hidden] { display: none; }
+.rit-table .rit-vendor { background: #f3f1ec; }
+.rit-table .rit-vendor th, .rit-table .rit-vendor td { font-weight: 700; color: var(--navy-dark); }
+.rit-table .rit-unit th, .rit-table .rit-unit td { font-weight: 700; color: var(--navy-dark); }
+.rit-table .rit-unit th { padding-left: 1.6rem; }
+.rit-table .rit-load th { padding-left: 3.6rem; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.rit-table .rit-load td { color: var(--muted); font-weight: 500; }
+.rit-toggle { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.rit-toggle:hover { color: var(--navy); }
+.rit-toggle:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; border-radius: 4px; }
+.rit-caret { width: 0.5rem; height: 0.5rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform 0.15s; }
+.rit-toggle[aria-expanded="true"] .rit-caret { transform: rotate(45deg); }
+[data-rit].is-loading { opacity: 0.5; transition: opacity 0.2s; }
+
+/* Detail Rit per Unit: the two ways of showing the list, as switches on a bar
+   of their own. The global input rule pads and stretches every field, so the
+   switch undoes that before drawing its track. */
+.rit-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin: 0 0 1rem; padding: 0.65rem 0.9rem; border: 1px solid var(--line); border-radius: 12px; background: #f7f9fb; }
+.rit-toolbar[hidden] { display: none; }
+.rit-toolbar-label { color: var(--muted); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.rit-switch { display: inline-flex; align-items: center; gap: 0.55rem; margin: 0; padding: 0.35rem 0.75rem 0.35rem 0.45rem; border: 1px solid var(--line); border-radius: 999px; color: var(--navy-dark); background: var(--white); font-size: 0.86rem; font-weight: 600; cursor: pointer; user-select: none; }
+.rit-switch:has(input:checked) { border-color: #bcd0ee; background: #eaf1fb; color: #1d4ed8; }
+.rit-switch input[type="checkbox"] { position: relative; flex: none; width: 2.1rem; min-width: 0; height: 1.2rem; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 999px; background: #cfd8e1; box-shadow: none; appearance: none; -webkit-appearance: none; cursor: pointer; transition: background 0.15s; }
+.rit-switch input[type="checkbox"]::after { content: ""; position: absolute; top: 0.15rem; left: 0.15rem; width: 0.9rem; height: 0.9rem; border-radius: 50%; background: var(--white); box-shadow: 0 1px 3px rgba(16, 47, 72, 0.25); transition: transform 0.15s; }
+.rit-switch input[type="checkbox"]:checked { background: #2563eb; }
+.rit-switch input[type="checkbox"]:checked::after { transform: translateX(0.9rem); }
+.rit-switch input[type="checkbox"]:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .rit-switch input[type="checkbox"], .rit-switch input[type="checkbox"]::after { transition: none; } }
