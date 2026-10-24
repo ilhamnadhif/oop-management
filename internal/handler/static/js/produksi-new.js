@@ -10,6 +10,7 @@
   const errorBox = root.querySelector("[data-widya-error]");
   const updated = root.querySelector("[data-widya-updated]");
   const ritase = root.querySelector("[data-ritase]");
+  const rekap = root.querySelector("[data-rekap]");
   const fromInput = root.querySelector("[data-ritase-from]");
   const toInput = root.querySelector("[data-ritase-to]");
   let range = { from: root.dataset.from || "", to: root.dataset.to || "" };
@@ -35,6 +36,7 @@
     // The fragment is the server's own template, escaped there.
     if (view.ritaseHtml) {
       ritase.innerHTML = view.ritaseHtml;
+      if (rekap && view.rekapHtml) rekap.innerHTML = view.rekapHtml;
     } else {
       settleLoading("Tiket rentang ini belum bisa dibaca. Dicoba lagi otomatis.");
     }
@@ -51,13 +53,13 @@
   // The first load replaces the spinner; if it fails the spinner must not spin
   // on, so it is swapped for a message and the next tick tries again.
   const settleLoading = (message) => {
-    const loading = ritase.querySelector("[data-ritase-loading]");
-    if (!loading) return;
-    const note = document.createElement("p");
-    note.className = "panel-empty";
-    note.setAttribute("data-ritase-loading", "");
-    note.textContent = message;
-    loading.replaceWith(note);
+    for (const loading of root.querySelectorAll("[data-ritase-loading]")) {
+      const note = document.createElement("p");
+      note.className = "panel-empty";
+      note.setAttribute("data-ritase-loading", "");
+      note.textContent = message;
+      loading.replaceWith(note);
+    }
   };
 
   const refresh = async () => {
@@ -87,8 +89,9 @@
     address.searchParams.set("from", range.from);
     address.searchParams.set("to", range.to);
     window.history.replaceState(null, "", address);
-    ritase.classList.add("is-loading");
-    refresh().finally(() => ritase.classList.remove("is-loading"));
+    const busy = [ritase, rekap].filter(Boolean);
+    busy.forEach((panel) => panel.classList.add("is-loading"));
+    refresh().finally(() => busy.forEach((panel) => panel.classList.remove("is-loading")));
   };
   if (fromInput && toInput) {
     fromInput.addEventListener("change", pick);

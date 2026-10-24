@@ -165,7 +165,7 @@ func TestProduksiNewOpensBeforeTheSummary(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
-	if len(feed.ranges) != 0 || strings.Contains(page, "ritase-table") {
+	if len(feed.ranges) != 0 || strings.Contains(page, "ritase-table") || strings.Count(page, "data-ritase-loading") != 2 {
 		t.Fatal("the page waited for the tickets")
 	}
 	if !strings.Contains(page, ">6.803<") {
@@ -230,6 +230,36 @@ func TestProduksiNewColoursTheSummary(t *testing.T) {
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the summary is missing %q", fragment)
+		}
+	}
+}
+
+// The rekap lays the same range out by vendor and truck class, with the share
+// of the volume each carried and the total at the foot.
+func TestProduksiNewBreaksTheRangeDownByVendor(t *testing.T) {
+	testServer := newProduksiNewServer(t, widyaFixture())
+	client := loggedInClient(t, testServer)
+
+	response, err := client.Get(testServer.URL + "/produksi-new/overview/data")
+	if err != nil {
+		t.Fatalf("get data: %v", err)
+	}
+	defer response.Body.Close()
+	var view ProduksiNewView
+	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	compact := strings.Join(strings.Fields(view.RekapHTML), " ")
+	for _, fragment := range []string{
+		"Vendor / Armada", "Porsi Vol", "1 – 24 Oktober 2026",
+		// HPP: one DTT, two loads, 55.5 of the 67.5 m³.
+		`<th scope="row">HPP</th> <td class="ritase-value">1</td> <td class="ritase-value">2</td> <td class="ritase-value">55.50</td> <td class="ritase-value">82.2%</td> <td class="ritase-value">27.75</td> <td class="ritase-value">2.00</td>`,
+		// A class with nothing reads as a dash, greyed.
+		`<tr class="ritase-child rekap-muted"> <th scope="row">DTK</th> <td class="ritase-value">0</td> <td class="ritase-value">0</td> <td class="ritase-value">0.00</td> <td class="ritase-value">0.0%</td> <td class="ritase-value">-</td>`,
+		`<tr class="rekap-total"> <th scope="row">TOTAL</th> <td class="ritase-value">2</td> <td class="ritase-value">3</td> <td class="ritase-value">67.50</td> <td class="ritase-value">100.0%</td>`,
+	} {
+		if !strings.Contains(compact, fragment) {
+			t.Fatalf("the rekap is missing %q\n%s", fragment, compact)
 		}
 	}
 }

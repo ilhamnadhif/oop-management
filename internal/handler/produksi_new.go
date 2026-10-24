@@ -60,6 +60,28 @@ type RitaseView struct {
 	Empty     bool
 }
 
+// RekapRow is one line of the vendor and fleet table. A vendor line heads its
+// classes; Bad marks a vendor with nothing hauled, Muted a class with nothing.
+type RekapRow struct {
+	Label   string
+	Unit    string
+	Rit     string
+	Volume  string
+	Porsi   string
+	Avg     string
+	RitUnit string
+	Vendor  bool
+	Total   bool
+	Bad     bool
+	Muted   bool
+}
+
+// RekapView is the vendor and fleet table, ready to draw.
+type RekapView struct {
+	DateLabel string
+	Rows      []RekapRow
+}
+
 // ProduksiNewView is the figures as both the page and its refresh read them,
 // so the first paint and every refresh after it say the same thing.
 type ProduksiNewView struct {
@@ -71,9 +93,11 @@ type ProduksiNewView struct {
 	From       string      `json:"from"`
 	To         string      `json:"to"`
 	Ritase     *RitaseView `json:"-"`
+	Rekap      *RekapView  `json:"-"`
 	// RitaseHTML is the summary table as the page draws it, so a refresh swaps
 	// in exactly what a reload would have shown.
 	RitaseHTML string `json:"ritaseHtml"`
+	RekapHTML  string `json:"rekapHtml"`
 }
 
 type ProduksiNewPageData struct {
@@ -113,13 +137,13 @@ func (s *Server) handleProduksiNewData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := s.produksiNewView(r.Context(), r.URL.Query().Get("from"), r.URL.Query().Get("to"), true)
+	// Nothing to draw stays an empty string, which the page reads as "keep
+	// what you have".
 	if view.Ritase != nil {
-		var buffer bytes.Buffer
-		if err := s.templates.ExecuteTemplate(&buffer, "produksiNewRitase", view.Ritase); err != nil {
-			log.Printf("render ritase summary: %v", err)
-		} else {
-			view.RitaseHTML = buffer.String()
-		}
+		view.RitaseHTML = s.renderFragment("produksiNewRitase", view.Ritase)
+	}
+	if view.Rekap != nil {
+		view.RekapHTML = s.renderFragment("produksiNewRekap", view.Rekap)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, view)
@@ -166,6 +190,7 @@ func (s *Server) produksiNewView(ctx context.Context, from, to string, withRitas
 		}
 		if hasDay {
 			view.Ritase = ritaseView(summary, s.location)
+			view.Rekap = rekapView(summary, s.location)
 		}
 	}
 
@@ -219,6 +244,57 @@ func ritaseView(summary widya.RitaseSummary, location *time.Location) *RitaseVie
 			Satuan: formatCount(summary.RestRitase) + " Rit", Head: true, Tone: "muted"},
 	)
 	view.Rows = rows
+	return view
+}
+
+// renderFragment draws one template on its own, for the page's refresh to swap
+// in.
+func (s *Server) renderFragment(name string, data interface{}) string {
+	var buffer bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buffer, name, data); err != nil {
+		log.Printf("render %s: %v", name, err)
+		return ""
+	}
+	return buffer.String()
+}
+
+// rekapView lays the loads out by vendor and truck class, the way the site's
+// own rekap sheet does: a line per vendor, its three classes under it, and the
+// total at the foot.
+func rekapView(summary widya.RitaseSummary, location *time.Location) *RekapView {
+	view := &RekapView{DateLabel: rangeLabel(summary.From, summary.To, location)}
+	total := summary.TotalVolume
+	line := func(label string, group widya.ArmadaRekap) RekapRow {
+		row := RekapRow{Label: label, Unit: formatCount(group.Units), Rit: formatCount(group.Ritase),
+			Volume: formatRitaseVolume(group.Volume), Porsi: "0.0%", Avg: "-", RitUnit: "-"}
+		if total > 0 {
+			row.Porsi = fmt.Sprintf("%.1f%%", group.Volume/total*100)
+		}
+		if group.Ritase > 0 {
+			row.Avg = formatRitaseVolume(group.Volume / float64(group.Ritase))
+		}
+		if group.Units > 0 {
+			row.RitUnit = formatRitaseVolume(float64(group.Ritase) / float64(group.Units))
+		}
+		return row
+	}
+	for _, vendor := range summary.Rekap {
+		head := line(vendor.Name, vendor.Total)
+		head.Vendor, head.Bad = true, vendor.Total.Ritase == 0
+		view.Rows = append(view.Rows, head)
+		for _, class := range []struct {
+			name  string
+			group widya.ArmadaRekap
+		}{{"DTK", vendor.DTK}, {"DTE", vendor.DTE}, {"DTT", vendor.DTT}} {
+			row := line(class.name, class.group)
+			row.Muted = class.group.Ritase == 0
+			view.Rows = append(view.Rows, row)
+		}
+	}
+	foot := line("TOTAL", widya.ArmadaRekap{Units: summary.RekapTotal.Units,
+		Ritase: summary.RekapTotal.Ritase, Volume: summary.RekapTotal.Volume})
+	foot.Total = true
+	view.Rows = append(view.Rows, foot)
 	return view
 }
 

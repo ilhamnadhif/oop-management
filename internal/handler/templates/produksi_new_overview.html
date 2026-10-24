@@ -84,6 +84,29 @@
         Rest 1 ditetapkan pukul 12:00–13:00.
       </p>
     </section>
+
+    {{/* Who hauled it, and in what: the same range as the summary above, by
+         vendor and truck class. */}}
+    <section class="panel ritase-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "users"}}REKAP VENDOR &amp; ARMADA</p>
+          <h2>Ritase per vendor dan jenis DT</h2>
+        </div>
+      </div>
+      <div data-rekap>
+        {{if .Rekap}}{{template "produksiNewRekap" .Rekap}}{{else}}
+        <div class="ritase-loading" role="status" data-ritase-loading>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Memuat tiket dari Widya…</span>
+        </div>
+        {{end}}
+      </div>
+      <p class="hint ritase-source">
+        Rentang tanggal mengikuti Summary Ritase di atas. Unit dihitung sekali per vendor; truk yang
+        bekerja untuk dua vendor muncul di keduanya, tetapi dihitung sekali di total.
+      </p>
+    </section>
   </div>
   {{end}}
   {{end}}
@@ -123,6 +146,52 @@
       <li><span class="tone-good">Hijau</span>Vendor aktif</li>
       <li><span class="tone-bad">Merah</span>Tidak ada vendor aktif / unit 0</li>
       <li><span class="tone-peak">Kuning</span>Jam puncak</li>
+    </ul>
+  </div>
+</div>
+{{end}}
+
+{{/* produksiNewRekap is the vendor and fleet table alone, for the same reason
+     produksiNewRitase is. */}}
+{{define "produksiNewRekap"}}
+<div class="ritase-summary rekap-summary">
+  <p class="ritase-date-label">{{.DateLabel}}</p>
+  <div class="table-scroll">
+    <table class="ritase-table rekap-table">
+      <thead>
+        <tr>
+          <th scope="col">Vendor / Armada</th>
+          <th scope="col" class="ritase-value">Unit</th>
+          <th scope="col" class="ritase-value">Rit</th>
+          <th scope="col" class="ritase-value">Volume (m³)</th>
+          <th scope="col" class="ritase-value">Porsi Vol</th>
+          <th scope="col" class="ritase-value">Avg m³/rit</th>
+          <th scope="col" class="ritase-value">Rit/unit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rows}}
+        <tr class="{{if .Vendor}}ritase-head{{else if .Total}}rekap-total{{else}}ritase-child{{end}}{{if .Bad}} rekap-bad{{end}}{{if .Muted}} rekap-muted{{end}}">
+          <th scope="row">{{.Label}}</th>
+          <td class="ritase-value">{{.Unit}}</td>
+          <td class="ritase-value">{{.Rit}}</td>
+          <td class="ritase-value">{{.Volume}}</td>
+          <td class="ritase-value">{{.Porsi}}</td>
+          <td class="ritase-value">{{.Avg}}</td>
+          <td class="ritase-value">{{.RitUnit}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="7" class="panel-empty">Tidak ada ritase pada rentang ini.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="ritase-legend" aria-label="Keterangan">
+    <p class="eyebrow">Keterangan</p>
+    <ul>
+      <li><span class="legend-vendor">Vendor</span>Baris subtotal per vendor</li>
+      <li><span class="legend-armada">Armada</span>Rincian per jenis DT (abu-abu = tidak ada ritase)</li>
+      <li><span class="tone-bad">Merah</span>Vendor tidak aktif</li>
     </ul>
   </div>
 </div>

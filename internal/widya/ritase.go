@@ -165,6 +165,23 @@ type VendorRitase struct {
 	Ritase int
 }
 
+// ArmadaRekap is what one group of trucks hauled: how many trucks, how many
+// loads, and how much.
+type ArmadaRekap struct {
+	Units  int
+	Ritase int
+	Volume float64
+}
+
+// VendorRekap is one vendor's hauling, in total and by truck class.
+type VendorRekap struct {
+	Name  string
+	Total ArmadaRekap
+	DTK   ArmadaRekap
+	DTE   ArmadaRekap
+	DTT   ArmadaRekap
+}
+
 // RitaseSummary is the hauling over a range of days, as the site reports it.
 // Over more than one day the hours are read as times of day: the operating
 // hours run from the earliest load of any day to the latest, and the peak is
@@ -190,6 +207,12 @@ type RitaseSummary struct {
 	RestStart  int
 	RestEnd    int
 	RestRitase int
+	// Rekap breaks the loads down by vendor and truck class, in the order of
+	// Vendors. A truck is classed once, by its average load over the whole
+	// range, and counted under every vendor it hauled for; RekapTotal counts
+	// each truck once.
+	Rekap      []VendorRekap
+	RekapTotal ArmadaRekap
 }
 
 // Summarize reads the tickets scanned full from one day to another, both
@@ -199,6 +222,8 @@ func Summarize(tickets []Ticket, from, to string, location *time.Location) Ritas
 	perHour := make(map[int]int)
 	perVehicle := make(map[string][]float64)
 	perVendor := make(map[string]int)
+	// vendorLoads is each vendor's loads per truck, for the rekap.
+	vendorLoads := make(map[string]map[string]*ArmadaRekap)
 	first, last := "", ""
 	for _, ticket := range tickets {
 		scanned := ticket.ScanFullAt.In(location)
@@ -215,6 +240,16 @@ func Summarize(tickets []Ticket, from, to string, location *time.Location) Ritas
 			vendor = "Tanpa vendor"
 		}
 		perVendor[vendor]++
+		if vendorLoads[vendor] == nil {
+			vendorLoads[vendor] = make(map[string]*ArmadaRekap)
+		}
+		truck := vendorLoads[vendor][ticket.Vehicle]
+		if truck == nil {
+			truck = &ArmadaRekap{Units: 1}
+			vendorLoads[vendor][ticket.Vehicle] = truck
+		}
+		truck.Ritase++
+		truck.Volume += ticket.Volume
 		clock := scanned.Format("15:04")
 		if first == "" || clock < first {
 			first = clock
@@ -232,7 +267,8 @@ func Summarize(tickets []Ticket, from, to string, location *time.Location) Ritas
 	summary.FirstScan, summary.LastScan = first, last
 
 	summary.UnitAktif = len(perVehicle)
-	for _, loads := range perVehicle {
+	class := make(map[string]string, len(perVehicle))
+	for vehicle, loads := range perVehicle {
 		total := 0.0
 		for _, volume := range loads {
 			total += volume
@@ -240,10 +276,13 @@ func Summarize(tickets []Ticket, from, to string, location *time.Location) Ritas
 		switch average := total / float64(len(loads)); {
 		case average < dtkBelow:
 			summary.DTK++
+			class[vehicle] = "DTK"
 		case average > dttAbove:
 			summary.DTT++
+			class[vehicle] = "DTT"
 		default:
 			summary.DTE++
+			class[vehicle] = "DTE"
 		}
 	}
 
@@ -267,6 +306,31 @@ func Summarize(tickets []Ticket, from, to string, location *time.Location) Ritas
 		}
 		return strings.ToLower(summary.Vendors[i].Name) < strings.ToLower(summary.Vendors[j].Name)
 	})
+
+	for _, vendor := range summary.Vendors {
+		rekap := VendorRekap{Name: vendor.Name}
+		for vehicle, truck := range vendorLoads[vendor.Name] {
+			var group *ArmadaRekap
+			switch class[vehicle] {
+			case "DTK":
+				group = &rekap.DTK
+			case "DTT":
+				group = &rekap.DTT
+			default:
+				group = &rekap.DTE
+			}
+			for _, into := range []*ArmadaRekap{group, &rekap.Total} {
+				into.Units++
+				into.Ritase += truck.Ritase
+				into.Volume += truck.Volume
+			}
+		}
+		for _, group := range []*ArmadaRekap{&rekap.Total, &rekap.DTK, &rekap.DTE, &rekap.DTT} {
+			group.Volume = round2(group.Volume)
+		}
+		summary.Rekap = append(summary.Rekap, rekap)
+	}
+	summary.RekapTotal = ArmadaRekap{Units: summary.UnitAktif, Ritase: summary.TotalRitase, Volume: summary.TotalVolume}
 	return summary
 }
 

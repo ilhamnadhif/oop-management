@@ -52,6 +52,35 @@ func TestSummarizeReadsOneDay(t *testing.T) {
 	}
 }
 
+// The rekap splits each vendor's loads by truck class. A truck is classed by
+// its average over the range and counted under every vendor it hauled for;
+// the total counts it once.
+func TestSummarizeBreaksTheLoadsDownByVendorAndClass(t *testing.T) {
+	day := "2026-10-18"
+	summary := Summarize([]Ticket{
+		{Vehicle: "A", Supplier: "HPP", Volume: 27, ScanFullAt: at(day, "08:00")},
+		{Vehicle: "A", Supplier: "HPP", Volume: 29, ScanFullAt: at(day, "09:00")},
+		{Vehicle: "B", Supplier: "HPP", Volume: 12, ScanFullAt: at(day, "09:00")},
+		// A hauls once for MNP too; it is still a DTT, by its average of 25.
+		{Vehicle: "A", Supplier: "MNP", Volume: 19, ScanFullAt: at(day, "10:00")},
+	}, day, day, wib)
+
+	if len(summary.Rekap) != 2 {
+		t.Fatalf("rekap = %+v", summary.Rekap)
+	}
+	hpp, mnp := summary.Rekap[0], summary.Rekap[1]
+	if hpp.Name != "HPP" || hpp.Total != (ArmadaRekap{Units: 2, Ritase: 3, Volume: 68}) ||
+		hpp.DTT != (ArmadaRekap{Units: 1, Ritase: 2, Volume: 56}) || hpp.DTK != (ArmadaRekap{Units: 1, Ritase: 1, Volume: 12}) {
+		t.Fatalf("hpp = %+v", hpp)
+	}
+	if mnp.DTT != (ArmadaRekap{Units: 1, Ritase: 1, Volume: 19}) || mnp.DTE != (ArmadaRekap{}) {
+		t.Fatalf("mnp = %+v", mnp)
+	}
+	if summary.RekapTotal != (ArmadaRekap{Units: 2, Ritase: 4, Volume: 87}) {
+		t.Fatalf("total = %+v", summary.RekapTotal)
+	}
+}
+
 // The class boundaries: under 14 is DTK, 14 to 20 is DTE, over 20 is DTT.
 func TestSummarizeClassesTrucksAtTheBoundaries(t *testing.T) {
 	day := "2026-10-18"

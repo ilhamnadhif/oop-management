@@ -2068,3 +2068,16 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 [data-ritase].is-loading { opacity: 0.5; transition: opacity 0.2s; }
 .ritase-loading { display: flex; align-items: center; gap: 0.2rem; padding: 2.2rem 0; color: var(--muted); font-size: 0.92rem; }
 .ritase-loading .spinner { width: 18px; height: 18px; border-color: var(--line); border-top-color: var(--navy); }
+.rekap-summary { max-width: 64rem; }
+.rekap-table thead th { text-align: center; white-space: nowrap; }
+.rekap-table thead th:first-child { text-align: left; }
+.rekap-table td.ritase-value { font-weight: 500; }
+.rekap-table .ritase-head td.ritase-value { font-weight: 700; color: var(--navy-dark); }
+.rekap-table .ritase-child th { color: var(--navy-dark); }
+.rekap-table .rekap-muted th, .rekap-table .rekap-muted td { color: #a3acb6; }
+.rekap-table .rekap-bad th, .rekap-table .rekap-bad td.ritase-value { color: #b42318; }
+.rekap-table .rekap-total { background: #eaf1fb; }
+.rekap-table .rekap-total th, .rekap-table .rekap-total td.ritase-value { color: #2563eb; font-weight: 700; }
+.ritase-legend .legend-vendor { color: var(--navy-dark); background: #f3f1ec; }
+.ritase-legend .legend-armada { color: #6b7785; background: #ffffff; border: 1px solid var(--line); }
+[data-rekap].is-loading { opacity: 0.5; transition: opacity 0.2s; }
