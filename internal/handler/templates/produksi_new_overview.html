@@ -19,7 +19,7 @@
     </p>
   </section>
   {{else}}
-  <div data-widya data-refresh-ms="{{$.RefreshMS}}" data-from="{{.From}}" data-to="{{.To}}">
+  <div data-widya data-refresh-ms="{{$.RefreshMS}}" data-from="{{.From}}" data-to="{{.To}}" data-day="{{.Day}}">
     <div class="alert warn" role="status" data-widya-error{{if not .Error}} hidden{{end}}>{{.Error}}</div>
 
     <section class="panel filter-panel">
@@ -107,6 +107,38 @@
         bekerja untuk dua vendor muncul di keduanya, tetapi dihitung sekali di total.
       </p>
     </section>
+
+    {{/* Truck by truck, for one day: a month of loads would not fit the
+         per-rit columns, so this table has a date of its own. */}}
+    <section class="panel ritase-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "clock"}}DETAIL UNIT PER VENDOR</p>
+          <h2>Jam setiap rit per unit</h2>
+        </div>
+        <form class="ritase-date" method="get" action="/produksi-new/overview">
+          <input type="hidden" name="from" value="{{.From}}">
+          <input type="hidden" name="to" value="{{.To}}">
+          <div>
+            <label for="detailDay">{{template "icon" "calendar"}}Tanggal</label>
+            <input id="detailDay" name="day" type="date" value="{{.Day}}" max="{{$.Today}}" data-detail-day>
+          </div>
+          <button class="button primary" type="submit" data-ritase-date-fallback>Tampilkan</button>
+        </form>
+      </div>
+      <div data-detail>
+        {{if .Detail}}{{template "produksiNewDetail" .Detail}}{{else}}
+        <div class="ritase-loading" role="status" data-ritase-loading>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Memuat tiket dari Widya…</span>
+        </div>
+        {{end}}
+      </div>
+      <p class="hint ritase-source">
+        Jam per rit berdasarkan jam scan penuh. Interval rata-rata = (rit terakhir − rit pertama) ÷ (jumlah rit − 1),
+        termasuk waktu istirahat dan antrean, jadi bukan cycle time murni. Jenis DT dari rata-rata muatan unit pada hari itu.
+      </p>
+    </section>
   </div>
   {{end}}
   {{end}}
@@ -192,6 +224,79 @@
       <li><span class="legend-vendor">Vendor</span>Baris subtotal per vendor</li>
       <li><span class="legend-armada">Armada</span>Rincian per jenis DT (abu-abu = tidak ada ritase)</li>
       <li><span class="tone-bad">Merah</span>Vendor tidak aktif</li>
+    </ul>
+  </div>
+</div>
+{{end}}
+
+{{/* produksiNewDetail is the unit detail table alone, for the same reason
+     produksiNewRitase is. */}}
+{{define "produksiNewDetail"}}
+{{- $columns := len .RitColumns -}}
+<div class="ritase-summary detail-summary">
+  <p class="ritase-date-label">{{.DateLabel}}</p>
+  <div class="table-scroll">
+    <table class="ritase-table detail-table">
+      <thead>
+        <tr>
+          <th scope="col" rowspan="2" class="ritase-value">No</th>
+          <th scope="col" rowspan="2">Unit</th>
+          <th scope="col" rowspan="2" class="ritase-value">Kategori</th>
+          <th scope="col" rowspan="2" class="ritase-value">Rit</th>
+          <th scope="col" rowspan="2" class="ritase-value">Volume (m³)</th>
+          <th scope="col" rowspan="2" class="ritase-value">Avg m³/rit</th>
+          <th scope="col" rowspan="2" class="ritase-value">Porsi Vol</th>
+          <th scope="colgroup" colspan="{{$columns}}" class="ritase-value">Jam per rit</th>
+          <th scope="col" rowspan="2" class="ritase-value">Interval rata-rata (menit)</th>
+        </tr>
+        <tr>
+          {{range .RitColumns}}<th scope="col" class="ritase-value">Rit {{.}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Rows}}
+        {{if .Vendor}}
+        <tr class="ritase-head">
+          <th scope="rowgroup" colspan="2">{{.Label}}</th>
+          <td class="ritase-value">{{.Kategori}}</td>
+          <td class="ritase-value">{{.Rit}}</td>
+          <td class="ritase-value">{{.Volume}}</td>
+          <td class="ritase-value">{{.Avg}}</td>
+          <td class="ritase-value">{{.Porsi}}</td>
+          <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
+        </tr>
+        {{else if .Total}}
+        <tr class="rekap-total">
+          <th scope="row" colspan="2">{{.Label}}</th>
+          <td class="ritase-value">{{.Kategori}}</td>
+          <td class="ritase-value">{{.Rit}}</td>
+          <td class="ritase-value">{{.Volume}}</td>
+          <td class="ritase-value">{{.Avg}}</td>
+          <td class="ritase-value">{{.Porsi}}</td>
+          <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
+        </tr>
+        {{else}}
+        <tr>
+          <td class="ritase-value">{{.No}}</td>
+          <th scope="row">{{.Label}}</th>
+          <td class="ritase-value">{{.Kategori}}</td>
+          <td class="ritase-value{{if .Single}} tone-bad-text{{end}}">{{.Rit}}</td>
+          <td class="ritase-value">{{.Volume}}</td>
+          <td class="ritase-value">{{.Avg}}</td>
+          <td class="ritase-value">{{.Porsi}}</td>
+          {{range .Times}}<td class="ritase-value detail-time{{if .Rest}} tone-peak{{end}}">{{.Clock}}</td>{{end}}
+          <td class="ritase-value">{{.Interval}}</td>
+        </tr>
+        {{end}}
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="ritase-legend" aria-label="Keterangan">
+    <p class="eyebrow">Keterangan</p>
+    <ul>
+      <li><span class="tone-peak">Kuning</span>Rit yang tercatat saat Rest 1 (12:00–13:00)</li>
+      <li><span class="tone-bad">Merah</span>Unit dengan hanya 1 rit</li>
     </ul>
   </div>
 </div>

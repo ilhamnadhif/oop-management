@@ -11,17 +11,19 @@
   const updated = root.querySelector("[data-widya-updated]");
   const ritase = root.querySelector("[data-ritase]");
   const rekap = root.querySelector("[data-rekap]");
+  const detail = root.querySelector("[data-detail]");
+  const dayInput = root.querySelector("[data-detail-day]");
   const fromInput = root.querySelector("[data-ritase-from]");
   const toInput = root.querySelector("[data-ritase-to]");
   let range = { from: root.dataset.from || "", to: root.dataset.to || "" };
+  let day = root.dataset.day || "";
   // The latest request wins: a slow answer for the date before must not
   // overwrite the date just picked.
   let sequence = 0;
 
   // The date submits the form without script; with it, the summary is swapped
   // in place and the button is not needed.
-  const fallback = root.querySelector("[data-ritase-date-fallback]");
-  if (fallback) fallback.remove();
+  root.querySelectorAll("[data-ritase-date-fallback]").forEach((button) => button.remove());
 
   const apply = (view) => {
     errorBox.textContent = view.error || "";
@@ -37,8 +39,14 @@
     if (view.ritaseHtml) {
       ritase.innerHTML = view.ritaseHtml;
       if (rekap && view.rekapHtml) rekap.innerHTML = view.rekapHtml;
-    } else {
-      settleLoading("Tiket rentang ini belum bisa dibaca. Dicoba lagi otomatis.");
+    }
+    if (detail && view.detailHtml) {
+      detail.innerHTML = view.detailHtml;
+    }
+    // Whatever is still waiting on a spinner could not be read; say so, and
+    // the next tick tries again. Tables already drawn are left as they are.
+    if (!view.ritaseHtml || !view.detailHtml) {
+      settleLoading("Tiket belum bisa dibaca. Dicoba lagi otomatis.");
     }
     // The server settles the range - a reversed or too long one comes back
     // corrected - so the inputs show what was actually summarised.
@@ -47,6 +55,10 @@
       // Not while somebody is in the middle of picking a date.
       if (fromInput && document.activeElement !== fromInput) fromInput.value = view.from;
       if (toInput && document.activeElement !== toInput) toInput.value = view.to;
+    }
+    if (view.day) {
+      day = view.day;
+      if (dayInput && document.activeElement !== dayInput) dayInput.value = view.day;
     }
   };
 
@@ -65,7 +77,7 @@
   const refresh = async () => {
     const mine = ++sequence;
     try {
-      const query = new URLSearchParams(range);
+      const query = new URLSearchParams({ ...range, day });
       const response = await fetch(`/produksi-new/overview/data?${query}`, {
         headers: { Accept: "application/json" },
         credentials: "same-origin",
@@ -77,25 +89,42 @@
       if (mine !== sequence) return;
       errorBox.textContent = "Gagal memperbarui data. Angka di bawah adalah pembacaan terakhir.";
       errorBox.hidden = false;
-      settleLoading("Tiket rentang ini belum bisa dibaca. Dicoba lagi otomatis.");
+      settleLoading("Tiket belum bisa dibaca. Dicoba lagi otomatis.");
     }
   };
 
-  const pick = () => {
-    if (!fromInput.value || !toInput.value) return;
-    range = { from: fromInput.value, to: toInput.value };
-    // Keep the address in step, so a reload or a shared link opens the same range.
+  // Keep the address in step, so a reload or a shared link opens the same
+  // dates.
+  const remember = () => {
     const address = new URL(window.location.href);
     address.searchParams.set("from", range.from);
     address.searchParams.set("to", range.to);
+    address.searchParams.set("day", day);
     window.history.replaceState(null, "", address);
-    const busy = [ritase, rekap].filter(Boolean);
+  };
+
+  const reload = (panels) => {
+    const busy = panels.filter(Boolean);
     busy.forEach((panel) => panel.classList.add("is-loading"));
     refresh().finally(() => busy.forEach((panel) => panel.classList.remove("is-loading")));
+  };
+  const pick = () => {
+    if (!fromInput.value || !toInput.value) return;
+    range = { from: fromInput.value, to: toInput.value };
+    remember();
+    reload([ritase, rekap]);
   };
   if (fromInput && toInput) {
     fromInput.addEventListener("change", pick);
     toInput.addEventListener("change", pick);
+  }
+  if (dayInput) {
+    dayInput.addEventListener("change", () => {
+      if (!dayInput.value) return;
+      day = dayInput.value;
+      remember();
+      reload([detail]);
+    });
   }
 
   // The page came without the summary; fetch it now.

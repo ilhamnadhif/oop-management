@@ -273,16 +273,14 @@ func Summarize(tickets []Ticket, from, to string, location *time.Location) Ritas
 		for _, volume := range loads {
 			total += volume
 		}
-		switch average := total / float64(len(loads)); {
-		case average < dtkBelow:
+		class[vehicle] = classify(total / float64(len(loads)))
+		switch class[vehicle] {
+		case "DTK":
 			summary.DTK++
-			class[vehicle] = "DTK"
-		case average > dttAbove:
+		case "DTT":
 			summary.DTT++
-			class[vehicle] = "DTT"
 		default:
 			summary.DTE++
-			class[vehicle] = "DTE"
 		}
 	}
 

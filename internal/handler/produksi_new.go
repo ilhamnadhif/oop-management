@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 type WidyaFeed interface {
 	Latest(ctx context.Context) (widya.Snapshot, bool, error)
 	Ritase(ctx context.Context, from, to string, location *time.Location) (widya.RitaseSummary, bool, error)
+	Detail(ctx context.Context, day string, location *time.Location) (widya.UnitDetailReport, bool, error)
 	MaxAge() time.Duration
 }
 
@@ -82,6 +84,43 @@ type RekapView struct {
 	Rows      []RekapRow
 }
 
+// DetailTime is one load's time in the per-rit columns. Rest marks a load
+// scanned during the midday break; an empty Clock pads a truck with fewer
+// loads than the busiest.
+type DetailTime struct {
+	Clock string
+	Rest  bool
+}
+
+// DetailRow is one line of the unit detail: a vendor heading, one of its
+// trucks, or the total at the foot.
+type DetailRow struct {
+	Vendor   bool
+	Total    bool
+	No       int
+	Label    string
+	Kategori string
+	Rit      string
+	Volume   string
+	Avg      string
+	Porsi    string
+	// Note runs across the per-rit columns on the vendor and total lines.
+	Note     string
+	Times    []DetailTime
+	Interval string
+	// Single marks a truck that made one load all day.
+	Single bool
+}
+
+// DetailView is one day, vendor by vendor and truck by truck.
+type DetailView struct {
+	DateLabel string
+	// RitColumns numbers the per-rit columns, as many as the busiest truck
+	// made.
+	RitColumns []int
+	Rows       []DetailRow
+}
+
 // ProduksiNewView is the figures as both the page and its refresh read them,
 // so the first paint and every refresh after it say the same thing.
 type ProduksiNewView struct {
@@ -94,10 +133,13 @@ type ProduksiNewView struct {
 	To         string      `json:"to"`
 	Ritase     *RitaseView `json:"-"`
 	Rekap      *RekapView  `json:"-"`
+	Day        string      `json:"day"`
+	Detail     *DetailView `json:"-"`
 	// RitaseHTML is the summary table as the page draws it, so a refresh swaps
 	// in exactly what a reload would have shown.
 	RitaseHTML string `json:"ritaseHtml"`
 	RekapHTML  string `json:"rekapHtml"`
+	DetailHTML string `json:"detailHtml"`
 }
 
 type ProduksiNewPageData struct {
@@ -120,7 +162,7 @@ func (s *Server) handleProduksiNewOverview(w http.ResponseWriter, r *http.Reques
 		// The figures are one small cached read; the ritase summary can be a
 		// month of tickets. The page goes out with the figures and a loading
 		// summary, and its script fetches the summary straight away.
-		View:  s.produksiNewView(r.Context(), r.URL.Query().Get("from"), r.URL.Query().Get("to"), false),
+		View:  s.produksiNewView(r.Context(), r.URL.Query(), false),
 		Today: s.now().In(s.location).Format("2006-01-02"),
 	}
 	if s.widya != nil {
@@ -136,7 +178,7 @@ func (s *Server) handleProduksiNewData(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	view := s.produksiNewView(r.Context(), r.URL.Query().Get("from"), r.URL.Query().Get("to"), true)
+	view := s.produksiNewView(r.Context(), r.URL.Query(), true)
 	// Nothing to draw stays an empty string, which the page reads as "keep
 	// what you have".
 	if view.Ritase != nil {
@@ -145,18 +187,23 @@ func (s *Server) handleProduksiNewData(w http.ResponseWriter, r *http.Request) {
 	if view.Rekap != nil {
 		view.RekapHTML = s.renderFragment("produksiNewRekap", view.Rekap)
 	}
+	if view.Detail != nil {
+		view.DetailHTML = s.renderFragment("produksiNewDetail", view.Detail)
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, view)
 }
 
-// produksiNewView reads the figures, and the ritase summary when withRitase is
-// set.
-func (s *Server) produksiNewView(ctx context.Context, from, to string, withRitase bool) ProduksiNewView {
-	from, to = s.ritaseRange(from, to)
+// produksiNewView reads the figures, and the ticket tables when withTickets is
+// set. The summary and rekap read the from-to range; the unit detail reads the
+// one day in day.
+func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTickets bool) ProduksiNewView {
+	from, to := s.ritaseRange(query.Get("from"), query.Get("to"))
+	day := s.detailDay(query.Get("day"))
 	if s.widya == nil {
-		return ProduksiNewView{From: from, To: to}
+		return ProduksiNewView{From: from, To: to, Day: day}
 	}
-	view := ProduksiNewView{Configured: true, From: from, To: to}
+	view := ProduksiNewView{Configured: true, From: from, To: to, Day: day}
 	var problems []string
 
 	snapshot, has, err := s.widya.Latest(ctx)
@@ -180,7 +227,7 @@ func (s *Server) produksiNewView(ctx context.Context, from, to string, withRitas
 	}
 
 	hasDay := false
-	if withRitase {
+	if withTickets {
 		var summary widya.RitaseSummary
 		var err error
 		summary, hasDay, err = s.widya.Ritase(ctx, from, to, s.location)
@@ -191,6 +238,16 @@ func (s *Server) produksiNewView(ctx context.Context, from, to string, withRitas
 		if hasDay {
 			view.Ritase = ritaseView(summary, s.location)
 			view.Rekap = rekapView(summary, s.location)
+		}
+		report, hasDetail, err := s.widya.Detail(ctx, day, s.location)
+		if err != nil {
+			log.Printf("read widya tickets %s: %v", day, err)
+			if len(problems) == 0 || problems[len(problems)-1] != "tiket" {
+				problems = append(problems, "tiket")
+			}
+		}
+		if hasDetail {
+			view.Detail = detailView(report, s.location)
 		}
 	}
 
@@ -295,6 +352,82 @@ func rekapView(summary widya.RitaseSummary, location *time.Location) *RekapView 
 		Ritase: summary.RekapTotal.Ritase, Volume: summary.RekapTotal.Volume})
 	foot.Total = true
 	view.Rows = append(view.Rows, foot)
+	return view
+}
+
+// detailDay settles the one day the unit detail shows: today when nothing or
+// no date is given, and never a day still to come.
+func (s *Server) detailDay(value string) string {
+	today := s.now().In(s.location).Format("2006-01-02")
+	day, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(value), s.location)
+	if err != nil || day.Format("2006-01-02") > today {
+		return today
+	}
+	return day.Format("2006-01-02")
+}
+
+// detailView lays one day out like the site's detail sheet: a heading line per
+// vendor with its first and last load, its trucks under it with the time of
+// every load, and the total at the foot.
+func detailView(report widya.UnitDetailReport, location *time.Location) *DetailView {
+	view := &DetailView{DateLabel: rangeLabel(report.Day, report.Day, location)}
+	columns := report.MaxRitase
+	if columns < 1 {
+		columns = 1
+	}
+	for column := 1; column <= columns; column++ {
+		view.RitColumns = append(view.RitColumns, column)
+	}
+	porsi := func(volume float64) string {
+		if report.Volume <= 0 {
+			return "0.0%"
+		}
+		return fmt.Sprintf("%.1f%%", volume/report.Volume*100)
+	}
+	avg := func(volume float64, rit int) string {
+		if rit == 0 {
+			return "-"
+		}
+		return formatRitaseVolume(volume / float64(rit))
+	}
+	number := 0
+	for _, vendor := range report.Vendors {
+		view.Rows = append(view.Rows, DetailRow{
+			Vendor: true, Label: vendor.Name, Kategori: fmt.Sprintf("%d unit", len(vendor.Units)),
+			Rit: formatCount(vendor.Ritase), Volume: formatRitaseVolume(vendor.Volume),
+			Avg: avg(vendor.Volume, vendor.Ritase), Porsi: porsi(vendor.Volume),
+			Note: "Mulai " + vendor.FirstScan + " · selesai " + vendor.LastScan,
+		})
+		for _, unit := range vendor.Units {
+			number++
+			row := DetailRow{
+				No: number, Label: unit.Vehicle, Kategori: unit.Class, Rit: formatCount(unit.Ritase),
+				Volume: formatRitaseVolume(unit.Volume), Avg: avg(unit.Volume, unit.Ritase),
+				Porsi: porsi(unit.Volume), Interval: "-", Single: unit.Ritase == 1,
+			}
+			if unit.IntervalMinutes >= 0 {
+				row.Interval = formatCount(unit.IntervalMinutes)
+			}
+			for column := 0; column < columns; column++ {
+				var cell DetailTime
+				if column < len(unit.Times) {
+					cell = DetailTime{Clock: unit.Times[column], Rest: unit.RestLoads[column]}
+				}
+				row.Times = append(row.Times, cell)
+			}
+			view.Rows = append(view.Rows, row)
+		}
+	}
+	operasi := "-"
+	if report.Ritase > 0 {
+		operasi = report.FirstScan + " – " + report.LastScan
+	}
+	view.Rows = append(view.Rows, DetailRow{
+		Total: true, Label: "TOTAL", Kategori: fmt.Sprintf("%d unit", report.Units),
+		Rit: formatCount(report.Ritase), Volume: formatRitaseVolume(report.Volume),
+		Avg: avg(report.Volume, report.Ritase), Porsi: porsi(report.Volume),
+		Note: "Jam operasi " + operasi,
+	})
 	return view
 }
 

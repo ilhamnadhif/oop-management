@@ -19,8 +19,9 @@ type stubWidyaFeed struct {
 	has      bool
 	err      error
 	tickets  []widya.Ticket
-	// ranges records which ranges were asked for.
+	// ranges records which ranges were asked for, days which detail days.
 	ranges [][2]string
+	days   []string
 }
 
 func (f *stubWidyaFeed) Ritase(_ context.Context, from, to string, location *time.Location) (widya.RitaseSummary, bool, error) {
@@ -33,6 +34,14 @@ func (f *stubWidyaFeed) Ritase(_ context.Context, from, to string, location *tim
 
 func (f *stubWidyaFeed) Latest(context.Context) (widya.Snapshot, bool, error) {
 	return f.snapshot, f.has, f.err
+}
+
+func (f *stubWidyaFeed) Detail(_ context.Context, day string, location *time.Location) (widya.UnitDetailReport, bool, error) {
+	f.days = append(f.days, day)
+	if f.err != nil && !f.has {
+		return widya.UnitDetailReport{}, false, f.err
+	}
+	return widya.DetailUnits(f.tickets, day, location), true, f.err
 }
 
 func (f *stubWidyaFeed) MaxAge() time.Duration { return 30 * time.Second }
@@ -165,7 +174,7 @@ func TestProduksiNewOpensBeforeTheSummary(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
-	if len(feed.ranges) != 0 || strings.Contains(page, "ritase-table") || strings.Count(page, "data-ritase-loading") != 2 {
+	if len(feed.ranges) != 0 || strings.Contains(page, "ritase-table") || strings.Count(page, "data-ritase-loading") != 3 {
 		t.Fatal("the page waited for the tickets")
 	}
 	if !strings.Contains(page, ">6.803<") {
@@ -261,5 +270,52 @@ func TestProduksiNewBreaksTheRangeDownByVendor(t *testing.T) {
 		if !strings.Contains(compact, fragment) {
 			t.Fatalf("the rekap is missing %q\n%s", fragment, compact)
 		}
+	}
+}
+
+// The unit detail reads one day of its own: each truck's loads in order, a
+// load in the midday break marked, a truck with one load flagged, and the day
+// defaulting to today and never running past it.
+func TestProduksiNewDetailsEachTruckForOneDay(t *testing.T) {
+	feed := widyaFixture()
+	feed.tickets = append(feed.tickets,
+		widya.Ticket{Vehicle: "B 1 A", Supplier: "HPP", Volume: 27, ScanFullAt: time.Date(2026, 10, 24, 5, 15, 0, 0, time.UTC)})
+	testServer := newProduksiNewServer(t, feed)
+	client := loggedInClient(t, testServer)
+
+	response, err := client.Get(testServer.URL + "/produksi-new/overview/data")
+	if err != nil {
+		t.Fatalf("get data: %v", err)
+	}
+	defer response.Body.Close()
+	var view ProduksiNewView
+	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if view.Day != "2026-10-24" || feed.days[len(feed.days)-1] != "2026-10-24" {
+		t.Fatalf("detail day = %q, want today", view.Day)
+	}
+	compact := strings.Join(strings.Fields(view.DetailHTML), " ")
+	for _, fragment := range []string{
+		"24 Oktober 2026", "Rit 1", "Rit 3", ">Mulai 08:06 · selesai 12:15<", ">Jam operasi 08:06 – 12:15<",
+		// B 1 A: 08:06, 09:10 and 12:15, the last in the break; 249 minutes
+		// over two gaps rounds to 125.
+		`<td class="ritase-value detail-time">08:06</td><td class="ritase-value detail-time">09:10</td><td class="ritase-value detail-time tone-peak">12:15</td> <td class="ritase-value">125</td>`,
+		// B 2 A made one load: flagged, two empty rit cells, no interval.
+		`<td class="ritase-value tone-bad-text">1</td>`,
+		`<td class="ritase-value detail-time">09:40</td><td class="ritase-value detail-time"></td><td class="ritase-value detail-time"></td> <td class="ritase-value">-</td>`,
+	} {
+		if !strings.Contains(compact, fragment) {
+			t.Fatalf("the detail is missing %q\n%s", fragment, compact)
+		}
+	}
+
+	fetchRitaseHTML(t, client, testServer.URL+"/produksi-new/overview/data?day=2026-10-30")
+	if last := feed.days[len(feed.days)-1]; last != "2026-10-24" {
+		t.Fatalf("a day to come read %q, want today", last)
+	}
+	fetchRitaseHTML(t, client, testServer.URL+"/produksi-new/overview/data?day=2026-10-18")
+	if last := feed.days[len(feed.days)-1]; last != "2026-10-18" {
+		t.Fatalf("the picked day read %q", last)
 	}
 }

@@ -2081,3 +2081,18 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .ritase-legend .legend-vendor { color: var(--navy-dark); background: #f3f1ec; }
 .ritase-legend .legend-armada { color: #6b7785; background: #ffffff; border: 1px solid var(--line); }
 [data-rekap].is-loading { opacity: 0.5; transition: opacity 0.2s; }
+.detail-summary { max-width: none; }
+.detail-table { font-size: 0.9rem; }
+.detail-table thead th { text-align: center; white-space: nowrap; }
+.detail-table thead th:nth-child(2) { text-align: left; }
+.detail-table th, .detail-table td { padding: 0.55rem 0.7rem; }
+.detail-table tbody th { white-space: nowrap; }
+.detail-table td.ritase-value { font-weight: 500; }
+.detail-table .ritase-head td.ritase-value, .detail-table .ritase-head th { font-weight: 700; color: var(--navy-dark); }
+.detail-table .detail-note { color: var(--muted); font-size: 0.85rem; }
+.detail-table .rekap-total .detail-note { color: #2563eb; font-size: 0.95rem; font-weight: 700; }
+.detail-table .detail-time { font-variant-numeric: tabular-nums; }
+.detail-table .tone-bad-text { color: #b42318; font-weight: 700; }
+[data-detail].is-loading { opacity: 0.5; transition: opacity 0.2s; }
+.detail-table .rekap-total { background: #eaf1fb; }
+.detail-table .rekap-total th, .detail-table .rekap-total td.ritase-value { color: #2563eb; font-weight: 700; }

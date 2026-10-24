@@ -86,13 +86,34 @@ func (f *Feed) Latest(ctx context.Context) (Snapshot, bool, error) {
 // used and the error returned alongside, so the page can say the figures are
 // old rather than going blank.
 func (f *Feed) Ritase(ctx context.Context, from, to string, location *time.Location) (RitaseSummary, bool, error) {
+	tickets, has, err := f.loads(ctx, from, to, location)
+	if !has {
+		return RitaseSummary{}, false, err
+	}
+	return Summarize(tickets, from, to, location), true, err
+}
+
+// Detail lays one day out unit by unit, from the same loads the summary reads.
+func (f *Feed) Detail(ctx context.Context, day string, location *time.Location) (UnitDetailReport, bool, error) {
+	tickets, has, err := f.loads(ctx, day, day, location)
+	if !has {
+		return UnitDetailReport{}, false, err
+	}
+	return DetailUnits(tickets, day, location), true, err
+}
+
+// loads returns the loads scanned full from one day to another. Days that have
+// ended are read from the scanner once; today is read again once per
+// interval, and when it cannot be the last reading of it is returned with the
+// error.
+func (f *Feed) loads(ctx context.Context, from, to string, location *time.Location) ([]Ticket, bool, error) {
 	start, err := time.ParseInLocation("2006-01-02", from, location)
 	if err != nil {
-		return RitaseSummary{}, false, err
+		return nil, false, err
 	}
 	end, err := time.ParseInLocation("2006-01-02", to, location)
 	if err != nil {
-		return RitaseSummary{}, false, err
+		return nil, false, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -142,7 +163,7 @@ func (f *Feed) Ritase(ctx context.Context, from, to string, location *time.Locat
 		}
 		if _, read := f.days[key]; read {
 			if err := flush(last); err != nil {
-				return RitaseSummary{}, false, err
+				return nil, false, err
 			}
 			continue
 		}
@@ -152,7 +173,7 @@ func (f *Feed) Ritase(ctx context.Context, from, to string, location *time.Locat
 		last = day
 	}
 	if err := flush(last); err != nil {
-		return RitaseSummary{}, false, err
+		return nil, false, err
 	}
 
 	var todayErr error
@@ -181,5 +202,5 @@ func (f *Feed) Ritase(ctx context.Context, from, to string, location *time.Locat
 	if to >= today && from <= today {
 		tickets = append(tickets, f.todayTickets...)
 	}
-	return Summarize(tickets, from, to, location), true, todayErr
+	return tickets, true, todayErr
 }
