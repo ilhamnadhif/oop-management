@@ -37,8 +37,8 @@ func TestLoadMiMoDefaults(t *testing.T) {
 	if cfg.MiMoBaseURL != "https://api.xiaomimimo.com/v1" {
 		t.Fatalf("MiMoBaseURL = %q, want official API URL", cfg.MiMoBaseURL)
 	}
-	if cfg.MiMoModel != "mimo-v2.5" {
-		t.Fatalf("MiMoModel = %q, want mimo-v2.5", cfg.MiMoModel)
+	if cfg.MiMoModel != "mimo-v2.6-pro" {
+		t.Fatalf("MiMoModel = %q, want mimo-v2.6-pro", cfg.MiMoModel)
 	}
 	if cfg.MiMoTimeout != 25*time.Second {
 		t.Fatalf("MiMoTimeout = %v, want 25s", cfg.MiMoTimeout)

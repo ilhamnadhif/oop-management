@@ -139,7 +139,7 @@ Tambahkan konfigurasi berikut ke `.env` lokal:
 ```dotenv
 MIMO_API_KEY=your-mimo-api-key
 MIMO_BASE_URL=https://api.xiaomimimo.com/v1
-MIMO_MODEL=mimo-v2.5
+MIMO_MODEL=mimo-v2.6-pro
 MIMO_TIMEOUT=25s
 ```
 

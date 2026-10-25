@@ -91,9 +91,9 @@ func Load() (Config, error) {
 	if miMoBaseURL == "" {
 		miMoBaseURL = "https://api.xiaomimimo.com/v1"
 	}
-	miMoModel := strings.TrimSpace(getenv("MIMO_MODEL", "mimo-v2.5"))
+	miMoModel := strings.TrimSpace(getenv("MIMO_MODEL", "mimo-v2.6-pro"))
 	if miMoModel == "" {
-		miMoModel = "mimo-v2.5"
+		miMoModel = "mimo-v2.6-pro"
 	}
 
 	a2bWorkMinutes, err := parseInt("A2B_WORK_MINUTES", getenv("A2B_WORK_MINUTES", "480"))

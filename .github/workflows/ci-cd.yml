@@ -136,6 +136,16 @@ jobs:
           MIMO_BASE_URL: ${{ vars.MIMO_BASE_URL }}
           MIMO_MODEL: ${{ vars.MIMO_MODEL }}
           MIMO_TIMEOUT: ${{ vars.MIMO_TIMEOUT }}
+          WIDYA_URL: ${{ vars.WIDYA_URL }}
+          WIDYA_EMAIL: ${{ secrets.WIDYA_EMAIL }}
+          WIDYA_PASSWORD: ${{ secrets.WIDYA_PASSWORD }}
+          WIDYA_LOGIN_COMPANY: ${{ vars.WIDYA_LOGIN_COMPANY }}
+          WIDYA_REFRESH: ${{ vars.WIDYA_REFRESH }}
+          ATTENDANCE_START: ${{ vars.ATTENDANCE_START }}
+          ATTENDANCE_END: ${{ vars.ATTENDANCE_END }}
+          ATTENDANCE_LATE_TOLERANCE_MINUTES: ${{ vars.ATTENDANCE_LATE_TOLERANCE_MINUTES }}
+          COMPANY_NAME: ${{ vars.COMPANY_NAME }}
+          SIGNATORY_PLACE: ${{ vars.SIGNATORY_PLACE }}
           DEPLOY_SHA: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
         with:
@@ -145,7 +155,7 @@ jobs:
           port: ${{ secrets.VPS_SSH_PORT }}
           timeout: 2m
           command_timeout: 20m
-          envs: APP_DIR,APP_HOST_PORT,GOOGLE_SPREADSHEET_ID,GOOGLE_APPLICATION_CREDENTIALS_B64,MIMO_API_KEY,MIMO_BASE_URL,MIMO_MODEL,MIMO_TIMEOUT,DEPLOY_SHA,REPOSITORY
+          envs: APP_DIR,APP_HOST_PORT,GOOGLE_SPREADSHEET_ID,GOOGLE_APPLICATION_CREDENTIALS_B64,MIMO_API_KEY,MIMO_BASE_URL,MIMO_MODEL,MIMO_TIMEOUT,WIDYA_URL,WIDYA_EMAIL,WIDYA_PASSWORD,WIDYA_LOGIN_COMPANY,WIDYA_REFRESH,ATTENDANCE_START,ATTENDANCE_END,ATTENDANCE_LATE_TOLERANCE_MINUTES,COMPANY_NAME,SIGNATORY_PLACE,DEPLOY_SHA,REPOSITORY
           script: |
             set -eu
 
@@ -159,11 +169,25 @@ jobs:
             esac
 
             MIMO_BASE_URL="${MIMO_BASE_URL:-https://api.xiaomimimo.com/v1}"
-            MIMO_MODEL="${MIMO_MODEL:-mimo-v2.5}"
+            MIMO_MODEL="${MIMO_MODEL:-mimo-v2.6-pro}"
             MIMO_TIMEOUT="${MIMO_TIMEOUT:-25s}"
+            WIDYA_URL="${WIDYA_URL:-}"
+            WIDYA_EMAIL="${WIDYA_EMAIL:-}"
+            WIDYA_PASSWORD="${WIDYA_PASSWORD:-}"
+            WIDYA_LOGIN_COMPANY="${WIDYA_LOGIN_COMPANY:-}"
+            WIDYA_REFRESH="${WIDYA_REFRESH:-30s}"
+            ATTENDANCE_START="${ATTENDANCE_START:-07:00}"
+            ATTENDANCE_END="${ATTENDANCE_END:-17:00}"
+            ATTENDANCE_LATE_TOLERANCE_MINUTES="${ATTENDANCE_LATE_TOLERANCE_MINUTES:-15}"
+            COMPANY_NAME="${COMPANY_NAME:-PT Orecon Putra Perkasa}"
+            SIGNATORY_PLACE="${SIGNATORY_PLACE:-}"
 
-            if printf '%s%s%s%s' "$MIMO_API_KEY" "$MIMO_BASE_URL" "$MIMO_MODEL" "$MIMO_TIMEOUT" | grep -q '[[:cntrl:]]'; then
-              echo "MiMo configuration must not contain control characters."
+            # Every value below becomes one line of the env file. A newline would
+            # start a line of its own, and grep never sees it, so compare against
+            # the value with control characters stripped instead.
+            runtime_config="$MIMO_API_KEY$MIMO_BASE_URL$MIMO_MODEL$MIMO_TIMEOUT$WIDYA_URL$WIDYA_EMAIL$WIDYA_PASSWORD$WIDYA_LOGIN_COMPANY$WIDYA_REFRESH$ATTENDANCE_START$ATTENDANCE_END$ATTENDANCE_LATE_TOLERANCE_MINUTES$COMPANY_NAME$SIGNATORY_PLACE"
+            if [ "$(printf '%s' "$runtime_config" | tr -d '[:cntrl:]')" != "$runtime_config" ]; then
+              echo "Runtime configuration must not contain control characters."
               exit 1
             fi
 
@@ -192,6 +216,16 @@ jobs:
             MIMO_MODEL=$MIMO_MODEL
             MIMO_TIMEOUT=$MIMO_TIMEOUT
             A2B_WORK_MINUTES=720
+            WIDYA_URL=$WIDYA_URL
+            WIDYA_EMAIL=$WIDYA_EMAIL
+            WIDYA_PASSWORD=$WIDYA_PASSWORD
+            WIDYA_LOGIN_COMPANY=$WIDYA_LOGIN_COMPANY
+            WIDYA_REFRESH=$WIDYA_REFRESH
+            ATTENDANCE_START=$ATTENDANCE_START
+            ATTENDANCE_END=$ATTENDANCE_END
+            ATTENDANCE_LATE_TOLERANCE_MINUTES=$ATTENDANCE_LATE_TOLERANCE_MINUTES
+            COMPANY_NAME=$COMPANY_NAME
+            SIGNATORY_PLACE=$SIGNATORY_PLACE
             EOF
 
             printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_B64" | base64 --decode > "$APP_DIR/runtime/google-application-credentials.json"

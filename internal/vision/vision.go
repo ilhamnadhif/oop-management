@@ -19,7 +19,7 @@ const (
 	// DefaultBaseURL is the official Xiaomi MiMo OpenAI-compatible API base URL.
 	DefaultBaseURL = "https://api.xiaomimimo.com/v1"
 	// DefaultModel is the MiMo model that supports image understanding.
-	DefaultModel = "mimo-v2.5"
+	DefaultModel = "mimo-v2.6-pro"
 	// DefaultMaxResponseBytes caps the upstream body, and the JSON the model
 	// wrote inside it, when a caller states no cap of its own. It is a size a
 	// short document answers well within, so a runaway completion cannot be read
