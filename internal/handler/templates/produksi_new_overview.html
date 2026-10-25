@@ -184,17 +184,14 @@
           <button class="button primary" type="submit" data-ritase-date-fallback>Tampilkan</button>
         </form>
       </div>
-      {{/* The two switches sit on their own bar above the list, where they read
-           as what they are: ways to show the list, not more dates. */}}
+      {{/* One switch on its own bar above the list, where it reads as what it
+           is: a way to show the list, not another date. On opens every vendor
+           and truck; off folds them all. */}}
       <div class="rit-toolbar" data-rit-switches hidden>
         <span class="rit-toolbar-label">Tampilan</span>
         <label class="rit-switch">
           <input type="checkbox" role="switch" data-rit-expand-all>
           <span>Expand semua</span>
-        </label>
-        <label class="rit-switch">
-          <input type="checkbox" role="switch" data-rit-auto-collapse>
-          <span>Auto collapse</span>
         </label>
       </div>
       <div data-rit>

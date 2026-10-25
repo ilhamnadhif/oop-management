@@ -2060,11 +2060,7 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .ritase-legend li { display: grid; grid-template-columns: 9rem 1fr; align-items: center; gap: 1rem; color: var(--muted); font-size: 0.85rem; }
 .ritase-legend li span { padding: 0.3rem 0.6rem; border-radius: 6px; text-align: center; font-weight: 700; }
 .ritase-source { margin: 1rem 0 0; font-style: italic; }
-@media (max-width: 640px) {
-  .ritase-table th, .ritase-table td { padding: 0.55rem 0.6rem; }
-  .ritase-table .ritase-child th { padding-left: 1.3rem; }
-  .ritase-legend li { grid-template-columns: 6.5rem 1fr; }
-}
+
 [data-ritase].is-loading { opacity: 0.5; transition: opacity 0.2s; }
 .ritase-loading { display: flex; align-items: center; gap: 0.2rem; padding: 2.2rem 0; color: var(--muted); font-size: 0.92rem; }
 .ritase-loading .spinner { width: 18px; height: 18px; border-color: var(--line); border-top-color: var(--navy); }
@@ -2128,3 +2124,31 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .rit-switch input[type="checkbox"]:checked::after { transform: translateX(0.9rem); }
 .rit-switch input[type="checkbox"]:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .rit-switch input[type="checkbox"], .rit-switch input[type="checkbox"]::after { transition: none; } }
+
+/* On a phone the four tables carry a lot of columns. Smaller type and tighter
+   cells keep a summary on one screen width and let the wide ones scroll
+   sideways in less distance. It sits last so it outranks the table rules
+   above it. */
+@media (max-width: 640px) {
+  .ritase-panel .panel-heading h2 { font-size: 1.05rem; }
+  .ritase-date-label { margin-bottom: 0.6rem; font-size: 0.8rem; }
+  .ritase-table { font-size: 0.78rem; }
+  .ritase-table th, .ritase-table td { padding: 0.42rem 0.5rem; }
+  .ritase-table thead th { font-size: 0.74rem; }
+  .ritase-table .ritase-child th { padding-left: 1rem; }
+  .detail-table, .rekap-table, .rit-table { font-size: 0.74rem; }
+  .detail-table th, .detail-table td { padding: 0.38rem 0.42rem; }
+  .detail-table .detail-note { font-size: 0.72rem; }
+  .detail-table .rekap-total .detail-note { font-size: 0.78rem; }
+  .rit-table th, .rit-table td { padding: 0.38rem 0.5rem; }
+  .rit-table .rit-unit th { padding-left: 1rem; }
+  .rit-table .rit-load th { padding-left: 2.3rem; }
+  .rit-caret { width: 0.42rem; height: 0.42rem; }
+  .ritase-legend li { grid-template-columns: 5.5rem 1fr; gap: 0.6rem; font-size: 0.76rem; }
+  .ritase-legend li span { padding: 0.22rem 0.4rem; }
+  .ritase-source { font-size: 0.74rem; }
+  .ritase-date input { min-width: 0; width: 100%; padding: 0.55rem 0.7rem; }
+  .ritase-date > div { flex: 1 1 9rem; }
+  .rit-toolbar { padding: 0.5rem 0.7rem; }
+  .rit-switch { font-size: 0.8rem; }
+}

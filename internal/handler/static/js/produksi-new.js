@@ -19,7 +19,6 @@
   const rekapToInput = root.querySelector("[data-rekap-to]");
   const switches = root.querySelector("[data-rit-switches]");
   const expandAll = root.querySelector("[data-rit-expand-all]");
-  const autoCollapse = root.querySelector("[data-rit-auto-collapse]");
   const fromInput = root.querySelector("[data-ritase-from]");
   const toInput = root.querySelector("[data-ritase-to]");
   let range = { from: root.dataset.from || "", to: root.dataset.to || "" };
@@ -176,7 +175,7 @@
   }
 
   // Detail Rit per Unit folds: a vendor opens onto its trucks, a truck onto
-  // its loads. The open lines are kept by name, so a refresh that redraws the
+  // its loads, one line at a time by hand or all at once by the switch. The open lines are kept by name, so a refresh that redraws the
   // table leaves them open.
   const open = new Set();
   const stored = (key) => {
@@ -227,45 +226,19 @@
         if (expandAll) expandAll.checked = false;
         store("produksiNew.ritExpandAll", false);
       } else {
-        if (autoCollapse && autoCollapse.checked) {
-          // One open at a time on each level: close the lines beside this one.
-          const row = toggle.closest("[data-rit-row]");
-          for (const sibling of rows()) {
-            if (sibling.dataset.key && sibling !== row && sibling.dataset.parent === row.dataset.parent &&
-                sibling.dataset.ritRow === row.dataset.ritRow) {
-              open.delete(sibling.dataset.key);
-            }
-          }
-        }
         open.add(key);
       }
       fold();
     });
   }
 
-  if (switches && expandAll && autoCollapse) {
+  if (switches && expandAll) {
     switches.hidden = false;
     expandAll.checked = stored("produksiNew.ritExpandAll");
-    autoCollapse.checked = stored("produksiNew.ritAutoCollapse") && !expandAll.checked;
-    // Opening everything and keeping only one open contradict each other, so
-    // turning one on turns the other off.
+    // One switch: on opens every line, off folds them all.
     expandAll.addEventListener("change", () => {
-      if (expandAll.checked) {
-        autoCollapse.checked = false;
-      } else {
-        open.clear();
-      }
+      if (!expandAll.checked) open.clear();
       store("produksiNew.ritExpandAll", expandAll.checked);
-      store("produksiNew.ritAutoCollapse", autoCollapse.checked);
-      fold();
-    });
-    autoCollapse.addEventListener("change", () => {
-      if (autoCollapse.checked) {
-        expandAll.checked = false;
-        open.clear();
-      }
-      store("produksiNew.ritExpandAll", expandAll.checked);
-      store("produksiNew.ritAutoCollapse", autoCollapse.checked);
       fold();
     });
   }
