@@ -60,7 +60,7 @@
       <div class="panel-heading">
         <div>
           <p class="eyebrow">{{template "icon" "truck"}}SUMMARY RITASE</p>
-          <h2>Ritase dari tiket Widya</h2>
+          <h2 data-ritase-title>{{.RitaseTitle}}</h2>
         </div>
         <form class="ritase-date" method="get" action="/produksi-new/overview">
           <input type="hidden" name="rekap_from" value="{{.RekapFrom}}">
@@ -102,7 +102,7 @@
       <div class="panel-heading">
         <div>
           <p class="eyebrow">{{template "icon" "users"}}REKAP VENDOR &amp; ARMADA</p>
-          <h2>Ritase per vendor dan jenis DT</h2>
+          <h2 data-rekap-title>{{.RekapTitle}}</h2>
         </div>
         <form class="ritase-date" method="get" action="/produksi-new/overview">
           <input type="hidden" name="from" value="{{.From}}">
@@ -225,7 +225,6 @@
      and the refresh draws it again, so both come from this one template. */}}
 {{define "produksiNewRitase"}}
 <div class="ritase-summary">
-  <p class="ritase-date-label">{{.DateLabel}}</p>
   <div class="table-scroll">
     <table class="ritase-table">
       <thead>
@@ -261,7 +260,6 @@
      produksiNewRitase is. */}}
 {{define "produksiNewRekap"}}
 <div class="ritase-summary rekap-summary">
-  <p class="ritase-date-label">{{.DateLabel}}</p>
   <div class="table-scroll">
     <table class="ritase-table rekap-table">
       <thead>

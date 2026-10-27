@@ -85,7 +85,7 @@ func TestProduksiNewShowsTheScannerFigures(t *testing.T) {
 		"TOTAL TIKET", `data-widya-stat="tickets">6.803<`, `data-widya-stat="vehicles">324<`,
 		`data-widya-stat="materials">5<`, `data-widya-stat="units">3<`,
 		"SUMMARY RITASE", "data-ritase-loading", "Memuat tiket dari Widya",
-		`name="from" type="date" value="2026-10-01"`, `name="to" type="date" value="2026-10-24"`,
+		`name="from" type="date" value="2026-10-24"`, `name="to" type="date" value="2026-10-24"`,
 		"24 Oct 2026 09:00:00", `data-refresh-ms="30000"`, "/static/js/produksi-new.js",
 	} {
 		if !strings.Contains(page, fragment) {
@@ -197,21 +197,23 @@ func fetchRitaseHTML(t *testing.T, client *http.Client, address string) string {
 	return view.RitaseHTML
 }
 
-// The summary reads the range picked. Nothing picked is the month so far; an
-// end past today stops at today, a range given backwards is turned round, and
-// one longer than the cap keeps its end.
+// The summary reads the range picked. Nothing picked is today alone; a start
+// that is not a date falls back to the end's day; an end past today stops at
+// today, a range given backwards is turned round, and one longer than the cap
+// keeps its end.
 func TestProduksiNewReadsTheRangePicked(t *testing.T) {
 	feed := widyaFixture()
 	testServer := newProduksiNewServer(t, feed)
 	client := loggedInClient(t, testServer)
 
 	page := fetchRitaseHTML(t, client, testServer.URL+"/produksi-new/overview/data?from=2026-10-18&to=2026-10-18")
-	if !strings.Contains(page, "18 Oktober 2026") || !strings.Contains(page, "Tidak ada vendor aktif") {
+	if !strings.Contains(page, "Tidak ada vendor aktif") {
 		t.Fatal("the summary does not show the picked day, empty")
 	}
 	for _, c := range []struct{ query, from, to string }{
-		{"", "2026-10-01", "2026-10-24"},
-		{"?from=bukan&to=2026-10-30", "2026-10-01", "2026-10-24"},
+		{"", "2026-10-24", "2026-10-24"},
+		{"?from=bukan&to=2026-10-30", "2026-10-24", "2026-10-24"},
+		{"?from=bukan&to=2026-10-20", "2026-10-20", "2026-10-20"},
 		{"?from=2026-10-20&to=2026-10-10", "2026-10-10", "2026-10-20"},
 		{"?from=2026-01-01&to=2026-10-24", "2026-08-24", "2026-10-24"},
 	} {
@@ -232,7 +234,7 @@ func TestProduksiNewColoursTheSummary(t *testing.T) {
 
 	page := fetchRitaseHTML(t, client, testServer.URL+"/produksi-new/overview/data")
 	for _, fragment := range []string{
-		"1 – 24 Oktober 2026", "67.50", "08:06 – 09:40",
+		"67.50", "08:06 – 09:40",
 		`<th scope="row">HPP</th>
           <td class="ritase-value tone-good">Aktif</td>`,
 		`<th scope="row">DTE</th>
@@ -262,7 +264,7 @@ func TestProduksiNewBreaksTheRangeDownByVendor(t *testing.T) {
 	}
 	compact := strings.Join(strings.Fields(view.RekapHTML), " ")
 	for _, fragment := range []string{
-		"Vendor / Armada", "Porsi Vol", "1 – 24 Oktober 2026",
+		"Vendor / Armada", "Porsi Vol",
 		// HPP: one DTT, two loads, 55.5 of the 67.5 m³.
 		`<th scope="row">HPP</th> <td class="ritase-value">1</td> <td class="ritase-value">2</td> <td class="ritase-value">55.50</td> <td class="ritase-value">82.2%</td> <td class="ritase-value">27.75</td> <td class="ritase-value">2.00</td>`,
 		// A class with nothing reads as a dash, greyed.
@@ -405,8 +407,9 @@ func TestProduksiNewRekapHasItsOwnRange(t *testing.T) {
 	if view.From != "2026-10-01" || view.RekapFrom != "2026-10-18" || view.RekapTo != "2026-10-18" {
 		t.Fatalf("ranges = %s-%s and %s-%s", view.From, view.To, view.RekapFrom, view.RekapTo)
 	}
-	if !strings.Contains(view.RitaseHTML, "1 – 24 Oktober 2026") || !strings.Contains(view.RekapHTML, "18 Oktober 2026") {
-		t.Fatal("the summary and rekap do not read their own ranges")
+	if view.RitaseTitle != "Summary Ritase 1 – 24 Oktober 2026" ||
+		view.RekapTitle != "Ritase Per Vendor dan Jenis DT, 18 Oktober 2026 | End of Day" {
+		t.Fatalf("titles = %q and %q", view.RitaseTitle, view.RekapTitle)
 	}
 	// Nothing hauled on the 18th: the rekap is its total alone.
 	if strings.Contains(view.RekapHTML, "HPP") {
@@ -414,9 +417,9 @@ func TestProduksiNewRekapHasItsOwnRange(t *testing.T) {
 	}
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
-	if !strings.Contains(page, `name="rekap_from" type="date" value="2026-10-01"`) ||
+	if !strings.Contains(page, `name="rekap_from" type="date" value="2026-10-24"`) ||
 		!strings.Contains(page, `name="rekap_to" type="date" value="2026-10-24"`) {
-		t.Fatal("the rekap range does not default to the month so far")
+		t.Fatal("the rekap range does not default to today")
 	}
 }
 
@@ -447,5 +450,43 @@ func TestProduksiNewBelongsToOneProject(t *testing.T) {
 	page = fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
 	if strings.Contains(page, ">6.803<") || !strings.Contains(page, "terhubung ke project <strong>"+testProjectName+"</strong>") {
 		t.Fatalf("%s shows another project's scanner", secondProjectName)
+	}
+}
+
+// The two range tables are titled with their range. A single day says whether
+// it is still going: today is Mid Day, a day that has closed is End of Day,
+// and a longer range carries no such label.
+func TestProduksiNewTitlesTheRange(t *testing.T) {
+	testServer := newProduksiNewServer(t, widyaFixture())
+	client := loggedInClient(t, testServer)
+
+	for _, c := range []struct{ query, ritase, rekap string }{
+		{"?from=2026-10-24&to=2026-10-24&rekap_from=2026-10-24&rekap_to=2026-10-24",
+			"Summary Ritase 24 Oktober 2026 | Mid Day",
+			"Ritase Per Vendor dan Jenis DT, 24 Oktober 2026 | Mid Day"},
+		{"?from=2026-10-23&to=2026-10-23&rekap_from=2026-10-01&rekap_to=2026-10-24",
+			"Summary Ritase 23 Oktober 2026 | End of Day",
+			"Ritase Per Vendor dan Jenis DT, 1 – 24 Oktober 2026"},
+	} {
+		response, err := client.Get(testServer.URL + "/produksi-new/overview/data" + c.query)
+		if err != nil {
+			t.Fatalf("get data: %v", err)
+		}
+		var view ProduksiNewView
+		err = json.NewDecoder(response.Body).Decode(&view)
+		response.Body.Close()
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if view.RitaseTitle != c.ritase || view.RekapTitle != c.rekap {
+			t.Fatalf("%s titled %q and %q", c.query, view.RitaseTitle, view.RekapTitle)
+		}
+	}
+
+	// Opened with nothing picked, both tables are today's Mid Day report.
+	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
+	if !strings.Contains(page, `<h2 data-ritase-title>Summary Ritase 24 Oktober 2026 | Mid Day</h2>`) ||
+		!strings.Contains(page, `<h2 data-rekap-title>Ritase Per Vendor dan Jenis DT, 24 Oktober 2026 | Mid Day</h2>`) {
+		t.Fatal("the page does not open on today's Mid Day report")
 	}
 }

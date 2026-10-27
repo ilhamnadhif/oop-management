@@ -164,12 +164,16 @@ type ProduksiNewView struct {
 	To           string      `json:"to"`
 	RekapFrom    string      `json:"rekapFrom"`
 	RekapTo      string      `json:"rekapTo"`
-	Ritase       *RitaseView `json:"-"`
-	Rekap        *RekapView  `json:"-"`
-	Day          string      `json:"day"`
-	Detail       *DetailView `json:"-"`
-	RitDay       string      `json:"ritDay"`
-	Rit          *RitView    `json:"-"`
+	// RitaseTitle and RekapTitle head the two range tables. They name the
+	// range, and for a single day whether it is still going.
+	RitaseTitle string      `json:"ritaseTitle"`
+	RekapTitle  string      `json:"rekapTitle"`
+	Ritase      *RitaseView `json:"-"`
+	Rekap       *RekapView  `json:"-"`
+	Day         string      `json:"day"`
+	Detail      *DetailView `json:"-"`
+	RitDay      string      `json:"ritDay"`
+	Rit         *RitView    `json:"-"`
 	// RitaseHTML is the summary table as the page draws it, so a refresh swaps
 	// in exactly what a reload would have shown.
 	RitaseHTML string `json:"ritaseHtml"`
@@ -243,7 +247,9 @@ func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTick
 	ritDay := s.detailDay(query.Get("rit_day"))
 	rekapFrom, rekapTo := s.ritaseRange(query.Get("rekap_from"), query.Get("rekap_to"))
 	view := ProduksiNewView{Configured: s.widyaHere(), From: from, To: to,
-		RekapFrom: rekapFrom, RekapTo: rekapTo, Day: day, RitDay: ritDay}
+		RekapFrom: rekapFrom, RekapTo: rekapTo, Day: day, RitDay: ritDay,
+		RitaseTitle: s.rangeTitle("Summary Ritase", from, to),
+		RekapTitle:  s.rangeTitle("Ritase Per Vendor dan Jenis DT,", rekapFrom, rekapTo)}
 	if !view.Configured {
 		if s.widya != nil {
 			view.OtherProject = s.widyaProject
@@ -528,10 +534,11 @@ func ritView(report widya.UnitDetailReport, location *time.Location) *RitView {
 // a few megabytes a week, and a page request has thirty seconds.
 const ritaseRangeDays = 62
 
-// ritaseRange settles the range the summary covers. Nothing given is the month
-// so far; a day that is not a date falls back the same way; the end never runs
-// past today, a range given backwards is turned round, and a range longer than
-// the cap keeps its end and loses its start.
+// ritaseRange settles the range the summary covers. Nothing given is today
+// alone, the Mid Day report the page is opened for; a start that is not a date
+// falls back to the end's day; the end never runs past today, a range given
+// backwards is turned round, and a range longer than the cap keeps its end and
+// loses its start.
 func (s *Server) ritaseRange(from, to string) (string, string) {
 	now := s.now().In(s.location)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, s.location)
@@ -545,7 +552,7 @@ func (s *Server) ritaseRange(from, to string) (string, string) {
 		end = today
 	}
 	if !okStart {
-		start = time.Date(end.Year(), end.Month(), 1, 0, 0, 0, 0, s.location)
+		start = end
 	}
 	if start.After(end) {
 		start, end = end, start
@@ -554,6 +561,21 @@ func (s *Server) ritaseRange(from, to string) (string, string) {
 		start = earliest
 	}
 	return start.Format("2006-01-02"), end.Format("2006-01-02")
+}
+
+// rangeTitle heads a range table the way the site titles its reports. One
+// day is named with whether it is still going - "Mid Day" for today, "End of
+// Day" for a day that has closed - since a report of today is a report of a
+// day not over; a longer range is named by its ends alone.
+func (s *Server) rangeTitle(prefix, from, to string) string {
+	title := prefix + " " + rangeLabel(from, to, s.location)
+	if from != to {
+		return title
+	}
+	if from == s.now().In(s.location).Format("2006-01-02") {
+		return title + " | Mid Day"
+	}
+	return title + " | End of Day"
 }
 
 // rangeLabel heads the summary: one date when the range is a day, else both

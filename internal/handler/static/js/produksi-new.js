@@ -11,6 +11,8 @@
   const updated = root.querySelector("[data-widya-updated]");
   const ritase = root.querySelector("[data-ritase]");
   const rekap = root.querySelector("[data-rekap]");
+  const ritaseTitle = root.querySelector("[data-ritase-title]");
+  const rekapTitle = root.querySelector("[data-rekap-title]");
   const detail = root.querySelector("[data-detail]");
   const dayInput = root.querySelector("[data-detail-day]");
   const rit = root.querySelector("[data-rit]");
@@ -43,6 +45,10 @@
         if (cell) cell.textContent = stat.value;
       }
     }
+    // The titles name the range the server settled, and whether a single day
+    // is still going, which changes at midnight without anyone touching a date.
+    if (ritaseTitle && view.ritaseTitle) ritaseTitle.textContent = view.ritaseTitle;
+    if (rekapTitle && view.rekapTitle) rekapTitle.textContent = view.rekapTitle;
     // The fragment is the server's own template, escaped there.
     if (view.ritaseHtml) {
       ritase.innerHTML = view.ritaseHtml;
