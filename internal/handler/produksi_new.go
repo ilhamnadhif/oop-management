@@ -104,6 +104,9 @@ type DetailTime struct {
 // DetailRow is one line of the unit detail: a vendor heading, one of its
 // trucks, or the total at the foot.
 type DetailRow struct {
+	// Caption is the title line over a vendor: "Ritase MNP, 27 Oktober 2026 |
+	// Mid Day". It spans the table and carries only Label.
+	Caption  bool
 	Vendor   bool
 	Total    bool
 	No       int
@@ -127,7 +130,10 @@ type DetailView struct {
 	// RitColumns numbers the per-rit columns, as many as the busiest truck
 	// made.
 	RitColumns []int
-	Rows       []DetailRow
+	// Width is every column the table has: seven before the per-rit columns
+	// and the interval after them. The caption rows span it.
+	Width int
+	Rows  []DetailRow
 }
 
 // RitRow is one line of the per-load list: a vendor, one of its trucks, or
@@ -310,7 +316,7 @@ func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTick
 			}
 		}
 		if hasDetail {
-			view.Detail = detailView(report, s.location)
+			view.Detail = detailView(report, s.location, s.rangeTitle("", day, day))
 		}
 		// The per-load list has a day of its own. The feed keeps each day's
 		// loads, so the same day twice is read once.
@@ -444,7 +450,8 @@ func (s *Server) detailDay(value string) string {
 // detailView lays one day out like the site's detail sheet: a heading line per
 // vendor with its first and last load, its trucks under it with the time of
 // every load, and the total at the foot.
-func detailView(report widya.UnitDetailReport, location *time.Location) *DetailView {
+func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle string) *DetailView {
+	dayTitle = strings.TrimSpace(dayTitle)
 	view := &DetailView{DateLabel: rangeLabel(report.Day, report.Day, location)}
 	columns := report.MaxRitase
 	if columns < 1 {
@@ -453,6 +460,7 @@ func detailView(report widya.UnitDetailReport, location *time.Location) *DetailV
 	for column := 1; column <= columns; column++ {
 		view.RitColumns = append(view.RitColumns, column)
 	}
+	view.Width = 7 + columns + 1
 	porsi := func(volume float64) string {
 		if report.Volume <= 0 {
 			return "0.0%"
@@ -467,6 +475,9 @@ func detailView(report widya.UnitDetailReport, location *time.Location) *DetailV
 	}
 	number := 0
 	for _, vendor := range report.Vendors {
+		// Each vendor's trucks are headed by a title naming the vendor and the
+		// day, so a block cut out of the table still says what it is.
+		view.Rows = append(view.Rows, DetailRow{Caption: true, Label: "Ritase " + vendor.Name + ", " + dayTitle})
 		view.Rows = append(view.Rows, DetailRow{
 			Vendor: true, Label: vendor.Name, Kategori: fmt.Sprintf("%d unit", len(vendor.Units)),
 			Rit: formatCount(vendor.Ritase), Volume: formatRitaseVolume(vendor.Volume),
@@ -525,6 +536,13 @@ func ritView(report widya.UnitDetailReport, location *time.Location) *RitView {
 					Label: load.Clock, Rit: formatCount(l + 1), Volume: formatRitaseVolume(load.Volume)})
 			}
 		}
+	}
+	// The foot of the list, which never folds: it is the answer to how much
+	// was hauled that day whatever is open above it.
+	if len(report.Vendors) > 0 {
+		view.Rows = append(view.Rows, RitRow{Kind: "total", Label: "TOTAL",
+			Rit: formatCount(report.Ritase), Volume: formatRitaseVolume(report.Volume),
+			Kategori: fmt.Sprintf("%d unit", report.Units)})
 	}
 	return view
 }

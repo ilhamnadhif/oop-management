@@ -2152,3 +2152,21 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
   .rit-toolbar { padding: 0.5rem 0.7rem; }
   .rit-switch { font-size: 0.8rem; }
 }
+/* The title over each vendor in the unit detail: the vendor and the day, as a
+   band the block below reads under. */
+.detail-table .detail-caption th { padding: 0.7rem 0.8rem 0.6rem; border-left: 0; border-right: 0; color: var(--navy-dark); background: var(--white); font-size: 1rem; font-weight: 700; text-align: left; }
+.detail-table tbody .detail-caption:not(:first-child) th { padding-top: 1.3rem; }
+@media (max-width: 640px) {
+  .detail-table .detail-caption th { font-size: 0.82rem; padding: 0.5rem 0.45rem 0.45rem; }
+  .detail-table tbody .detail-caption:not(:first-child) th { padding-top: 0.9rem; }
+}
+
+/* Headings over a column of short figures wrap onto two lines rather than set
+   the column's width: "Interval rata-rata (menit)" on one line made a column
+   of three-digit numbers wide enough to push the table off a laptop screen. */
+.detail-table thead th.detail-narrow { width: 5.5rem; max-width: 6.5rem; white-space: normal; line-height: 1.25; }
+@media (max-width: 640px) {
+  .detail-table thead th.detail-narrow { width: 4.2rem; max-width: 5rem; }
+}
+.rit-table .rit-total { background: #eaf1fb; }
+.rit-table .rit-total th, .rit-table .rit-total td { color: #2563eb; font-weight: 700; }

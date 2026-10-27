@@ -315,11 +315,11 @@
           <th scope="col" rowspan="2">Unit</th>
           <th scope="col" rowspan="2" class="ritase-value">Kategori</th>
           <th scope="col" rowspan="2" class="ritase-value">Rit</th>
-          <th scope="col" rowspan="2" class="ritase-value">Volume (m³)</th>
-          <th scope="col" rowspan="2" class="ritase-value">Avg m³/rit</th>
-          <th scope="col" rowspan="2" class="ritase-value">Porsi Vol</th>
+          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Volume (m³)</th>
+          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Avg m³/rit</th>
+          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Porsi Vol</th>
           <th scope="colgroup" colspan="{{$columns}}" class="ritase-value">Jam per rit</th>
-          <th scope="col" rowspan="2" class="ritase-value">Interval rata-rata (menit)</th>
+          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Interval rata-rata (menit)</th>
         </tr>
         <tr>
           {{range .RitColumns}}<th scope="col" class="ritase-value">Rit {{.}}</th>{{end}}
@@ -327,7 +327,11 @@
       </thead>
       <tbody>
         {{range .Rows}}
-        {{if .Vendor}}
+        {{if .Caption}}
+        <tr class="detail-caption">
+          <th scope="rowgroup" colspan="{{$.Width}}">{{.Label}}</th>
+        </tr>
+        {{else if .Vendor}}
         <tr class="ritase-head">
           <th scope="rowgroup" colspan="2">{{.Label}}</th>
           <td class="ritase-value">{{.Kategori}}</td>

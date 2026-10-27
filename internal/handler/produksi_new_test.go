@@ -350,6 +350,8 @@ func TestProduksiNewListsEveryLoad(t *testing.T) {
 		`<td class="ritase-value">DTT</td>`,
 		// The first load of B 1 A, to the second.
 		`<tr class="rit-load" data-rit-row="load" data-parent="v:HPP|B 1 A"> <th scope="row"> 08:06:00 </th> <td class="ritase-value">1</td> <td class="ritase-value">27.50</td>`,
+		// The foot sums the day and never folds: it has no parent to fold under.
+		`<tr class="rit-total" data-rit-row="total"> <th scope="row"> TOTAL </th> <td class="ritase-value">3</td> <td class="ritase-value">67.50</td> <td class="ritase-value">2 unit</td>`,
 	} {
 		if !strings.Contains(compact, fragment) {
 			t.Fatalf("the per-load list is missing %q\n%s", fragment, compact)
@@ -488,5 +490,44 @@ func TestProduksiNewTitlesTheRange(t *testing.T) {
 	if !strings.Contains(page, `<h2 data-ritase-title>Summary Ritase 24 Oktober 2026 | Mid Day</h2>`) ||
 		!strings.Contains(page, `<h2 data-rekap-title>Ritase Per Vendor dan Jenis DT, 24 Oktober 2026 | Mid Day</h2>`) {
 		t.Fatal("the page does not open on today's Mid Day report")
+	}
+}
+
+// Each vendor in the unit detail is headed by a title naming it and the day,
+// Mid Day for today and End of Day for a day that has closed, spanning the
+// whole table.
+func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
+	feed := widyaFixture()
+	// One load on the 23rd, so a closed day has a vendor to title.
+	feed.tickets = append(feed.tickets,
+		widya.Ticket{Vehicle: "B 3 A", Supplier: "MNP", Volume: 12, ScanFullAt: time.Date(2026, 10, 23, 2, 0, 0, 0, time.UTC)})
+	testServer := newProduksiNewServer(t, feed)
+	client := loggedInClient(t, testServer)
+
+	read := func(query string) string {
+		response, err := client.Get(testServer.URL + "/produksi-new/overview/data" + query)
+		if err != nil {
+			t.Fatalf("get data: %v", err)
+		}
+		defer response.Body.Close()
+		var view ProduksiNewView
+		if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return strings.Join(strings.Fields(view.DetailHTML), " ")
+	}
+
+	today := read("")
+	for _, fragment := range []string{
+		// Two rit columns, so seven before them and the interval after: 10.
+		`<tr class="detail-caption"> <th scope="rowgroup" colspan="10">Ritase HPP, 24 Oktober 2026 | Mid Day</th> </tr> <tr class="ritase-head"> <th scope="rowgroup" colspan="2">HPP</th>`,
+		`<th scope="rowgroup" colspan="10">Ritase MNP, 24 Oktober 2026 | Mid Day</th>`,
+	} {
+		if !strings.Contains(today, fragment) {
+			t.Fatalf("today's detail is missing %q\n%s", fragment, today)
+		}
+	}
+	if closed := read("?day=2026-10-23"); !strings.Contains(closed, ">Ritase MNP, 23 Oktober 2026 | End of Day<") {
+		t.Fatalf("a closed day is not titled End of Day\n%s", closed)
 	}
 }
