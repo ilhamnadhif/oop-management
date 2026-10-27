@@ -263,3 +263,58 @@ func TestArchiveReadsForwardFromTheNewestChange(t *testing.T) {
 		t.Fatalf("read since %v", last)
 	}
 }
+
+// failingRangeSource refuses every range read reaching before the day it
+// names, the way the scanner refused one backfill page, and serves the rest.
+type failingRangeSource struct {
+	rangeSource
+	before time.Time
+}
+
+func (s *failingRangeSource) Tickets(ctx context.Context, from, to time.Time) ([]Ticket, error) {
+	if from.Before(s.before) {
+		s.reads = append(s.reads, [2]time.Time{from, to})
+		return nil, errors.New("status 500")
+	}
+	return s.rangeSource.Tickets(ctx, from, to)
+}
+
+// A backfill the scanner will not serve does not stop today being read: the
+// round reports the failure, keeps today's loads, and tries the history again
+// next round.
+func TestArchiveReadsTodayWhenTheBackfillFails(t *testing.T) {
+	now := at("2026-10-25", "10:00")
+	source := &failingRangeSource{before: at("2026-10-24", "00:00").Add(-createdLead)}
+	source.tickets = []Ticket{
+		{Number: "LS-1", Vehicle: "A", Supplier: "HPP", Volume: 25, ScanFullAt: at("2026-10-25", "08:00")},
+	}
+	store := &memoryStore{}
+	archive := NewArchive(source, store, wib, 10*time.Second, func() time.Time { return now })
+
+	if err := archive.Sync(context.Background()); err == nil {
+		t.Fatal("a failed backfill read as a success")
+	}
+	summary, has, _ := archive.Ritase(context.Background(), "2026-10-25", "2026-10-25", wib)
+	if !has || summary.TotalRitase != 1 || len(store.rows) != 1 {
+		t.Fatalf("today was not kept: %+v, %d rows", summary, len(store.rows))
+	}
+	archive.mu.RLock()
+	backfilled := archive.backfilled
+	archive.mu.RUnlock()
+	if backfilled {
+		t.Fatal("a failed backfill was marked done and will not be tried again")
+	}
+
+	// Once the scanner serves the history again, the next round reads the week
+	// that failed, even though today's loads are already kept.
+	source.before = time.Time{}
+	source.tickets = append(source.tickets,
+		Ticket{Number: "LS-0", Vehicle: "A", Supplier: "HPP", Volume: 24, ScanFullAt: at("2026-10-20", "08:00")})
+	now = now.Add(10 * time.Second)
+	if err := archive.Sync(context.Background()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(store.rows) != 2 {
+		t.Fatalf("the failed week was skipped: %+v", store.rows)
+	}
+}

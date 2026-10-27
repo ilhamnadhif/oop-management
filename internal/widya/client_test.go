@@ -230,3 +230,47 @@ func TestClientReadsTicketsChangedSince(t *testing.T) {
 		t.Fatalf("tickets = %+v", tickets)
 	}
 }
+
+// A 500 or a dropped connection is tried again; a refused request is not.
+func TestClientRetriesAFlakyRead(t *testing.T) {
+	defer func(previous time.Duration) { getBackoff = previous }(getBackoff)
+	getBackoff = time.Millisecond
+
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch atomic.AddInt32(&calls, 1) {
+		case 1:
+			w.WriteHeader(http.StatusInternalServerError)
+		case 2:
+			// Drop the connection mid-answer, the way the proxy did.
+			hijacker, _ := w.(http.Hijacker)
+			connection, _, _ := hijacker.Hijack()
+			connection.Close()
+		default:
+			_, _ = w.Write([]byte(`{"ticketsCount":1}`))
+		}
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, "a", "b", "c", server.Client())
+	client.token, client.companyID = "tok", "co"
+
+	var stats Stats
+	if err := client.get(context.Background(), "/api/v1/dashboard/statistics", &stats); err != nil {
+		t.Fatalf("a flaky read was not retried: %v", err)
+	}
+	if calls != 3 || stats.Tickets != 1 {
+		t.Fatalf("calls = %d, stats = %+v", calls, stats)
+	}
+
+	calls = 0
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer refusing.Close()
+	client = NewClient(refusing.URL, "a", "b", "c", refusing.Client())
+	client.token, client.companyID = "tok", "co"
+	if err := client.get(context.Background(), "/x", &stats); err == nil || calls != 1 {
+		t.Fatalf("a bad request was retried: %d calls, %v", calls, err)
+	}
+}

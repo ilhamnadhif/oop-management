@@ -39,8 +39,9 @@ const ticketPageSize = 100
 const ticketPageLimit = 100
 
 // ticketWorkers is how many pages are read at once after the first. A week is
-// about a dozen pages; read one after another they would take twenty seconds.
-const ticketWorkers = 4
+// about a dozen pages; read one after another they would take twenty seconds,
+// and four at once drew 500s from the scanner, so two.
+const ticketWorkers = 2
 
 type ticketPage struct {
 	Data []struct {

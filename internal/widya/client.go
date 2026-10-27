@@ -175,7 +175,54 @@ func (c *Client) get(ctx context.Context, path string, into interface{}) error {
 	return c.getQuery(ctx, path, query, into)
 }
 
+// getAttempts is how many times one read is tried. The scanner sits behind a
+// proxy that now and then drops a connection or answers a 500 under load; a
+// read is safe to repeat, and a moment later it usually goes through.
+const getAttempts = 3
+
+// getBackoff is the wait before the first retry, doubled for each one after.
+var getBackoff = 500 * time.Millisecond
+
 func (c *Client) getQuery(ctx context.Context, path string, query url.Values, into interface{}) error {
+	var err error
+	for attempt := 0; attempt < getAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return err
+			case <-time.After(getBackoff << (attempt - 1)):
+			}
+		}
+		err = c.getOnce(ctx, path, query, into)
+		if !retryable(err) {
+			return err
+		}
+	}
+	return err
+}
+
+// retryable reports whether a failed read is worth trying again: a 5xx, or
+// the connection failing on the way. A refused token or a bad request will
+// not get better by asking twice.
+func retryable(err error) bool {
+	if err == nil || errors.Is(err, errUnauthorized) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var status statusError
+	if errors.As(err, &status) {
+		return status >= 500
+	}
+	var decode *json.SyntaxError
+	return !errors.As(err, &decode)
+}
+
+// statusError is an answer outside 2xx that was not a refused token.
+type statusError int
+
+func (e statusError) Error() string { return fmt.Sprintf("status %d", int(e)) }
+
+func (c *Client) getOnce(ctx context.Context, path string, query url.Values, into interface{}) error {
 	address := c.baseURL + path
 	if encoded := query.Encode(); encoded != "" {
 		address += "?" + encoded
@@ -199,7 +246,7 @@ func (c *Client) do(request *http.Request, into interface{}) error {
 		return errUnauthorized
 	}
 	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return fmt.Errorf("status %d", response.StatusCode)
+		return statusError(response.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
 	if err != nil {

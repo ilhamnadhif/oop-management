@@ -43,7 +43,11 @@ type Archive struct {
 	loaded  bool
 	// backfilled is set once the history behind today has been read, so a
 	// restart after a few days off fills the gap and then stops asking.
-	backfilled bool
+	// backfillNext is the first day not read yet: it is settled once, before
+	// today's loads are kept, and moves forward a week at a time, so a week
+	// the scanner refused is asked for again rather than skipped.
+	backfilled   bool
+	backfillNext time.Time
 	// recheckedFor is the day whose tickets were last read again in full.
 	recheckedFor string
 	// cursor is the newest updatedAt the scanner has reported. Zero until
@@ -144,8 +148,12 @@ func (a *Archive) sync(ctx context.Context) error {
 	now := a.now().In(a.location)
 	todayStart := startOfDay(now)
 
+	// Today is read whatever happens to the history: a backfill page the
+	// scanner will not serve must not stop the page showing what is being
+	// hauled now. What failed is tried again next round.
+	var problems []error
 	if err := a.backfill(ctx, todayStart); err != nil {
-		return err
+		problems = append(problems, err)
 	}
 
 	yesterday := todayStart.AddDate(0, 0, -1)
@@ -153,18 +161,36 @@ func (a *Archive) sync(ctx context.Context) error {
 	recheck := a.recheckedFor != yesterday.Format("2006-01-02")
 	a.mu.RUnlock()
 	if recheck {
-		fetched, err := a.source.Tickets(ctx, yesterday.Add(-createdLead), todayStart.Add(-time.Second))
-		if err != nil {
-			return fmt.Errorf("read yesterday: %w", err)
+		if err := a.recheckYesterday(ctx, yesterday, todayStart); err != nil {
+			problems = append(problems, err)
 		}
-		if err := a.merge(ctx, fetched); err != nil {
-			return err
-		}
-		a.mu.Lock()
-		a.recheckedFor = yesterday.Format("2006-01-02")
-		a.mu.Unlock()
 	}
 
+	if err := a.readToday(ctx, now, todayStart); err != nil {
+		problems = append(problems, err)
+	}
+	return errors.Join(problems...)
+}
+
+// recheckYesterday reads yesterday in full again, for loads corrected after
+// the day closed.
+func (a *Archive) recheckYesterday(ctx context.Context, yesterday, todayStart time.Time) error {
+	fetched, err := a.source.Tickets(ctx, yesterday.Add(-createdLead), todayStart.Add(-time.Second))
+	if err != nil {
+		return fmt.Errorf("read yesterday: %w", err)
+	}
+	if err := a.merge(ctx, fetched); err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.recheckedFor = yesterday.Format("2006-01-02")
+	a.mu.Unlock()
+	return nil
+}
+
+// readToday reads today in full the first time, then forward from the newest
+// change the scanner reported.
+func (a *Archive) readToday(ctx context.Context, now, todayStart time.Time) error {
 	a.mu.RLock()
 	cursor := a.cursor
 	a.mu.RUnlock()
@@ -220,25 +246,33 @@ func (a *Archive) load(ctx context.Context) error {
 // filled from the day of its newest one, which covers the days the app was
 // down. Both are read a week at a time.
 func (a *Archive) backfill(ctx context.Context, todayStart time.Time) error {
-	a.mu.RLock()
-	done := a.backfilled
-	var newest time.Time
-	for _, ticket := range a.tickets {
-		if ticket.ScanFullAt.After(newest) {
-			newest = ticket.ScanFullAt
-		}
-	}
-	a.mu.RUnlock()
-	if done {
+	a.mu.Lock()
+	if a.backfilled {
+		a.mu.Unlock()
 		return nil
 	}
-	from := todayStart.AddDate(0, 0, -(backfillDays - 1))
-	if !newest.IsZero() {
-		if day := startOfDay(newest.In(a.location)); day.After(from) {
-			from = day
+	if a.backfillNext.IsZero() {
+		// Settled from the sheet as it was before this run kept anything:
+		// once today's loads are in, the newest ticket says nothing about the
+		// days behind it.
+		from := todayStart.AddDate(0, 0, -(backfillDays - 1))
+		var newest time.Time
+		for _, ticket := range a.tickets {
+			if ticket.ScanFullAt.After(newest) {
+				newest = ticket.ScanFullAt
+			}
 		}
+		if !newest.IsZero() {
+			if day := startOfDay(newest.In(a.location)); day.After(from) {
+				from = day
+			}
+		}
+		a.backfillNext = from
 	}
-	for start := from; start.Before(todayStart); start = start.AddDate(0, 0, backfillChunk) {
+	start := a.backfillNext
+	a.mu.Unlock()
+
+	for ; start.Before(todayStart); start = start.AddDate(0, 0, backfillChunk) {
 		end := start.AddDate(0, 0, backfillChunk)
 		if end.After(todayStart) {
 			end = todayStart
@@ -250,6 +284,9 @@ func (a *Archive) backfill(ctx context.Context, todayStart time.Time) error {
 		if err := a.merge(ctx, fetched); err != nil {
 			return err
 		}
+		a.mu.Lock()
+		a.backfillNext = end
+		a.mu.Unlock()
 	}
 	a.mu.Lock()
 	a.backfilled = true
