@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -60,6 +61,12 @@ func fakeScanner(t *testing.T, logins *int32) *httptest.Server {
 		query := r.URL.Query()
 		if query.Get("filter.companyId") != "co-9" {
 			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		// The scanner serves at most 100 tickets a page and answers a larger
+		// page with a 500, as it has since late October 2026.
+		if limit, _ := strconv.Atoi(query.Get("limit")); limit < 1 || limit > 100 {
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		if since := query.Get("filter.updatedAt"); since != "" {

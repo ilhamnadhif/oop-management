@@ -27,16 +27,19 @@ type Ticket struct {
 	UpdatedAt time.Time
 }
 
-// ticketPageSize is how many tickets are asked for at once. A page is a few
-// megabytes; the scanner answers one in about two seconds.
-const ticketPageSize = 500
+// ticketPageSize is how many tickets are asked for at once. It is the most the
+// scanner will serve: from late October 2026 it answers anything above 100
+// with a 500. A page of 100 is about half a megabyte and takes a second and a
+// half.
+const ticketPageSize = 100
 
-// ticketPageLimit stops a runaway range from paging forever: 20 pages is ten
-// thousand loads, several months of this site.
-const ticketPageLimit = 20
+// ticketPageLimit stops a runaway range from paging forever: 100 pages is ten
+// thousand loads, several months of this site, where a backfill week is about
+// a dozen.
+const ticketPageLimit = 100
 
-// ticketWorkers is how many pages are read at once after the first. A month is
-// ten pages; read one after another they outlast a page request.
+// ticketWorkers is how many pages are read at once after the first. A week is
+// about a dozen pages; read one after another they would take twenty seconds.
 const ticketWorkers = 4
 
 type ticketPage struct {
