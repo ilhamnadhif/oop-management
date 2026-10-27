@@ -13,10 +13,17 @@
         <h2>Widya Load Scanner belum terhubung</h2>
       </div>
     </div>
+    {{if .OtherProject}}
+    <p class="panel-empty">
+      Widya Load Scanner terhubung ke project <strong>{{.OtherProject}}</strong>, bukan project ini.
+      Pindah ke project {{.OtherProject}} untuk melihat datanya.
+    </p>
+    {{else}}
     <p class="panel-empty">
       Akun Widya belum diatur di server. Isi <code>WIDYA_URL</code>,
       <code>WIDYA_EMAIL</code> dan <code>WIDYA_PASSWORD</code> lalu jalankan ulang aplikasi.
     </p>
+    {{end}}
   </section>
   {{else}}
   <div data-widya data-refresh-ms="{{$.RefreshMS}}" data-from="{{.From}}" data-to="{{.To}}" data-day="{{.Day}}" data-rit-day="{{.RitDay}}" data-rekap-from="{{.RekapFrom}}" data-rekap-to="{{.RekapTo}}">

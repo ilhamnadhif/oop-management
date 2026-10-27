@@ -58,7 +58,21 @@ func fakeScanner(t *testing.T, logins *int32) *httptest.Server {
 			return
 		}
 		query := r.URL.Query()
-		if query.Get("filter.companyId") != "co-9" || !strings.HasPrefix(query.Get("filter.createdAt"), "$btw:") {
+		if query.Get("filter.companyId") != "co-9" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if since := query.Get("filter.updatedAt"); since != "" {
+			// Read forward from a moment: one ticket changed since, sorted by
+			// the column filtered on.
+			if !strings.HasPrefix(since, "$gte:") || query.Get("sortBy") != "updatedAt:ASC" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"number":"LS-9","vehicleVrm":"B 9 A","supplierName":"HPP","materialName":"sirtu","scanLoadVolume":26,"scanFullAt":"2026-10-27T10:41:47.838Z","updatedAt":"2026-10-27T10:41:55.289Z"}],"meta":{"totalPages":1}}`))
+			return
+		}
+		if !strings.HasPrefix(query.Get("filter.createdAt"), "$btw:") {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -145,6 +159,11 @@ func (s *stubSource) Tickets(context.Context, time.Time, time.Time) ([]Ticket, e
 	return s.tickets, s.err
 }
 
+func (s *stubSource) TicketsUpdatedSince(context.Context, time.Time) ([]Ticket, error) {
+	s.ticketCalls++
+	return s.tickets, s.err
+}
+
 func (s *stubSource) Fetch(context.Context) (Snapshot, error) {
 	s.calls++
 	return s.snapshot, s.err
@@ -185,5 +204,22 @@ func TestClientReadsFromTheSiteRoot(t *testing.T) {
 	client := NewClient(server.URL+"/login", "star@example.com", "rahasia", "", server.Client())
 	if _, err := client.Fetch(context.Background()); err != nil {
 		t.Fatalf("fetch through a copied page address: %v", err)
+	}
+}
+
+// Reading forward asks for the tickets changed since a moment, and carries the
+// scanner's own updatedAt back for the next read to start from.
+func TestClientReadsTicketsChangedSince(t *testing.T) {
+	var logins int32
+	server := fakeScanner(t, &logins)
+	client := NewClient(server.URL, "star@example.com", "rahasia", "", server.Client())
+
+	tickets, err := client.TicketsUpdatedSince(context.Background(), time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("read since: %v", err)
+	}
+	if len(tickets) != 1 || tickets[0].Number != "LS-9" || tickets[0].Material != "sirtu" ||
+		!tickets[0].UpdatedAt.Equal(time.Date(2026, 10, 27, 10, 41, 55, 289000000, time.UTC)) {
+		t.Fatalf("tickets = %+v", tickets)
 	}
 }

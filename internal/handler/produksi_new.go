@@ -23,11 +23,20 @@ type WidyaFeed interface {
 	MaxAge() time.Duration
 }
 
-// WithWidya enables Produksi New. Like the scanners it is optional: without an
-// account the page renders and says the source has not been set up.
-func (s *Server) WithWidya(feed WidyaFeed) *Server {
+// WithWidya enables Produksi New for one project, the one whose spreadsheet
+// keeps the scanner's tickets. Like the scanners it is optional: without an
+// account the page renders and says the source has not been set up, and in any
+// other project it says the scanner belongs elsewhere.
+func (s *Server) WithWidya(feed WidyaFeed, project string) *Server {
 	s.widya = feed
+	s.widyaProject = strings.TrimSpace(project)
 	return s
+}
+
+// widyaHere reports whether this request's project is the one the scanner is
+// tied to.
+func (s *Server) widyaHere() bool {
+	return s.widya != nil && strings.EqualFold(strings.TrimSpace(s.project.Nama), s.widyaProject)
 }
 
 // WidyaStat is one figure off the scanner's dashboard, already written the way
@@ -143,21 +152,24 @@ type RitView struct {
 // ProduksiNewView is the figures as both the page and its refresh read them,
 // so the first paint and every refresh after it say the same thing.
 type ProduksiNewView struct {
-	Configured bool        `json:"configured"`
-	Available  bool        `json:"available"`
-	UpdatedAt  string      `json:"updatedAt"`
-	Error      string      `json:"error"`
-	Stats      []WidyaStat `json:"stats"`
-	From       string      `json:"from"`
-	To         string      `json:"to"`
-	RekapFrom  string      `json:"rekapFrom"`
-	RekapTo    string      `json:"rekapTo"`
-	Ritase     *RitaseView `json:"-"`
-	Rekap      *RekapView  `json:"-"`
-	Day        string      `json:"day"`
-	Detail     *DetailView `json:"-"`
-	RitDay     string      `json:"ritDay"`
-	Rit        *RitView    `json:"-"`
+	Configured bool `json:"configured"`
+	// OtherProject is set when the scanner is configured but tied to a
+	// different project than the one being viewed.
+	OtherProject string      `json:"-"`
+	Available    bool        `json:"available"`
+	UpdatedAt    string      `json:"updatedAt"`
+	Error        string      `json:"error"`
+	Stats        []WidyaStat `json:"stats"`
+	From         string      `json:"from"`
+	To           string      `json:"to"`
+	RekapFrom    string      `json:"rekapFrom"`
+	RekapTo      string      `json:"rekapTo"`
+	Ritase       *RitaseView `json:"-"`
+	Rekap        *RekapView  `json:"-"`
+	Day          string      `json:"day"`
+	Detail       *DetailView `json:"-"`
+	RitDay       string      `json:"ritDay"`
+	Rit          *RitView    `json:"-"`
 	// RitaseHTML is the summary table as the page draws it, so a refresh swaps
 	// in exactly what a reload would have shown.
 	RitaseHTML string `json:"ritaseHtml"`
@@ -189,7 +201,7 @@ func (s *Server) handleProduksiNewOverview(w http.ResponseWriter, r *http.Reques
 		View:  s.produksiNewView(r.Context(), r.URL.Query(), false),
 		Today: s.now().In(s.location).Format("2006-01-02"),
 	}
-	if s.widya != nil {
+	if s.widyaHere() {
 		data.RefreshMS = s.widya.MaxAge().Milliseconds()
 		data.RefreshSeconds = int64(s.widya.MaxAge().Seconds())
 	}
@@ -230,9 +242,12 @@ func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTick
 	day := s.detailDay(query.Get("day"))
 	ritDay := s.detailDay(query.Get("rit_day"))
 	rekapFrom, rekapTo := s.ritaseRange(query.Get("rekap_from"), query.Get("rekap_to"))
-	view := ProduksiNewView{Configured: s.widya != nil, From: from, To: to,
+	view := ProduksiNewView{Configured: s.widyaHere(), From: from, To: to,
 		RekapFrom: rekapFrom, RekapTo: rekapTo, Day: day, RitDay: ritDay}
-	if s.widya == nil {
+	if !view.Configured {
+		if s.widya != nil {
+			view.OtherProject = s.widyaProject
+		}
 		return view
 	}
 	var problems []string

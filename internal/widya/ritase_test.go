@@ -1,8 +1,6 @@
 package widya
 
 import (
-	"context"
-	"errors"
 	"testing"
 	"time"
 )
@@ -115,58 +113,5 @@ func TestSummarizeReadsARange(t *testing.T) {
 	summary := Summarize(tickets, "2026-10-01", "2026-10-02", wib)
 	if summary.TotalRitase != 3 || summary.UnitAktif != 2 || summary.FirstScan != "07:45" || summary.LastScan != "17:10" {
 		t.Fatalf("range = %+v", summary)
-	}
-}
-
-// Days that have ended are read once and kept; today is read again once per
-// interval.
-func TestFeedKeepsEndedDaysAndRereadsToday(t *testing.T) {
-	now := at("2026-10-25", "10:00")
-	source := &stubSource{tickets: []Ticket{
-		{Vehicle: "A", Volume: 25, ScanFullAt: at("2026-10-01", "09:00")},
-		{Vehicle: "A", Volume: 25, ScanFullAt: at("2026-10-24", "09:00")},
-		{Vehicle: "B", Volume: 12, ScanFullAt: at("2026-10-25", "08:00")},
-	}}
-	feed := NewFeed(source, 30*time.Second, func() time.Time { return now })
-
-	summary, has, err := feed.Ritase(context.Background(), "2026-10-01", "2026-10-25", wib)
-	if err != nil || !has || summary.TotalRitase != 3 {
-		t.Fatalf("month = %+v, %v, %v", summary, has, err)
-	}
-	// One read for the ended days, one for today.
-	if source.ticketCalls != 2 {
-		t.Fatalf("read tickets %d times, want 2", source.ticketCalls)
-	}
-
-	// Inside the interval nothing is read; after it only today is.
-	feed.Ritase(context.Background(), "2026-10-01", "2026-10-25", wib)
-	now = now.Add(time.Minute)
-	summary, _, _ = feed.Ritase(context.Background(), "2026-10-01", "2026-10-25", wib)
-	if source.ticketCalls != 3 || summary.TotalRitase != 3 {
-		t.Fatalf("read tickets %d times, want 3; ritase %d", source.ticketCalls, summary.TotalRitase)
-	}
-
-	// A range of ended days already read costs nothing.
-	feed.Ritase(context.Background(), "2026-10-02", "2026-10-20", wib)
-	if source.ticketCalls != 3 {
-		t.Fatalf("an ended range was read again: %d reads", source.ticketCalls)
-	}
-}
-
-// When today cannot be read the last reading of it stands, with the error.
-func TestFeedKeepsTodayWhenTheScannerIsDown(t *testing.T) {
-	now := at("2026-10-25", "10:00")
-	source := &stubSource{tickets: []Ticket{{Vehicle: "B", Volume: 12, ScanFullAt: at("2026-10-25", "08:00")}}}
-	feed := NewFeed(source, 30*time.Second, func() time.Time { return now })
-	feed.Ritase(context.Background(), "2026-10-25", "2026-10-25", wib)
-
-	now = now.Add(time.Minute)
-	source.err = errors.New("down")
-	summary, has, err := feed.Ritase(context.Background(), "2026-10-25", "2026-10-25", wib)
-	if err == nil || !has || summary.TotalRitase != 1 {
-		t.Fatalf("an outage lost today: %+v, %v, %v", summary, has, err)
-	}
-	if _, _, err := feed.Ritase(context.Background(), "25-10-2026", "2026-10-25", wib); err == nil {
-		t.Fatal("a malformed date was read")
 	}
 }

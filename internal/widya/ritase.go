@@ -19,8 +19,12 @@ type Ticket struct {
 	Number     string
 	Vehicle    string
 	Supplier   string
+	Material   string
 	Volume     float64
 	ScanFullAt time.Time
+	// UpdatedAt is when the scanner last changed the ticket: its full scan, or
+	// a correction. The archive reads forward from the newest one it has seen.
+	UpdatedAt time.Time
 }
 
 // ticketPageSize is how many tickets are asked for at once. A page is a few
@@ -40,8 +44,10 @@ type ticketPage struct {
 		Number       string  `json:"number"`
 		VehicleVrm   string  `json:"vehicleVrm"`
 		SupplierName string  `json:"supplierName"`
+		MaterialName string  `json:"materialName"`
 		Volume       float64 `json:"scanLoadVolume"`
 		ScanFullAt   string  `json:"scanFullAt"`
+		UpdatedAt    string  `json:"updatedAt"`
 	} `json:"data"`
 	Meta struct {
 		TotalPages int `json:"totalPages"`
@@ -55,21 +61,44 @@ func (c *Client) Tickets(ctx context.Context, from, to time.Time) ([]Ticket, err
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	tickets, err := c.tickets(ctx, from, to)
+	return c.ticketsSigned(ctx, ticketFilter{
+		field: "createdAt",
+		value: "$btw:" + from.Format(time.RFC3339) + "," + to.Format(time.RFC3339),
+	})
+}
+
+// TicketsUpdatedSince reads the tickets the scanner created or changed at or
+// after since. Read every few seconds it is a handful of tickets, where a
+// whole day is hundreds at several kilobytes each.
+func (c *Client) TicketsUpdatedSince(ctx context.Context, since time.Time) ([]Ticket, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ticketsSigned(ctx, ticketFilter{field: "updatedAt", value: "$gte:" + since.UTC().Format(time.RFC3339Nano)})
+}
+
+// ticketFilter is the one condition a ticket read pages through, and the
+// column it is sorted by so the pages do not shift while they are read.
+type ticketFilter struct {
+	field string
+	value string
+}
+
+func (c *Client) ticketsSigned(ctx context.Context, filter ticketFilter) ([]Ticket, error) {
+	tickets, err := c.tickets(ctx, filter)
 	if errors.Is(err, errUnauthorized) {
 		c.token, c.companyID = "", ""
-		tickets, err = c.tickets(ctx, from, to)
+		tickets, err = c.tickets(ctx, filter)
 	}
 	return tickets, err
 }
 
-func (c *Client) tickets(ctx context.Context, from, to time.Time) ([]Ticket, error) {
+func (c *Client) tickets(ctx context.Context, filter ticketFilter) ([]Ticket, error) {
 	if c.token == "" {
 		if err := c.signIn(ctx); err != nil {
 			return nil, err
 		}
 	}
-	first, err := c.ticketPage(ctx, from, to, 1)
+	first, err := c.ticketPage(ctx, filter, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +117,7 @@ func (c *Client) tickets(ctx context.Context, from, to time.Time) ([]Ticket, err
 			go func() {
 				defer wait.Done()
 				for page := range next {
-					rest[page-2], errs[page-2] = c.ticketPage(ctx, from, to, page)
+					rest[page-2], errs[page-2] = c.ticketPage(ctx, filter, page)
 				}
 			}()
 		}
@@ -113,10 +142,13 @@ func (c *Client) tickets(ctx context.Context, from, to time.Time) ([]Ticket, err
 				// A ticket that was never scanned full carried nothing yet.
 				continue
 			}
+			updated, _ := time.Parse(time.RFC3339, row.UpdatedAt)
 			tickets = append(tickets, Ticket{
+				UpdatedAt:  updated,
 				Number:     strings.TrimSpace(row.Number),
 				Vehicle:    normalizeVrm(row.VehicleVrm),
 				Supplier:   strings.TrimSpace(row.SupplierName),
+				Material:   strings.TrimSpace(row.MaterialName),
 				Volume:     row.Volume,
 				ScanFullAt: scanned,
 			})
@@ -125,14 +157,14 @@ func (c *Client) tickets(ctx context.Context, from, to time.Time) ([]Ticket, err
 	return tickets, nil
 }
 
-func (c *Client) ticketPage(ctx context.Context, from, to time.Time, page int) (*ticketPage, error) {
+func (c *Client) ticketPage(ctx context.Context, filter ticketFilter, page int) (*ticketPage, error) {
 	query := url.Values{}
 	query.Set("filter.companyId", c.companyID)
-	query.Set("filter.createdAt", "$btw:"+from.Format(time.RFC3339)+","+to.Format(time.RFC3339))
+	query.Set("filter."+filter.field, filter.value)
 	query.Set("limit", strconv.Itoa(ticketPageSize))
 	query.Set("page", strconv.Itoa(page))
 	// Sorted, so the pages do not shift under a ticket cut while they are read.
-	query.Set("sortBy", "createdAt:ASC")
+	query.Set("sortBy", filter.field+":ASC")
 	var response ticketPage
 	if err := c.getQuery(ctx, "/api/v1/tickets", query, &response); err != nil {
 		return nil, fmt.Errorf("read tickets page %d: %w", page, err)

@@ -676,3 +676,19 @@ type NotaItem struct {
 	Harga      float64
 	Subtotal   float64
 }
+
+// WidyaTicket is one load as Widya Load Scanner cut it, kept in the project's
+// own spreadsheet so the history survives a restart and only today's tickets
+// have to be read off the scanner again. The ticket number is the key.
+type WidyaTicket struct {
+	// RowNumber is where the ticket sits in the sheet; zero until it is
+	// written, and what an update writes back to.
+	RowNumber  int
+	Number     string
+	ScanFullAt time.Time
+	Vehicle    string
+	Supplier   string
+	Material   string
+	Volume     float64
+	SyncedAt   time.Time
+}

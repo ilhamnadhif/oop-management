@@ -164,13 +164,32 @@ func main() {
 		log.Printf("Scan MiMo nonaktif: MIMO_API_KEY belum diatur")
 	}
 
-	// Produksi New reads the weighbridge's own figures. It is optional: without
-	// an account the page renders and says it has not been set up.
+	// Produksi New reads the weighbridge. Its tickets are kept in the first
+	// project's spreadsheet, the site the scanner stands at: the archive reads
+	// that sheet once, then asks the scanner only for today's tickets each
+	// interval, and yesterday's once a day. It is optional: without an account
+	// the page renders and says it has not been set up.
 	if cfg.WidyaURL != "" && cfg.WidyaEmail != "" && cfg.WidyaPassword != "" {
+		// A page of tickets is a few megabytes; a slow link to the scanner needs
+		// longer than a dashboard read to bring one down.
 		client := widya.NewClient(cfg.WidyaURL, cfg.WidyaEmail, cfg.WidyaPassword,
-			cfg.WidyaLoginCompany, &http.Client{Timeout: 15 * time.Second})
-		webServer.WithWidya(widya.NewFeed(client, cfg.WidyaRefresh, nil))
-		log.Printf("Widya Load Scanner aktif (%s, refresh %s)", cfg.WidyaURL, cfg.WidyaRefresh)
+			cfg.WidyaLoginCompany, &http.Client{Timeout: 60 * time.Second})
+		store := repository.Store(master)
+		if !strings.EqualFold(strings.TrimSpace(first.SpreadsheetID), cfg.GoogleSpreadsheetID) {
+			projectStore := repository.NewGoogleSheetsRepository(sheetsClient, first.SpreadsheetID, cfg.Timezone)
+			schemaCtx, cancelSchema := context.WithTimeout(ctx, 60*time.Second)
+			err := projectStore.EnsureSchema(schemaCtx)
+			cancelSchema()
+			if err != nil {
+				log.Fatalf("siapkan sheet Widya di project %s: %v", first.Nama, err)
+			}
+			store = projectStore
+		}
+		archive := widya.NewArchive(client, store, cfg.Timezone, cfg.WidyaRefresh, now)
+		go archive.Run(ctx)
+		webServer.WithWidya(archive, first.Nama)
+		log.Printf("Widya Load Scanner aktif (%s, refresh %s, disimpan di project %s)",
+			cfg.WidyaURL, cfg.WidyaRefresh, first.Nama)
 	} else {
 		log.Printf("Widya Load Scanner nonaktif: WIDYA_URL, WIDYA_EMAIL atau WIDYA_PASSWORD belum diatur")
 	}

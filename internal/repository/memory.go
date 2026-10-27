@@ -32,6 +32,7 @@ type TestRepository struct {
 	hourMeters    []*model.HourMeter
 	projects      []*model.Project
 	exportConfigs []model.ExportConfig
+	widyaTickets  []model.WidyaTicket
 }
 
 func NewTestRepository() *TestRepository {
@@ -1223,4 +1224,34 @@ func cloneInt(value *int) *int {
 	}
 	copy := *value
 	return &copy
+}
+
+func (r *TestRepository) ListWidyaTickets(context.Context) ([]model.WidyaTicket, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]model.WidyaTicket(nil), r.widyaTickets...), nil
+}
+
+func (r *TestRepository) AppendWidyaTickets(_ context.Context, tickets []model.WidyaTicket) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, ticket := range tickets {
+		// Row 1 is the header, as in the sheet.
+		ticket.RowNumber = len(r.widyaTickets) + 2
+		r.widyaTickets = append(r.widyaTickets, ticket)
+	}
+	return nil
+}
+
+func (r *TestRepository) UpdateWidyaTickets(_ context.Context, tickets []model.WidyaTicket) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, ticket := range tickets {
+		index := ticket.RowNumber - 2
+		if index < 0 || index >= len(r.widyaTickets) {
+			return fmt.Errorf("invalid row number %d for ticket %s", ticket.RowNumber, ticket.Number)
+		}
+		r.widyaTickets[index] = ticket
+	}
+	return nil
 }

@@ -57,7 +57,7 @@ func newProduksiNewServer(t *testing.T, feed WidyaFeed) *httptest.Server {
 		t.Fatalf("new server: %v", err)
 	}
 	if feed != nil {
-		server.WithWidya(feed)
+		server.WithWidya(feed, testProjectName)
 	}
 	return startFixtureServer(t, server, deps)
 }
@@ -417,5 +417,35 @@ func TestProduksiNewRekapHasItsOwnRange(t *testing.T) {
 	if !strings.Contains(page, `name="rekap_from" type="date" value="2026-10-01"`) ||
 		!strings.Contains(page, `name="rekap_to" type="date" value="2026-10-24"`) {
 		t.Fatal("the rekap range does not default to the month so far")
+	}
+}
+
+// The scanner's tickets are kept in one project's spreadsheet, so Produksi
+// New shows them there and, anywhere else, says which project has them.
+func TestProduksiNewBelongsToOneProject(t *testing.T) {
+	stores := newTestStores(repository.NewTestRepository())
+	location := time.FixedZone("WIB", 7*60*60)
+	now := time.Date(2026, 10, 24, 9, 0, 0, 0, location)
+	deps := testDepsWithStores(t, stores, location, func() time.Time { return now }, defaultTestBranding())
+	if _, err := deps.Projects.Create(context.Background(), secondProjectName, "kendal-spreadsheet", nil, nil); err != nil {
+		t.Fatalf("create second project: %v", err)
+	}
+	server, err := NewServer(deps)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	server.WithWidya(widyaFixture(), testProjectName)
+	testServer := startFixtureServer(t, server, deps)
+	client := loggedInClient(t, testServer)
+
+	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
+	if !strings.Contains(page, ">6.803<") {
+		t.Fatalf("%s does not show the scanner", testProjectName)
+	}
+
+	switchProject(t, client, testServer, csrfFromForm(t, page), secondProjectName)
+	page = fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
+	if strings.Contains(page, ">6.803<") || !strings.Contains(page, "terhubung ke project <strong>"+testProjectName+"</strong>") {
+		t.Fatalf("%s shows another project's scanner", secondProjectName)
 	}
 }

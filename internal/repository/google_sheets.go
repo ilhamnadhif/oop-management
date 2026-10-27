@@ -305,6 +305,15 @@ const (
 	fuelUpdatedColumn    = "U"
 )
 
+// widyaTicketSheet keeps the loads read off Widya Load Scanner, one row per
+// ticket. It holds only what the Produksi New tables read; the scanner keeps
+// the photos and point clouds.
+const widyaTicketSheet = "Widya Tiket"
+
+var widyaTicketHeaders = []string{
+	"no_tiket", "scan_full_at", "plat", "vendor", "material", "volume", "synced_at",
+}
+
 // sheetDefinition pairs a sheet with the header it must carry.
 type sheetDefinition struct {
 	name    string
@@ -340,6 +349,7 @@ var projectSheets = []sheetDefinition{
 	{name: fuelKeluarSheet, headers: fuelKeluarHeaders},
 	{name: hourMeterSheet, headers: hourMeterHeaders},
 	{name: hourMeterKegiatanSheet, headers: hourMeterKegiatanHeaders},
+	{name: widyaTicketSheet, headers: widyaTicketHeaders},
 }
 
 // EnsureSchema prepares the sheets one project's books need. It is what a
@@ -3034,4 +3044,99 @@ func stringsToInterfaces(values []string) []interface{} {
 
 func quoteSheet(name string) string {
 	return "'" + strings.ReplaceAll(name, "'", "''") + "'"
+}
+
+// ListWidyaTickets reads the kept tickets. A row whose time cannot be read is
+// skipped rather than failing the list: one hand-edited cell should not blank
+// the Produksi New page.
+func (r *GoogleSheetsRepository) ListWidyaTickets(ctx context.Context) ([]model.WidyaTicket, error) {
+	rows, err := r.readRows(ctx, widyaTicketSheet, "G")
+	if err != nil {
+		return nil, err
+	}
+	tickets := make([]model.WidyaTicket, 0, len(rows))
+	for index, row := range dataRows(rows) {
+		row = padRow(row, len(widyaTicketHeaders))
+		number := strings.TrimSpace(cellString(row[0]))
+		if number == "" {
+			continue
+		}
+		scanned, err := parseDateTime(cellString(row[1]), r.location)
+		if err != nil {
+			continue
+		}
+		syncedAt, _ := parseDateTime(cellString(row[6]), r.location)
+		tickets = append(tickets, model.WidyaTicket{
+			RowNumber:  index + 2,
+			Number:     number,
+			ScanFullAt: scanned,
+			Vehicle:    cellString(row[2]),
+			Supplier:   cellString(row[3]),
+			Material:   cellString(row[4]),
+			Volume:     parseFloatCell(row[5]),
+			SyncedAt:   syncedAt,
+		})
+	}
+	return tickets, nil
+}
+
+// widyaBatchSize caps how many tickets travel in one request, for the same
+// reason produksiBatchSize does.
+const widyaBatchSize = 500
+
+func (r *GoogleSheetsRepository) AppendWidyaTickets(ctx context.Context, tickets []model.WidyaTicket) error {
+	for start := 0; start < len(tickets); start += widyaBatchSize {
+		end := start + widyaBatchSize
+		if end > len(tickets) {
+			end = len(tickets)
+		}
+		rows := make([][]interface{}, 0, end-start)
+		for _, ticket := range tickets[start:end] {
+			rows = append(rows, r.widyaTicketToRow(ticket))
+		}
+		if err := r.appendRows(ctx, widyaTicketSheet, rows); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpdateWidyaTickets rewrites each ticket's row in one batched request.
+func (r *GoogleSheetsRepository) UpdateWidyaTickets(ctx context.Context, tickets []model.WidyaTicket) error {
+	if len(tickets) == 0 {
+		return nil
+	}
+	sheet := quoteSheet(widyaTicketSheet)
+	data := make([]*sheets.ValueRange, 0, len(tickets))
+	for _, ticket := range tickets {
+		if ticket.RowNumber < 2 {
+			return fmt.Errorf("invalid row number %d for ticket %s", ticket.RowNumber, ticket.Number)
+		}
+		data = append(data, &sheets.ValueRange{
+			Range:  fmt.Sprintf("%s!A%d:G%d", sheet, ticket.RowNumber, ticket.RowNumber),
+			Values: [][]interface{}{r.widyaTicketToRow(ticket)},
+		})
+	}
+	_, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             data,
+	}).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("update widya tickets: %w", err)
+	}
+	return nil
+}
+
+// widyaTicketToRow writes the times in site time, the way every other sheet
+// here does, so the sheet reads naturally to whoever opens it.
+func (r *GoogleSheetsRepository) widyaTicketToRow(ticket model.WidyaTicket) []interface{} {
+	return []interface{}{
+		ticket.Number,
+		formatDateTime(ticket.ScanFullAt.In(r.location)),
+		ticket.Vehicle,
+		ticket.Supplier,
+		ticket.Material,
+		ticket.Volume,
+		formatDateTime(ticket.SyncedAt.In(r.location)),
+	}
 }

@@ -72,9 +72,11 @@ type Server struct {
 	// copied mutex would guard a copy of nothing.
 	scan      *scanGate
 	templates *template.Template
-	// widya is the weighbridge feed Produksi New reads. It is the deployment's,
-	// like the scan gate, and nil when no account is configured.
-	widya WidyaFeed
+	// widya is the weighbridge feed Produksi New reads, and widyaProject the
+	// one project whose spreadsheet keeps its tickets. The account is the
+	// deployment's, like the scan gate; widya is nil when none is configured.
+	widya        WidyaFeed
+	widyaProject string
 
 	// Bound per request by forProject. Nil until then.
 	project model.Project

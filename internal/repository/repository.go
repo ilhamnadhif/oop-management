@@ -108,6 +108,14 @@ type Store interface {
 	CancelLeave(ctx context.Context, rowNumber int, leave *model.Leave) error
 	UpdateLeaveDecision(ctx context.Context, rowNumber int, leave *model.Leave) error
 	ReadLeaveAttachment(ctx context.Context, rowNumber int) (string, error)
+	// ListWidyaTickets reads every ticket kept from Widya Load Scanner, each
+	// with the row it sits in.
+	ListWidyaTickets(ctx context.Context) ([]model.WidyaTicket, error)
+	// AppendWidyaTickets writes new tickets in as few requests as it can.
+	AppendWidyaTickets(ctx context.Context, tickets []model.WidyaTicket) error
+	// UpdateWidyaTickets rewrites tickets already kept, each at its RowNumber,
+	// for a load the scanner corrected after it was first read.
+	UpdateWidyaTickets(ctx context.Context, tickets []model.WidyaTicket) error
 }
 
 // MasterStore is the one store that is not any project's. It holds the accounts,

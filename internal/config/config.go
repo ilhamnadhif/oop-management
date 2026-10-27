@@ -104,7 +104,7 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("A2B_WORK_MINUTES harus lebih dari 0")
 	}
 
-	widyaRefresh, err := time.ParseDuration(getenv("WIDYA_REFRESH", "30s"))
+	widyaRefresh, err := time.ParseDuration(getenv("WIDYA_REFRESH", "10s"))
 	if err != nil || widyaRefresh < 5*time.Second {
 		return Config{}, fmt.Errorf("WIDYA_REFRESH must be a duration of at least 5s")
 	}
