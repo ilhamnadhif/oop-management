@@ -460,6 +460,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/produksi/export/download", s.handleProduksiDownload)
 	mux.HandleFunc("/produksi-new/overview", s.handleProduksiNewOverview)
 	mux.HandleFunc("/produksi-new/overview/data", s.handleProduksiNewData)
+	mux.HandleFunc("/produksi-new/export", s.handleProduksiNewExport)
+	mux.HandleFunc("/produksi-new/export/download", s.handleProduksiNewExportDownload)
 	mux.HandleFunc("/unit/overview", s.handleUnitOverview)
 	mux.HandleFunc("/a2b/overview", s.handleA2BOverview)
 	mux.HandleFunc("/a2b/hm", s.handleA2BHourMeter)

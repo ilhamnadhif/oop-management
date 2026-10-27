@@ -215,13 +215,16 @@ const (
 	ExportFuelKeluar ExportTypeKey = "fuel-keluar"
 	ExportBiayaFuel  ExportTypeKey = "biaya-fuel"
 	ExportAbsensi    ExportTypeKey = "absensi"
+	// ExportProduksiNew is the Widya ritase report: the four Produksi New
+	// tables, a sheet or a run of pages each.
+	ExportProduksiNew ExportTypeKey = "produksi-new"
 )
 
 // ExportTypeKeys is every configurable export, in the order the settings form
 // lists them.
 var ExportTypeKeys = []ExportTypeKey{
 	ExportProduksi, ExportNota, ExportUnitDT, ExportUnitA2B, ExportInputHM, ExportFuelKeluar,
-	ExportBiayaFuel, ExportAbsensi,
+	ExportBiayaFuel, ExportAbsensi, ExportProduksiNew,
 }
 
 // ExportConfigFor returns one export's config, or the defaults when the

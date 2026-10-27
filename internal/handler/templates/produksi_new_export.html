@@ -1,0 +1,103 @@
+{{/* The Produksi New export: a range and a vendor, then the four tables of
+     the overview as a workbook or a signed PDF. */}}
+{{define "produksi_new_export"}}
+{{template "appShellOpen" .}}
+  {{if not .Configured}}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "info"}}BELUM DIATUR</p>
+        <h2>Widya Load Scanner belum terhubung</h2>
+      </div>
+    </div>
+    {{if .OtherProject}}
+    <p class="panel-empty">
+      Widya Load Scanner terhubung ke project <strong>{{.OtherProject}}</strong>, bukan project ini.
+      Pindah ke project {{.OtherProject}} untuk mengunduh laporannya.
+    </p>
+    {{else}}
+    <p class="panel-empty">
+      Akun Widya belum diatur di server. Isi <code>WIDYA_URL</code>,
+      <code>WIDYA_EMAIL</code> dan <code>WIDYA_PASSWORD</code> lalu jalankan ulang aplikasi.
+    </p>
+    {{end}}
+  </section>
+  {{else}}
+  {{if .Error}}<div class="alert warn" role="status">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "calculator"}}RENTANG DATA</p>
+        <h2>Pilih periode dan vendor</h2>
+      </div>
+    </div>
+    <form class="filter-form" method="get" action="/produksi-new/export">
+      <div>
+        <label for="from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <input id="from" name="from" type="date" value="{{.From}}" max="{{.Today}}">
+      </div>
+      <div>
+        <label for="to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <input id="to" name="to" type="date" value="{{.To}}" max="{{.Today}}">
+      </div>
+      {{/* The same picker the A2B export filters machines with: nothing ticked
+           is every vendor, and several can be ticked at once. */}}
+      <div class="unit-picker-field">
+        <label for="vendor-search">{{template "icon" "users"}}Vendor</label>
+        <details class="unit-picker" data-unit-picker data-picker-all="Semua vendor" data-picker-noun="vendor">
+          <summary>
+            <span data-unit-picker-summary>{{.VendorSummary}}</span>
+            <svg class="group-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          </summary>
+          <div class="unit-picker-body">
+            <input id="vendor-search" class="unit-picker-search" type="search"
+                   placeholder="Cari vendor…" autocomplete="off" data-unit-picker-search hidden>
+            <p class="hint unit-picker-empty" data-unit-picker-empty hidden>Tidak ada vendor yang cocok.</p>
+            <div class="unit-picker-list">
+              {{range .VendorOptions}}
+              <label class="menu-option" data-unit-option="{{.Name}}">
+                <input type="checkbox" name="vendor" value="{{.Name}}"{{if .Dipilih}} checked{{end}}>
+                <span><strong>{{.Name}}</strong></span>
+              </label>
+              {{else}}
+              <p class="hint unit-picker-empty">Belum ada vendor di tiket yang tersimpan.</p>
+              {{end}}
+            </div>
+          </div>
+        </details>
+      </div>
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      <a class="button subtle" href="/produksi-new/export">Reset</a>
+      <p class="hint filter-note">Defaultnya hari ini dan semua vendor. Centang satu atau beberapa vendor. Rentang maksimal 62 hari.</p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}UNDUH LAPORAN</p>
+        <h2>{{if .Ritase}}{{.Ritase}} rit · {{.Volume}} m³ · {{.Units}} unit{{else}}Laporan ritase{{end}}</h2>
+      </div>
+    </div>
+    {{if not .Aktif}}
+    <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
+    {{else if .Empty}}
+    <p class="panel-empty">Tidak ada ritase pada rentang dan vendor ini, jadi tidak ada yang bisa diunduh.</p>
+    {{else if not .Error}}
+    <p class="panel-empty">
+      Satu berkas berisi empat bagian, sama dengan tabel di Overview: Summary Ritase, Rekap Vendor &amp; Armada,
+      Detail Unit per Vendor, dan Detail Rit per Unit. XLSX memisahkan tiap bagian ke sheet sendiri; PDF mencetak
+      tiap bagian mulai halaman baru dan ditutup tanda tangan.
+    </p>
+    <div class="action-row export-actions">
+      <a class="button primary" href="{{.DownloadXLSX}}">{{template "icon" "save"}}Unduh XLSX</a>
+      <a class="button subtle" href="{{.DownloadPDF}}">{{template "icon" "save"}}Unduh PDF</a>
+    </div>
+    {{end}}
+  </section>
+  {{end}}
+{{template "appShellClose" .}}
+<script src="/static/js/unit-picker.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

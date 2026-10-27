@@ -14,13 +14,18 @@
   const pickers = Array.from(document.querySelectorAll("[data-unit-picker]"));
   if (!pickers.length) return;
 
-  const label = (picked) => {
-    if (picked.length === 0) return "Semua unit";
+  // The words default to machines; a picker of something else - vendors on
+  // the Produksi New export - names its own with data-picker-all and
+  // data-picker-noun.
+  const label = (picked, all, noun) => {
+    if (picked.length === 0) return all;
     if (picked.length <= 2) return picked.join(", ");
-    return `${picked.length} unit dipilih`;
+    return `${picked.length} ${noun} dipilih`;
   };
 
   for (const picker of pickers) {
+    const all = picker.dataset.pickerAll || "Semua unit";
+    const noun = picker.dataset.pickerNoun || "unit";
     const summary = picker.querySelector("[data-unit-picker-summary]");
     const search = picker.querySelector("[data-unit-picker-search]");
     const empty = picker.querySelector("[data-unit-picker-empty]");
@@ -34,7 +39,7 @@
       const picked = options
         .filter((option) => option.querySelector("input").checked)
         .map((option) => option.querySelector("input").value);
-      summary.textContent = label(picked);
+      summary.textContent = label(picked, all, noun);
     };
 
     picker.addEventListener("change", retitle);

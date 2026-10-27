@@ -423,6 +423,33 @@ func (a *Archive) Detail(_ context.Context, day string, location *time.Location)
 	return DetailUnits(tickets, day, location), true, err
 }
 
+// TicketsBetween returns the kept loads scanned full from one day to another,
+// for a report to lay out its own way.
+func (a *Archive) TicketsBetween(_ context.Context, from, to string, location *time.Location) ([]Ticket, bool, error) {
+	return a.between(from, to, location)
+}
+
+// Vendors names every vendor the kept tickets carry, alphabetically, for a
+// filter to offer.
+func (a *Archive) Vendors(context.Context) []string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	seen := make(map[string]string)
+	for _, ticket := range a.tickets {
+		name := strings.TrimSpace(ticket.Supplier)
+		if name == "" {
+			continue
+		}
+		seen[strings.ToLower(name)] = name
+	}
+	vendors := make([]string, 0, len(seen))
+	for _, name := range seen {
+		vendors = append(vendors, name)
+	}
+	sort.Slice(vendors, func(i, j int) bool { return strings.ToLower(vendors[i]) < strings.ToLower(vendors[j]) })
+	return vendors
+}
+
 func (a *Archive) between(from, to string, location *time.Location) ([]Ticket, bool, error) {
 	if _, err := time.ParseInLocation("2006-01-02", from, location); err != nil {
 		return nil, false, err

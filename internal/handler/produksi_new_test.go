@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -44,9 +45,42 @@ func (f *stubWidyaFeed) Detail(_ context.Context, day string, location *time.Loc
 	return widya.DetailUnits(f.tickets, day, location), true, f.err
 }
 
+func (f *stubWidyaFeed) TicketsBetween(_ context.Context, from, to string, location *time.Location) ([]widya.Ticket, bool, error) {
+	f.ranges = append(f.ranges, [2]string{from, to})
+	var out []widya.Ticket
+	for _, ticket := range f.tickets {
+		day := ticket.ScanFullAt.In(location).Format("2006-01-02")
+		if day >= from && day <= to {
+			out = append(out, ticket)
+		}
+	}
+	return out, true, nil
+}
+
+func (f *stubWidyaFeed) Vendors(context.Context) []string {
+	seen := map[string]bool{}
+	var vendors []string
+	for _, ticket := range f.tickets {
+		if !seen[ticket.Supplier] {
+			seen[ticket.Supplier] = true
+			vendors = append(vendors, ticket.Supplier)
+		}
+	}
+	sort.Strings(vendors)
+	return vendors
+}
+
 func (f *stubWidyaFeed) MaxAge() time.Duration { return 30 * time.Second }
 
 func newProduksiNewServer(t *testing.T, feed WidyaFeed) *httptest.Server {
+	t.Helper()
+	testServer, _ := newProduksiNewServerWithStore(t, feed)
+	return testServer
+}
+
+// newProduksiNewServerWithStore is the same fixture with its store, for the
+// tests that reach the project behind it.
+func newProduksiNewServerWithStore(t *testing.T, feed WidyaFeed) (*httptest.Server, *repository.TestRepository) {
 	t.Helper()
 	store := repository.NewTestRepository()
 	location := time.FixedZone("WIB", 7*60*60)
@@ -59,7 +93,7 @@ func newProduksiNewServer(t *testing.T, feed WidyaFeed) *httptest.Server {
 	if feed != nil {
 		server.WithWidya(feed, testProjectName)
 	}
-	return startFixtureServer(t, server, deps)
+	return startFixtureServer(t, server, deps), store
 }
 
 func widyaFixture() *stubWidyaFeed {

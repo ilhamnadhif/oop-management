@@ -2170,3 +2170,8 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 }
 .rit-table .rit-total { background: #eaf1fb; }
 .rit-table .rit-total th, .rit-table .rit-total td { color: #2563eb; font-weight: 700; }
+
+/* A picker standing in a filter row lines up with the date fields beside it:
+   the same gap under its label, and a box exactly as tall as an input. */
+.filter-form .unit-picker-field { gap: 0.35rem; }
+.filter-form .unit-picker > summary { box-sizing: border-box; min-height: 56px; padding-top: 0; padding-bottom: 0; }

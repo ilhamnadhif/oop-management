@@ -66,6 +66,8 @@ var navItems = []NavItem{
 	{Key: "produksi-new", Label: "Produksi New", Icon: "layers", Children: []NavItem{
 		{Key: "produksi-new-overview", Label: "Overview", Path: "/produksi-new/overview", Icon: "activity",
 			Lede: "Statistik langsung dari Widya Load Scanner dan summary ritase dari tiketnya."},
+		{Key: "produksi-new-export", Label: "Export Data", Path: "/produksi-new/export", Icon: "save",
+			Lede: "Unduh laporan ritase Widya per rentang tanggal dan vendor dalam XLSX atau PDF."},
 	}},
 	{Key: "nota", Label: "Nota", Icon: "receipt", Children: []NavItem{
 		{Key: "nota-overview", Label: "Overview", Path: "/nota/overview", Icon: "activity",

@@ -20,6 +20,8 @@ type WidyaFeed interface {
 	Latest(ctx context.Context) (widya.Snapshot, bool, error)
 	Ritase(ctx context.Context, from, to string, location *time.Location) (widya.RitaseSummary, bool, error)
 	Detail(ctx context.Context, day string, location *time.Location) (widya.UnitDetailReport, bool, error)
+	TicketsBetween(ctx context.Context, from, to string, location *time.Location) ([]widya.Ticket, bool, error)
+	Vendors(ctx context.Context) []string
 	MaxAge() time.Duration
 }
 

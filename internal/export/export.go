@@ -67,6 +67,10 @@ type Column struct {
 	// value is still stored as the raw fraction, so it stays usable in a
 	// spreadsheet formula.
 	Percent bool
+	// Center sets a text column in the middle of its cell, for a short value
+	// read down the column - a truck class, a status - rather than a label.
+	// The sectioned report reads it; the flat reports align by type.
+	Center bool
 }
 
 // Formula is a spreadsheet cell that is computed rather than stored. The PDF
