@@ -307,67 +307,78 @@
 {{- $columns := len .RitColumns -}}
 <div class="ritase-summary detail-summary">
   <p class="ritase-date-label">{{.DateLabel}}</p>
-  <div class="table-scroll">
-    <table class="ritase-table detail-table">
-      <thead>
-        <tr>
-          <th scope="col" rowspan="2" class="ritase-value">No</th>
-          <th scope="col" rowspan="2">Unit</th>
-          <th scope="col" rowspan="2" class="ritase-value">Kategori</th>
-          <th scope="col" rowspan="2" class="ritase-value">Rit</th>
-          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Volume (m³)</th>
-          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Avg m³/rit</th>
-          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Porsi Vol</th>
-          <th scope="colgroup" colspan="{{$columns}}" class="ritase-value">Jam per rit</th>
-          <th scope="col" rowspan="2" class="ritase-value detail-narrow">Interval rata-rata (menit)</th>
-        </tr>
-        <tr>
-          {{range .RitColumns}}<th scope="col" class="ritase-value">Rit {{.}}</th>{{end}}
-        </tr>
-      </thead>
-      <tbody>
-        {{range .Rows}}
-        {{if .Caption}}
-        <tr class="detail-caption">
-          <th scope="rowgroup" colspan="{{$.Width}}">{{.Label}}</th>
-        </tr>
-        {{else if .Vendor}}
-        <tr class="ritase-head">
-          <th scope="rowgroup" colspan="2">{{.Label}}</th>
-          <td class="ritase-value">{{.Kategori}}</td>
-          <td class="ritase-value">{{.Rit}}</td>
-          <td class="ritase-value">{{.Volume}}</td>
-          <td class="ritase-value">{{.Avg}}</td>
-          <td class="ritase-value">{{.Porsi}}</td>
-          <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
-        </tr>
-        {{else if .Total}}
-        <tr class="rekap-total">
-          <th scope="row" colspan="2">{{.Label}}</th>
-          <td class="ritase-value">{{.Kategori}}</td>
-          <td class="ritase-value">{{.Rit}}</td>
-          <td class="ritase-value">{{.Volume}}</td>
-          <td class="ritase-value">{{.Avg}}</td>
-          <td class="ritase-value">{{.Porsi}}</td>
-          <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
-        </tr>
-        {{else}}
-        <tr>
-          <td class="ritase-value">{{.No}}</td>
-          <th scope="row">{{.Label}}</th>
-          <td class="ritase-value">{{.Kategori}}</td>
-          <td class="ritase-value{{if .Single}} tone-bad-text{{end}}">{{.Rit}}</td>
-          <td class="ritase-value">{{.Volume}}</td>
-          <td class="ritase-value">{{.Avg}}</td>
-          <td class="ritase-value">{{.Porsi}}</td>
-          {{range .Times}}<td class="ritase-value detail-time{{if .Rest}} tone-peak{{end}}">{{.Clock}}</td>{{end}}
-          <td class="ritase-value">{{.Interval}}</td>
-        </tr>
-        {{end}}
-        {{end}}
-      </tbody>
-    </table>
+  {{/* A table per vendor, each with its own header, so a vendor read on its
+       own still has its columns named; the total closes the day. */}}
+  {{range .Blocks}}
+  <div class="detail-block">
+    <h3 class="detail-caption">{{.Caption}}</h3>
+    <div class="table-scroll">
+      <table class="ritase-table detail-table">
+        {{/* Set widths, so the columns of one vendor's table sit under the
+             same columns of the one above. */}}
+        <colgroup>
+          <col class="detail-col-no"><col class="detail-col-unit"><col class="detail-col-kategori"><col class="detail-col-rit">
+          <col class="detail-col-figure"><col class="detail-col-figure"><col class="detail-col-figure">
+          {{range $.RitColumns}}<col class="detail-col-time">{{end}}
+          <col class="detail-col-figure">
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col" rowspan="2" class="ritase-value">No</th>
+            <th scope="col" rowspan="2">Unit</th>
+            <th scope="col" rowspan="2" class="ritase-value">Kategori</th>
+            <th scope="col" rowspan="2" class="ritase-value">Rit</th>
+            <th scope="col" rowspan="2" class="ritase-value detail-narrow">Volume (m³)</th>
+            <th scope="col" rowspan="2" class="ritase-value detail-narrow">Avg m³/rit</th>
+            <th scope="col" rowspan="2" class="ritase-value detail-narrow">Porsi Vol</th>
+            <th scope="colgroup" colspan="{{$columns}}" class="ritase-value">Jam per rit</th>
+            <th scope="col" rowspan="2" class="ritase-value detail-narrow">Interval rata-rata (menit)</th>
+          </tr>
+          <tr>
+            {{range $.RitColumns}}<th scope="col" class="ritase-value">Rit {{.}}</th>{{end}}
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+          {{if .Vendor}}
+          <tr class="ritase-head">
+            <th scope="rowgroup" colspan="2">{{.Label}}</th>
+            <td class="ritase-value">{{.Kategori}}</td>
+            <td class="ritase-value">{{.Rit}}</td>
+            <td class="ritase-value">{{.Volume}}</td>
+            <td class="ritase-value">{{.Avg}}</td>
+            <td class="ritase-value">{{.Porsi}}</td>
+            <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
+          </tr>
+          {{else if .Total}}
+          <tr class="rekap-total">
+            <th scope="row" colspan="2">{{.Label}}</th>
+            <td class="ritase-value">{{.Kategori}}</td>
+            <td class="ritase-value">{{.Rit}}</td>
+            <td class="ritase-value">{{.Volume}}</td>
+            <td class="ritase-value">{{.Avg}}</td>
+            <td class="ritase-value">{{.Porsi}}</td>
+            <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
+          </tr>
+          {{else}}
+          <tr>
+            <td class="ritase-value">{{.No}}</td>
+            <th scope="row">{{.Label}}</th>
+            <td class="ritase-value">{{.Kategori}}</td>
+            <td class="ritase-value{{if .Single}} tone-bad-text{{end}}">{{.Rit}}</td>
+            <td class="ritase-value">{{.Volume}}</td>
+            <td class="ritase-value">{{.Avg}}</td>
+            <td class="ritase-value">{{.Porsi}}</td>
+            {{range .Times}}<td class="ritase-value detail-time{{if .Rest}} tone-peak{{end}}">{{.Clock}}</td>{{end}}
+            <td class="ritase-value">{{.Interval}}</td>
+          </tr>
+          {{end}}
+          {{end}}
+        </tbody>
+      </table>
+    </div>
   </div>
+  {{end}}
   <div class="ritase-legend" aria-label="Keterangan">
     <p class="eyebrow">Keterangan</p>
     <ul>

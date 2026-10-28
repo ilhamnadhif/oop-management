@@ -553,13 +553,20 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 
 	today := read("")
 	for _, fragment := range []string{
-		// Two rit columns, so seven before them and the interval after: 10.
-		`<tr class="detail-caption"> <th scope="rowgroup" colspan="10">Ritase HPP, 24 Oktober 2026 | Mid Day</th> </tr> <tr class="ritase-head"> <th scope="rowgroup" colspan="2">HPP</th>`,
-		`<th scope="rowgroup" colspan="10">Ritase MNP, 24 Oktober 2026 | Mid Day</th>`,
+		// Each vendor is its own table: the title, then the header, then the
+		// vendor's line.
+		`<h3 class="detail-caption">Ritase HPP, 24 Oktober 2026 | Mid Day</h3> <div class="table-scroll"> <table class="ritase-table detail-table"> <colgroup>`,
+		`</thead> <tbody> <tr class="ritase-head"> <th scope="rowgroup" colspan="2">HPP</th>`,
+		`<h3 class="detail-caption">Ritase MNP, 24 Oktober 2026 | Mid Day</h3>`,
+		`<h3 class="detail-caption">Total semua vendor, 24 Oktober 2026 | Mid Day</h3>`,
 	} {
 		if !strings.Contains(today, fragment) {
 			t.Fatalf("today's detail is missing %q\n%s", fragment, today)
 		}
+	}
+	// Three tables: HPP, MNP and the total, each with its header.
+	if headers := strings.Count(today, "<thead>"); headers != 3 {
+		t.Fatalf("today's detail has %d tables, want 3\n%s", headers, today)
 	}
 	if closed := read("?day=2026-10-23"); !strings.Contains(closed, ">Ritase MNP, 23 Oktober 2026 | End of Day<") {
 		t.Fatalf("a closed day is not titled End of Day\n%s", closed)

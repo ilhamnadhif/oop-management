@@ -2080,7 +2080,7 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .detail-summary { max-width: none; }
 .detail-table { font-size: 0.9rem; }
 .detail-table thead th { text-align: center; white-space: nowrap; }
-.detail-table thead th:nth-child(2) { text-align: left; }
+.detail-table thead tr:first-child th:nth-child(2) { text-align: left; }
 .detail-table th, .detail-table td { padding: 0.55rem 0.7rem; }
 .detail-table tbody th { white-space: nowrap; }
 .detail-table td.ritase-value { font-weight: 500; }
@@ -2152,13 +2152,29 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
   .rit-toolbar { padding: 0.5rem 0.7rem; }
   .rit-switch { font-size: 0.8rem; }
 }
-/* The title over each vendor in the unit detail: the vendor and the day, as a
-   band the block below reads under. */
-.detail-table .detail-caption th { padding: 0.7rem 0.8rem 0.6rem; border-left: 0; border-right: 0; color: var(--navy-dark); background: var(--white); font-size: 1rem; font-weight: 700; text-align: left; }
-.detail-table tbody .detail-caption:not(:first-child) th { padding-top: 1.3rem; }
+/* The unit detail is a table per vendor, each under a title naming the vendor
+   and the day, with a gap between them so one vendor ends before the next. */
+.detail-block + .detail-block { margin-top: 1.6rem; }
+.detail-caption { margin: 0 0 0.6rem; color: var(--navy-dark); font-size: 1rem; font-weight: 700; }
+/* A fixed layout with every column given a width: the tables share their
+   columns, and a day with many rits grows the table past the panel to scroll
+   rather than squeezing the times. */
+.detail-table { table-layout: fixed; }
+.detail-col-no { width: 3.5rem; }
+.detail-col-unit { width: 8rem; }
+.detail-col-kategori { width: 6rem; }
+.detail-col-rit { width: 4rem; }
+.detail-col-figure { width: 5.5rem; }
+.detail-col-time { width: 4.6rem; }
 @media (max-width: 640px) {
-  .detail-table .detail-caption th { font-size: 0.82rem; padding: 0.5rem 0.45rem 0.45rem; }
-  .detail-table tbody .detail-caption:not(:first-child) th { padding-top: 0.9rem; }
+  .detail-block + .detail-block { margin-top: 1.1rem; }
+  .detail-caption { font-size: 0.82rem; margin-bottom: 0.4rem; }
+  .detail-col-no { width: 2.4rem; }
+  .detail-col-unit { width: 6.2rem; }
+  .detail-col-kategori { width: 4.6rem; }
+  .detail-col-rit { width: 2.8rem; }
+  .detail-col-figure { width: 4.4rem; }
+  .detail-col-time { width: 3.8rem; }
 }
 
 /* Headings over a column of short figures wrap onto two lines rather than set

@@ -126,16 +126,25 @@ type DetailRow struct {
 	Single bool
 }
 
+// DetailBlock is one table of the page: a vendor and its trucks, or the
+// total, under its own title and header.
+type DetailBlock struct {
+	Caption string
+	Rows    []DetailRow
+}
+
 // DetailView is one day, vendor by vendor and truck by truck.
 type DetailView struct {
 	DateLabel string
 	// RitColumns numbers the per-rit columns, as many as the busiest truck
-	// made.
+	// made, so every vendor's table lines up with the next.
 	RitColumns []int
-	// Width is every column the table has: seven before the per-rit columns
-	// and the interval after them. The caption rows span it.
-	Width int
-	Rows  []DetailRow
+	// Rows is the day as one list, each vendor under its caption line, which
+	// is how the export lays it out.
+	Rows []DetailRow
+	// Blocks is the same day cut into a table per vendor and one for the
+	// total, which is how the page shows it.
+	Blocks []DetailBlock
 }
 
 // RitRow is one line of the per-load list: a vendor, one of its trucks, or
@@ -462,7 +471,6 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 	for column := 1; column <= columns; column++ {
 		view.RitColumns = append(view.RitColumns, column)
 	}
-	view.Width = 7 + columns + 1
 	porsi := func(volume float64) string {
 		if report.Volume <= 0 {
 			return "0.0%"
@@ -479,7 +487,9 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 	for _, vendor := range report.Vendors {
 		// Each vendor's trucks are headed by a title naming the vendor and the
 		// day, so a block cut out of the table still says what it is.
-		view.Rows = append(view.Rows, DetailRow{Caption: true, Label: "Ritase " + vendor.Name + ", " + dayTitle})
+		caption := "Ritase " + vendor.Name + ", " + dayTitle
+		view.Rows = append(view.Rows, DetailRow{Caption: true, Label: caption})
+		start := len(view.Rows)
 		view.Rows = append(view.Rows, DetailRow{
 			Vendor: true, Label: vendor.Name, Kategori: fmt.Sprintf("%d unit", len(vendor.Units)),
 			Rit: formatCount(vendor.Ritase), Volume: formatRitaseVolume(vendor.Volume),
@@ -505,6 +515,7 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 			}
 			view.Rows = append(view.Rows, row)
 		}
+		view.Blocks = append(view.Blocks, DetailBlock{Caption: caption, Rows: view.Rows[start:len(view.Rows):len(view.Rows)]})
 	}
 	operasi := "-"
 	if report.Ritase > 0 {
@@ -516,6 +527,7 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		Avg: avg(report.Volume, report.Ritase), Porsi: porsi(report.Volume),
 		Note: "Jam operasi " + operasi,
 	})
+	view.Blocks = append(view.Blocks, DetailBlock{Caption: "Total semua vendor, " + dayTitle, Rows: view.Rows[len(view.Rows)-1:]})
 	return view
 }
 
