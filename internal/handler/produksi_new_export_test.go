@@ -44,6 +44,10 @@ func TestProduksiNewExportPageDefaultsToTodayAndEveryVendor(t *testing.T) {
 		"3 rit · 67.50 m³ · 2 unit",
 		`href="/produksi-new/export/download?format=xlsx&amp;from=2026-10-24&amp;to=2026-10-24"`,
 		`href="/produksi-new/export/download?format=pdf&amp;from=2026-10-24&amp;to=2026-10-24"`,
+		// Each table can be taken alone too.
+		`href="/produksi-new/export/download?format=xlsx&amp;from=2026-10-24&amp;part=summary&amp;to=2026-10-24"`,
+		`href="/produksi-new/export/download?format=pdf&amp;from=2026-10-24&amp;part=rit&amp;to=2026-10-24"`,
+		"Rekap Vendor &amp; Armada", "Detail Unit per Vendor", "Semua bagian",
 	} {
 		if !strings.Contains(page, fragment) {
 			t.Fatalf("the export page is missing %q", fragment)
@@ -51,6 +55,36 @@ func TestProduksiNewExportPageDefaultsToTodayAndEveryVendor(t *testing.T) {
 	}
 	if !strings.Contains(page, `href="/produksi-new/export"`) {
 		t.Fatal("the sidebar does not link the export")
+	}
+}
+
+// A part asked for is the only table in the file, and the file is named for
+// it.
+func TestProduksiNewExportHandsOutOneTable(t *testing.T) {
+	testServer := newProduksiNewServer(t, widyaFixture())
+	client := loggedInClient(t, testServer)
+
+	for _, part := range produksiNewParts {
+		response, body := getBody(t, client, testServer.URL+"/produksi-new/export/download?format=xlsx&part="+part.Key)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", part.Key, response.StatusCode, body)
+		}
+		if got := response.Header.Get("Content-Disposition"); !strings.Contains(got, "ritase-widya-"+part.Key+"-semua-vendor-2026-10-24.xlsx") {
+			t.Fatalf("%s: disposition = %q", part.Key, got)
+		}
+		file, err := excelize.OpenReader(bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("%s: open workbook: %v", part.Key, err)
+		}
+		if sheets := file.GetSheetList(); len(sheets) != 1 || sheets[0] != part.Label {
+			t.Fatalf("%s: sheets = %v", part.Key, sheets)
+		}
+		file.Close()
+
+		response, body = getBody(t, client, testServer.URL+"/produksi-new/export/download?format=pdf&part="+part.Key)
+		if response.StatusCode != http.StatusOK || !bytes.HasPrefix(body, []byte("%PDF")) {
+			t.Fatalf("%s: pdf status %d", part.Key, response.StatusCode)
+		}
 	}
 }
 
@@ -105,6 +139,19 @@ func TestProduksiNewExportWritesASheetPerTable(t *testing.T) {
 	}
 	if cellType, _ := file.GetCellType("Rekap Vendor & Armada", "C7"); cellType == excelize.CellTypeInlineString || cellType == excelize.CellTypeSharedString {
 		t.Fatalf("the rit count is stored as text")
+	}
+
+	// A vendor's line has its note across the rit columns and the average
+	// interval of its trucks in the last column: HPP's one truck, 64 minutes.
+	details, _ := file.GetRows("Detail Unit per Vendor")
+	var vendor []string
+	for _, row := range details {
+		if len(row) > 1 && row[1] == "HPP" {
+			vendor = row
+		}
+	}
+	if len(vendor) != 10 || !strings.HasPrefix(vendor[7], "Mulai 08:06") || vendor[9] != "64" {
+		t.Fatalf("hpp detail row = %q", vendor)
 	}
 
 	// The per-load list titles the day and lists each load to the second.

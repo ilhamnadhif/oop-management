@@ -35,12 +35,48 @@ type ProduksiNewExportPageData struct {
 	Units         string
 	Empty         bool
 	Error         string
-	// DownloadXLSX and DownloadPDF are the two buttons' addresses, carrying
-	// the range and vendor shown. They are built whole here: a query string
-	// dropped into an href after the "?" is escaped by the template, "&" and
-	// "=" included, and the link would carry no filter at all.
-	DownloadXLSX template.URL
-	DownloadPDF  template.URL
+	// Downloads is a line per table and one for all four, each with its two
+	// buttons.
+	Downloads []ProduksiNewDownload
+}
+
+// ProduksiNewDownload is one line of the download list. XLSX and PDF are the
+// buttons' addresses, carrying the range and vendor shown. They are built
+// whole here: a query string dropped into an href after the "?" is escaped by
+// the template, "&" and "=" included, and the link would carry no filter at
+// all.
+type ProduksiNewDownload struct {
+	Label string
+	Hint  string
+	XLSX  template.URL
+	PDF   template.URL
+}
+
+// produksiNewPart is one table the export can hand out alone. Index is its
+// place among the sections produksiNewSections lays out.
+type produksiNewPart struct {
+	Key   string
+	Index int
+	Label string
+	Hint  string
+}
+
+var produksiNewParts = []produksiNewPart{
+	{Key: "summary", Index: 0, Label: "Summary Ritase", Hint: "Total ritase, volume, unit aktif, vendor dan jam operasi."},
+	{Key: "rekap", Index: 1, Label: "Rekap Vendor & Armada", Hint: "Ritase per vendor dan jenis DT."},
+	{Key: "detail", Index: 2, Label: "Detail Unit per Vendor", Hint: "Ritase per unit dengan jam tiap rit dan interval rata-rata."},
+	{Key: "rit", Index: 3, Label: "Detail Rit per Unit", Hint: "Setiap rit per unit, jam sampai detik dan volumenya."},
+}
+
+// partFor is the table a download asks for; nothing, or a name it does not
+// know, is all four.
+func partFor(key string) (produksiNewPart, bool) {
+	for _, part := range produksiNewParts {
+		if part.Key == key {
+			return part, true
+		}
+	}
+	return produksiNewPart{}, false
 }
 
 func (s *Server) handleProduksiNewExport(w http.ResponseWriter, r *http.Request) {
@@ -83,14 +119,24 @@ func (s *Server) handleProduksiNewExport(w http.ResponseWriter, r *http.Request)
 	data.Volume = formatRitaseVolume(summary.TotalVolume)
 	data.Units = formatCount(summary.UnitAktif)
 	data.Empty = summary.TotalRitase == 0
-	data.DownloadXLSX = produksiNewExportQuery("xlsx", data.From, data.To, picked)
-	data.DownloadPDF = produksiNewExportQuery("pdf", data.From, data.To, picked)
+	for _, part := range produksiNewParts {
+		data.Downloads = append(data.Downloads, ProduksiNewDownload{
+			Label: part.Label, Hint: part.Hint,
+			XLSX: produksiNewExportQuery("xlsx", part.Key, data.From, data.To, picked),
+			PDF:  produksiNewExportQuery("pdf", part.Key, data.From, data.To, picked),
+		})
+	}
+	data.Downloads = append(data.Downloads, ProduksiNewDownload{
+		Label: "Semua bagian", Hint: "Keempat tabel di atas dalam satu berkas: sheet per bagian di XLSX, halaman per bagian di PDF.",
+		XLSX: produksiNewExportQuery("xlsx", "", data.From, data.To, picked),
+		PDF:  produksiNewExportQuery("pdf", "", data.From, data.To, picked),
+	})
 	s.render(w, "produksi_new_export", data, http.StatusOK)
 }
 
-// handleProduksiNewExportDownload streams the four Produksi New tables for a
-// range and a vendor: a sheet each in the workbook, a run of pages each in the
-// PDF.
+// handleProduksiNewExportDownload streams the Produksi New tables for a range
+// and a vendor: one table when the part asks for one, otherwise all four, a
+// sheet each in the workbook and a run of pages each in the PDF.
 func (s *Server) handleProduksiNewExportDownload(w http.ResponseWriter, r *http.Request) {
 	s, _, _, ok := s.requireAccess(w, r, "produksi-new-export")
 	if !ok {
@@ -118,6 +164,12 @@ func (s *Server) handleProduksiNewExportDownload(w http.ResponseWriter, r *http.
 
 	sections := s.produksiNewSections(tickets, from, to)
 	title := "Laporan Ritase Widya · " + vendorLabel(vendors)
+	filename := "ritase-widya-"
+	if part, one := partFor(r.URL.Query().Get("part")); one {
+		sections = sections[part.Index : part.Index+1]
+		title = part.Label + " · " + vendorLabel(vendors)
+		filename += part.Key + "-"
+	}
 	meta := s.exportMetaFor(model.ExportProduksiNew, title, from, to)
 	var payload []byte
 	if format == "xlsx" {
@@ -134,7 +186,7 @@ func (s *Server) handleProduksiNewExportDownload(w http.ResponseWriter, r *http.
 	if format == "xlsx" {
 		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	}
-	filename := "ritase-widya-" + vendorFilename(vendors) + "-" + from
+	filename += vendorFilename(vendors) + "-" + from
 	if to != from {
 		filename += "_" + to
 	}
@@ -417,10 +469,11 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 					kind = export.RowTotal
 					label = "TOTAL"
 				}
-				cells := []string{"", label, row.Kategori, row.Rit, row.Volume, row.Avg, row.Porsi, row.Note}
+				// The note runs across the rit columns; the interval keeps its own.
+				cells := []string{"", label, row.Kategori, row.Rit, row.Volume, row.Avg, row.Porsi, row.Note, row.Interval}
 				values := []interface{}{"", label, row.Kategori, countValue(row.Rit), decimalValue(row.Volume),
-					decimalValue(row.Avg), percentValue(row.Porsi), row.Note}
-				section.Rows = append(section.Rows, export.ReportRow{Kind: kind, Cells: cells, Values: values, SpanTail: tail})
+					decimalValue(row.Avg), percentValue(row.Porsi), row.Note, countValue(row.Interval)}
+				section.Rows = append(section.Rows, export.ReportRow{Kind: kind, Cells: cells, Values: values, SpanTail: maxRit, SpanKeep: 1})
 			default:
 				cells := []string{strconv.Itoa(row.No), row.Label, row.Kategori, row.Rit, row.Volume, row.Avg, row.Porsi}
 				values := []interface{}{row.No, row.Label, row.Kategori, countValue(row.Rit), decimalValue(row.Volume),
@@ -549,12 +602,15 @@ func percentValue(text string) interface{} {
 	return value / 100
 }
 
-// produksiNewExportQuery is a download link carrying the range and vendor.
-// Every part is encoded here, so the address is safe to hand the template as
-// it stands.
-func produksiNewExportQuery(format, from, to string, vendors []string) template.URL {
+// produksiNewExportQuery is a download link carrying the table, the range and
+// the vendor; no part is every table. Everything is encoded here, so the
+// address is safe to hand the template as it stands.
+func produksiNewExportQuery(format, part, from, to string, vendors []string) template.URL {
 	query := url.Values{}
 	query.Set("format", format)
+	if part != "" {
+		query.Set("part", part)
+	}
 	query.Set("from", from)
 	query.Set("to", to)
 	for _, vendor := range vendors {

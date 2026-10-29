@@ -348,7 +348,8 @@
             <td class="ritase-value">{{.Volume}}</td>
             <td class="ritase-value">{{.Avg}}</td>
             <td class="ritase-value">{{.Porsi}}</td>
-            <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
+            <td colspan="{{$columns}}" class="detail-note">{{.Note}}</td>
+            <td class="ritase-value detail-avg">{{.Interval}}<span>Avg total</span></td>
           </tr>
           {{else if .Total}}
           <tr class="rekap-total">
@@ -358,7 +359,8 @@
             <td class="ritase-value">{{.Volume}}</td>
             <td class="ritase-value">{{.Avg}}</td>
             <td class="ritase-value">{{.Porsi}}</td>
-            <td colspan="{{add1 $columns}}" class="detail-note">{{.Note}}</td>
+            <td colspan="{{$columns}}" class="detail-note">{{.Note}}</td>
+            <td class="ritase-value detail-avg">{{.Interval}}<span>Avg total</span></td>
           </tr>
           {{else}}
           <tr>

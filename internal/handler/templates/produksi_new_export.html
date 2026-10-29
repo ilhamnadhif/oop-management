@@ -85,14 +85,20 @@
     {{else if .Empty}}
     <p class="panel-empty">Tidak ada ritase pada rentang dan vendor ini, jadi tidak ada yang bisa diunduh.</p>
     {{else if not .Error}}
-    <p class="panel-empty">
-      Satu berkas berisi empat bagian, sama dengan tabel di Overview: Summary Ritase, Rekap Vendor &amp; Armada,
-      Detail Unit per Vendor, dan Detail Rit per Unit. XLSX memisahkan tiap bagian ke sheet sendiri; PDF mencetak
-      tiap bagian mulai halaman baru dan ditutup tanda tangan.
-    </p>
-    <div class="action-row export-actions">
-      <a class="button primary" href="{{.DownloadXLSX}}">{{template "icon" "save"}}Unduh XLSX</a>
-      <a class="button subtle" href="{{.DownloadPDF}}">{{template "icon" "save"}}Unduh PDF</a>
+    {{/* A line per table to take it alone, and one for all four. */}}
+    <div class="export-parts">
+      {{range .Downloads}}
+      <div class="export-part">
+        <div>
+          <strong>{{.Label}}</strong>
+          <p class="hint">{{.Hint}}</p>
+        </div>
+        <div class="action-row">
+          <a class="button primary" href="{{.XLSX}}">{{template "icon" "save"}}XLSX</a>
+          <a class="button subtle" href="{{.PDF}}">{{template "icon" "save"}}PDF</a>
+        </div>
+      </div>
+      {{end}}
     </div>
     {{end}}
   </section>

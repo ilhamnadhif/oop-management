@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -119,8 +120,10 @@ type DetailRow struct {
 	Avg      string
 	Porsi    string
 	// Note runs across the per-rit columns on the vendor and total lines.
-	Note     string
-	Times    []DetailTime
+	Note  string
+	Times []DetailTime
+	// Interval is a truck's average gap, or on the vendor and total lines the
+	// average of their trucks'.
 	Interval string
 	// Single marks a truck that made one load all day.
 	Single bool
@@ -483,8 +486,25 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		}
 		return formatRitaseVolume(volume / float64(rit))
 	}
+	// interval averages the trucks' average gaps, leaving out a truck with
+	// one load, which has none.
+	interval := func(units []widya.UnitDetail) string {
+		total, counted := 0, 0
+		for _, unit := range units {
+			if unit.IntervalMinutes >= 0 {
+				total += unit.IntervalMinutes
+				counted++
+			}
+		}
+		if counted == 0 {
+			return "-"
+		}
+		return formatCount(int(math.Round(float64(total) / float64(counted))))
+	}
+	var everyUnit []widya.UnitDetail
 	number := 0
 	for _, vendor := range report.Vendors {
+		everyUnit = append(everyUnit, vendor.Units...)
 		// Each vendor's trucks are headed by a title naming the vendor and the
 		// day, so a block cut out of the table still says what it is.
 		caption := "Ritase " + vendor.Name + ", " + dayTitle
@@ -494,7 +514,8 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 			Vendor: true, Label: vendor.Name, Kategori: fmt.Sprintf("%d unit", len(vendor.Units)),
 			Rit: formatCount(vendor.Ritase), Volume: formatRitaseVolume(vendor.Volume),
 			Avg: avg(vendor.Volume, vendor.Ritase), Porsi: porsi(vendor.Volume),
-			Note: "Mulai " + vendor.FirstScan + " · selesai " + vendor.LastScan,
+			Note:     "Mulai " + vendor.FirstScan + " · selesai " + vendor.LastScan,
+			Interval: interval(vendor.Units),
 		})
 		for _, unit := range vendor.Units {
 			number++
@@ -525,7 +546,7 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		Total: true, Label: "TOTAL", Kategori: fmt.Sprintf("%d unit", report.Units),
 		Rit: formatCount(report.Ritase), Volume: formatRitaseVolume(report.Volume),
 		Avg: avg(report.Volume, report.Ritase), Porsi: porsi(report.Volume),
-		Note: "Jam operasi " + operasi,
+		Note: "Jam operasi " + operasi, Interval: interval(everyUnit),
 	})
 	view.Blocks = append(view.Blocks, DetailBlock{Caption: "Total semua vendor, " + dayTitle, Rows: view.Rows[len(view.Rows)-1:]})
 	return view

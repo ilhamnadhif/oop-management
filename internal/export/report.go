@@ -85,13 +85,28 @@ type ReportRow struct {
 	Indent int
 	Cells  []string
 	Values []interface{}
-	// SpanTail merges the last SpanTail columns into one cell, which takes
+	// SpanTail merges SpanTail columns at the end into one cell, which takes
 	// the row's last value: a note running across the per-rit columns, say.
 	// Zero leaves every column its own cell.
 	SpanTail int
+	// SpanKeep leaves the last SpanKeep columns out of the span, each its own
+	// cell after it: a note across the per-rit columns with the interval
+	// still in its column at the end. The span's value then comes before
+	// theirs.
+	SpanKeep int
 	// Tones colours cells one by one, by column; a missing or empty tone
 	// leaves the cell as its row sets it.
 	Tones []Tone
+}
+
+// span is the first and last column the row merges, of width in all, or ok
+// false when it merges none.
+func (r ReportRow) span(width int) (first, last int, ok bool) {
+	if r.SpanTail <= 1 || r.SpanKeep < 0 || r.SpanTail+r.SpanKeep > width {
+		return 0, 0, false
+	}
+	last = width - r.SpanKeep - 1
+	return last - r.SpanTail + 1, last, true
 }
 
 func (r ReportRow) toneAt(index int) Tone {
@@ -190,20 +205,33 @@ func writeReportSheet(file *excelize.File, styles *reportStyles, section Section
 			_ = file.SetRowHeight(sheet, rowNumber, 22)
 			continue
 		}
-		width := len(section.Columns)
-		if row.SpanTail > 1 && row.SpanTail <= width {
-			width = width - row.SpanTail + 1
+		// Cell j sits in column j up to the span, which takes one cell over
+		// several columns; the cells after it move along by the columns it
+		// swallowed.
+		cells := len(section.Columns)
+		first, last, spans := row.span(cells)
+		if spans {
+			cells -= last - first
 		}
-		for j, column := range section.Columns[:width] {
-			name, err := excelize.ColumnNumberToName(j + 1)
+		for j := 0; j < cells; j++ {
+			index := j
+			if spans && j > first {
+				index = j + last - first
+			}
+			column := section.Columns[index]
+			name, err := excelize.ColumnNumberToName(index + 1)
 			if err != nil {
 				return err
 			}
 			cell := fmt.Sprintf("%s%d", name, rowNumber)
-			if j == width-1 && width < len(section.Columns) {
+			if spans && j == first {
 				// The spanning cell reads as text, left to right.
 				column = Column{Header: column.Header, Width: column.Width}
-				_ = file.MergeCell(sheet, cell, fmt.Sprintf("%s%d", lastColumn, rowNumber))
+				end, err := excelize.ColumnNumberToName(last + 1)
+				if err != nil {
+					return err
+				}
+				_ = file.MergeCell(sheet, cell, fmt.Sprintf("%s%d", end, rowNumber))
 			}
 			var value interface{} = ""
 			if j < len(row.Values) && row.Values[j] != nil {
@@ -527,14 +555,14 @@ func drawReportRow(pdf *fpdf.Fpdf, columns []Column, row ReportRow, metrics pdfM
 	if len(cells) > 0 && row.Indent > 0 {
 		cells[0] = strings.Repeat("   ", row.Indent) + cells[0]
 	}
-	if row.SpanTail > 1 && row.SpanTail <= len(columns) {
+	if first, last, ok := row.span(len(columns)); ok {
 		// The spanned columns print as one cell as wide as all of them.
-		keep := len(columns) - row.SpanTail
 		merged := Column{}
-		for _, column := range columns[keep:] {
+		for _, column := range columns[first : last+1] {
 			merged.Width += column.Width
 		}
-		columns = append(append([]Column(nil), columns[:keep]...), merged)
+		spanned := append(append([]Column(nil), columns[:first]...), merged)
+		columns = append(spanned, columns[last+1:]...)
 		if len(cells) > len(columns) {
 			cells = cells[:len(columns)]
 		}

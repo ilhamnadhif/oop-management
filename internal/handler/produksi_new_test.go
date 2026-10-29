@@ -335,7 +335,11 @@ func TestProduksiNewDetailsEachTruckForOneDay(t *testing.T) {
 	}
 	compact := strings.Join(strings.Fields(view.DetailHTML), " ")
 	for _, fragment := range []string{
-		"24 Oktober 2026", "Rit 1", "Rit 3", ">Mulai 08:06 · selesai 12:15<", ">Jam operasi 08:06 – 12:15<",
+		"24 Oktober 2026", "Rit 1", "Rit 3",
+		// The vendor and total lines average their trucks' intervals, leaving
+		// out B 2 A, which has one load: 125 both.
+		`>Mulai 08:06 · selesai 12:15</td> <td class="ritase-value detail-avg">125<span>Avg total</span></td>`,
+		`>Jam operasi 08:06 – 12:15</td> <td class="ritase-value detail-avg">125<span>Avg total</span></td>`,
 		// B 1 A: 08:06, 09:10 and 12:15, the last in the break; 249 minutes
 		// over two gaps rounds to 125.
 		`<td class="ritase-value detail-time">08:06</td><td class="ritase-value detail-time">09:10</td><td class="ritase-value detail-time tone-peak">12:15</td> <td class="ritase-value">125</td>`,
