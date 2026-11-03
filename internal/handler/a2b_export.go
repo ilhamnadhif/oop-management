@@ -386,9 +386,9 @@ func (s *Server) handleFuelKeluarExportDownload(w http.ResponseWriter, r *http.R
 
 	var payload []byte
 	if format == "xlsx" {
-		payload, err = export.FuelKeluarXLSX(report.Rows, meta)
+		payload, err = export.FuelKeluarXLSX(report.Rows, report.Ratios, meta)
 	} else {
-		payload, err = export.FuelKeluarPDF(report.Rows, meta)
+		payload, err = export.FuelKeluarPDF(report.Rows, report.Ratios, meta)
 	}
 	s.writeRegister(w, fuelKeluarFilename(report), format, payload, err)
 }

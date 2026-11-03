@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"opp-management/internal/model"
@@ -19,6 +20,9 @@ type FuelKeluarExport struct {
 	// IDUnits are the machines picked, empty meaning every machine on site.
 	IDUnits []string
 	Rows    []model.FuelKeluar
+	// Ratios is each row's fuel ratio in litres an hour, nil where the fill
+	// has no ratio: see fillFuelRatios.
+	Ratios []*float64
 }
 
 // ExportRows returns the dispensing sheet for a report, newest first, narrowed
@@ -44,7 +48,10 @@ func (s *FuelKeluarService) ExportRows(ctx context.Context, from, to string, idU
 		return nil, fmt.Errorf("read fuel keluar: %w", err)
 	}
 	report := &FuelKeluarExport{From: from, To: to, IDUnits: units.given, Rows: make([]model.FuelKeluar, 0, len(rows))}
-	for _, row := range rows {
+	// Measured over the whole sheet, so the first fill in the range is still
+	// measured from the last one before it.
+	ratios := fillFuelRatios(rows)
+	for index, row := range rows {
 		tanggal := strings.TrimSpace(row.Tanggal)
 		if from != "" && tanggal < from {
 			continue
@@ -56,6 +63,66 @@ func (s *FuelKeluarService) ExportRows(ctx context.Context, from, to string, idU
 			continue
 		}
 		report.Rows = append(report.Rows, row)
+		report.Ratios = append(report.Ratios, ratios[index])
 	}
 	return report, nil
+}
+
+// fillFuelRatios is the fuel ratio of every fill, by its place in rows, worked
+// the way the A2B overview works a machine's: the litres put in divided by the
+// hours the machine's meter ran since the fill before. A fill tops up what was
+// burned since the last one, so the litres of a fill nobody read the meter at
+// are carried to the next fill that was read. A fill without a reading, the
+// first reading a machine has, and a meter that did not move forward have no
+// ratio.
+func fillFuelRatios(rows []model.FuelKeluar) []*float64 {
+	order := make([]int, len(rows))
+	for i := range order {
+		order[i] = i
+	}
+	// Oldest first, ties broken as the overview breaks them, so both read the
+	// sheet in the same order.
+	sort.SliceStable(order, func(a, b int) bool {
+		left, right := rows[order[a]], rows[order[b]]
+		if left.Tanggal != right.Tanggal {
+			return left.Tanggal < right.Tanggal
+		}
+		if !left.CreatedAt.Equal(right.CreatedAt) {
+			return left.CreatedAt.Before(right.CreatedAt)
+		}
+		return left.FuelOutID < right.FuelOutID
+	})
+
+	type mark struct {
+		meter   float64
+		hasMark bool
+		liters  float64
+	}
+	marks := make(map[string]*mark)
+	ratios := make([]*float64, len(rows))
+	for _, index := range order {
+		row := rows[index]
+		key := strings.ToUpper(strings.TrimSpace(row.IDUnit))
+		if key == "" {
+			continue
+		}
+		unit, seen := marks[key]
+		if !seen {
+			unit = &mark{}
+			marks[key] = unit
+		}
+		unit.liters += row.Liter
+		if row.HMAlatBerat == nil {
+			continue
+		}
+		meter := *row.HMAlatBerat
+		if unit.hasMark {
+			if hours := meter - unit.meter; hours > 0 {
+				ratio := round2(unit.liters / hours)
+				ratios[index] = &ratio
+			}
+		}
+		unit.meter, unit.hasMark, unit.liters = meter, true, 0
+	}
+	return ratios
 }
