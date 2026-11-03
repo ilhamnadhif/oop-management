@@ -32,6 +32,7 @@
       carried.name = select.name;
       carried.value = select.value;
       form.appendChild(carried);
+      if (window.showPageLoading) window.showPageLoading();
       form.submit();
     });
   });

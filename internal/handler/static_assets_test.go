@@ -128,3 +128,23 @@ func TestScriptsDoNotFeedBlobURLsToImages(t *testing.T) {
 		}
 	}
 }
+
+// Every page with a filter loads the popup its Terapkan raises while the page
+// reloads, and the filter forms carry the class the popup looks for.
+func TestFilterPagesLoadTheLoadingPopup(t *testing.T) {
+	testServer := newTestServer(t)
+	client := loggedInClientAs(t, testServer, "Management")
+
+	for _, path := range []string{
+		"/nota/overview", "/produksi/overview", "/a2b/overview", "/a2b/export",
+		"/hr/overview", "/hr/performance", "/hr/export", "/hr/approval-leave",
+	} {
+		page := fetchAuthedPage(t, client, testServer.URL+path)
+		if !strings.Contains(page, `src="/static/js/page-loading.js"`) {
+			t.Fatalf("%s does not load the loading popup", path)
+		}
+		if !strings.Contains(page, `class="filter-form"`) && !strings.Contains(page, `class="approval-filter-form"`) {
+			t.Fatalf("%s has no filter form the popup would pick up", path)
+		}
+	}
+}
