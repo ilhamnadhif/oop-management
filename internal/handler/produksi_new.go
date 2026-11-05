@@ -145,8 +145,8 @@ type DetailRow struct {
 	Materials []DetailMaterial
 }
 
-// DetailBlock is one table of the page: a vendor and its trucks, or the
-// total, under its own title and header.
+// DetailBlock is one table of the page: a vendor and its trucks, or every
+// vendor over the total, under its own title and header.
 type DetailBlock struct {
 	Caption string
 	Rows    []DetailRow
@@ -609,6 +609,7 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 	}
 	var everyUnit []widya.UnitDetail
 	everyMaterial := make(map[string]float64)
+	var vendorLines []DetailRow
 	number := 0
 	for _, vendor := range report.Vendors {
 		everyUnit = append(everyUnit, vendor.Units...)
@@ -620,13 +621,15 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		caption := "Ritase " + vendor.Name + ", " + dayTitle
 		view.Rows = append(view.Rows, DetailRow{Caption: true, Label: caption})
 		start := len(view.Rows)
-		view.Rows = append(view.Rows, DetailRow{
+		vendorLine := DetailRow{
 			Vendor: true, Label: vendor.Name, Kategori: fmt.Sprintf("%d unit", len(vendor.Units)),
 			Rit: formatCount(vendor.Ritase), Volume: formatRitaseVolume(vendor.Volume),
 			Avg: avg(vendor.Volume, vendor.Ritase), Porsi: porsi(vendor.Volume),
 			Note:     "Mulai " + vendor.FirstScan + " · selesai " + vendor.LastScan,
 			Interval: interval(vendor.Units),
-		})
+		}
+		vendorLines = append(vendorLines, vendorLine)
+		view.Rows = append(view.Rows, vendorLine)
 		for _, unit := range vendor.Units {
 			number++
 			row := DetailRow{
@@ -656,6 +659,12 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 	if report.Ritase > 0 {
 		operasi = report.FirstScan + " – " + report.LastScan
 	}
+	// The day closes with every vendor's line again, on one table, above the
+	// total they add up to.
+	caption := "Total semua vendor, " + dayTitle
+	view.Rows = append(view.Rows, DetailRow{Caption: true, Label: caption})
+	start := len(view.Rows)
+	view.Rows = append(view.Rows, vendorLines...)
 	view.Rows = append(view.Rows, DetailRow{
 		Total: true, Label: "TOTAL", Kategori: fmt.Sprintf("%d unit", report.Units),
 		Rit: formatCount(report.Ritase), Volume: formatRitaseVolume(report.Volume),
@@ -663,8 +672,7 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		Note: "Jam operasi " + operasi, Interval: interval(everyUnit),
 	})
 	materials := materialShares(everyMaterial)
-	view.Blocks = append(view.Blocks, DetailBlock{Caption: "Total semua vendor, " + dayTitle,
-		Rows: view.Rows[len(view.Rows)-1 : len(view.Rows) : len(view.Rows)], Materials: materials})
+	view.Blocks = append(view.Blocks, DetailBlock{Caption: caption, Rows: view.Rows[start:len(view.Rows):len(view.Rows)], Materials: materials})
 	if len(materials) > 0 {
 		view.Rows = append(view.Rows, DetailRow{Materials: materials})
 	}

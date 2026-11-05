@@ -677,6 +677,20 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 	if !strings.Contains(today, `<tbody> <tr> <td class="ritase-value material-tanah">50.5%</td><td class="ritase-value material-sirtu">49.5%</td> </tr>`) {
 		t.Fatalf("HPP's materials are not under its table\n%s", today)
 	}
+	// The total table lists every vendor's line above the TOTAL.
+	last := today[strings.Index(today, "Total semua vendor"):]
+	for _, fragment := range []string{
+		`<th scope="rowgroup" colspan="2">HPP</th>`,
+		`<th scope="rowgroup" colspan="2">MNP</th>`,
+		`<th scope="row" colspan="2">TOTAL</th>`,
+	} {
+		if !strings.Contains(last, fragment) {
+			t.Fatalf("the total table is missing %q\n%s", fragment, last)
+		}
+	}
+	if !(strings.Index(last, ">HPP<") < strings.Index(last, ">MNP<") && strings.Index(last, ">MNP<") < strings.Index(last, ">TOTAL<")) {
+		t.Fatalf("the total table is out of order\n%s", last)
+	}
 	if headers := strings.Count(today, "<colgroup>"); headers != 3 {
 		t.Fatalf("today's detail has %d tables, want 3\n%s", headers, today)
 	}
