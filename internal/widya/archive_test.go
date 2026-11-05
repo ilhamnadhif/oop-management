@@ -318,3 +318,76 @@ func TestArchiveReadsTodayWhenTheBackfillFails(t *testing.T) {
 		t.Fatalf("the failed week was skipped: %+v", store.rows)
 	}
 }
+
+// The scanner's test vendor is never written to the sheet, and rows it left
+// there earlier stay out of every figure, however its name was typed.
+func TestArchiveLeavesTheTestVendorOut(t *testing.T) {
+	now := at("2026-10-25", "10:00")
+	day := "2026-10-25"
+	source := &rangeSource{tickets: []Ticket{
+		{Number: "LS-1", Vehicle: "A", Supplier: "HPP", Material: "Tanah", Volume: 25, ScanFullAt: at(day, "08:00")},
+		{Number: "LS-2", Vehicle: "T", Supplier: "wdy", Material: "Pasir", Volume: 118, ScanFullAt: at(day, "08:10")},
+		{Number: "LS-3", Vehicle: "T", Supplier: " WDY ", Material: "Pasir", Volume: 118, ScanFullAt: at(day, "08:20")},
+		// Kept as a real load, then moved to the test vendor on the scanner.
+		{Number: "LS-4", Vehicle: "B", Supplier: "wdy", Material: "Tanah", Volume: 12, ScanFullAt: at(day, "08:30")},
+		// Kept under the test vendor, then given to a real one.
+		{Number: "LS-5", Vehicle: "C", Supplier: "HPP", Material: "Tanah", Volume: 13, ScanFullAt: at(day, "08:40")},
+	}}
+	store := &memoryStore{}
+	if err := store.AppendWidyaTickets(context.Background(), []model.WidyaTicket{
+		{Number: "LS-0", Vehicle: "T", Supplier: "wdy", Material: "Pasir", Volume: 118, ScanFullAt: at(day, "07:00")},
+		{Number: "LS-4", Vehicle: "B", Supplier: "MNP", Material: "Tanah", Volume: 12, ScanFullAt: at(day, "08:30")},
+		{Number: "LS-5", Vehicle: "C", Supplier: "wdy", Material: "Tanah", Volume: 13, ScanFullAt: at(day, "08:40")},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	archive := NewArchive(source, store, wib, 30*time.Second, func() time.Time { return now })
+
+	if err := archive.Sync(context.Background()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	written := map[string]int{}
+	for _, row := range store.rows {
+		written[row.Number]++
+	}
+	if written["LS-1"] != 1 || written["LS-2"] != 0 || written["LS-3"] != 0 {
+		t.Fatalf("sheet = %+v", store.rows)
+	}
+
+	summary, has, err := archive.Ritase(context.Background(), day, day, wib)
+	if err != nil || !has {
+		t.Fatalf("ritase: has=%v err=%v", has, err)
+	}
+	if len(summary.Vendors) != 1 || summary.Vendors[0].Name != "HPP" || summary.Vendors[0].Ritase != 2 {
+		t.Fatalf("vendors = %+v", summary.Vendors)
+	}
+	tickets, _, _ := archive.TicketsBetween(context.Background(), day, day, wib)
+	if len(tickets) != 2 {
+		t.Fatalf("tickets = %+v", tickets)
+	}
+	if vendors := archive.Vendors(context.Background()); len(vendors) != 1 || vendors[0] != "HPP" {
+		t.Fatalf("filter offers %v", vendors)
+	}
+
+	// A second round neither writes the test loads nor brings them back.
+	appends := store.appends
+	if err := archive.Sync(context.Background()); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	if store.appends != appends {
+		t.Fatalf("second round wrote to the sheet: %+v", store.rows)
+	}
+	if tickets, _, _ = archive.TicketsBetween(context.Background(), day, day, wib); len(tickets) != 2 {
+		t.Fatalf("after second round tickets = %+v", tickets)
+	}
+
+	// Nor does a restart, reading the sheet from the top.
+	restarted := NewArchive(source, store, wib, 30*time.Second, func() time.Time { return now })
+	if err := restarted.Sync(context.Background()); err != nil {
+		t.Fatalf("restart sync: %v", err)
+	}
+	if tickets, _, _ = restarted.TicketsBetween(context.Background(), day, day, wib); len(tickets) != 2 {
+		t.Fatalf("after restart tickets = %+v", tickets)
+	}
+}

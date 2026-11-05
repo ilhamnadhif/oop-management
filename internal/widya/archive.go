@@ -79,6 +79,15 @@ const createdLead = 12 * time.Hour
 // week at a time and is given the longest.
 const syncTimeout = 3 * time.Minute
 
+// testVendors are the suppliers the scanner is tried out under, in lower case.
+// Their tickets are not loads: they are not written to the sheet, and rows
+// they left there earlier are not read back, so they reach no figure.
+var testVendors = map[string]bool{"wdy": true}
+
+func testVendor(name string) bool {
+	return testVendors[strings.ToLower(strings.TrimSpace(name))]
+}
+
 // NewArchive keeps a source's tickets in a store. interval is how often today
 // is read again; the figures share it.
 func NewArchive(source Source, store TicketStore, location *time.Location, interval time.Duration, now func() time.Time) *Archive {
@@ -235,6 +244,9 @@ func (a *Archive) load(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, ticket := range kept {
+		if testVendor(ticket.Supplier) {
+			continue
+		}
 		a.tickets[ticket.Number] = ticket
 	}
 	a.loaded = true
@@ -297,6 +309,8 @@ func (a *Archive) backfill(ctx context.Context, todayStart time.Time) error {
 // merge writes what was read: tickets not kept yet are appended, and kept
 // tickets the scanner has since changed are rewritten in place. Memory is
 // updated only after the sheet accepted the write, so the two never disagree.
+// A test vendor's ticket is not kept, but a kept load moved to one is rewritten
+// so its row is not read back as a load after a restart.
 func (a *Archive) merge(ctx context.Context, fetched []Ticket) error {
 	now := a.now()
 	var fresh, changed []model.WidyaTicket
@@ -315,7 +329,9 @@ func (a *Archive) merge(ctx context.Context, fetched []Ticket) error {
 		kept, known := a.tickets[number]
 		switch {
 		case !known:
-			fresh = append(fresh, record)
+			if !testVendor(record.Supplier) {
+				fresh = append(fresh, record)
+			}
 		case !sameLoad(kept, record):
 			record.RowNumber = kept.RowNumber
 			changed = append(changed, record)
@@ -345,6 +361,10 @@ func (a *Archive) merge(ctx context.Context, fetched []Ticket) error {
 		}
 		a.mu.Lock()
 		for _, record := range changed {
+			if testVendor(record.Supplier) {
+				delete(a.tickets, record.Number)
+				continue
+			}
 			a.tickets[record.Number] = record
 		}
 		a.mu.Unlock()
