@@ -451,6 +451,9 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 		Columns:   columns,
 	}
 	tail := maxRit + 1
+	// The key names the materials this report actually has.
+	var legend []export.LegendItem
+	legended := make(map[string]bool)
 	for _, report := range days {
 		view := detailView(report, s.location, s.rangeTitle("", report.Day, report.Day))
 		for _, row := range view.Rows {
@@ -463,9 +466,24 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 				names := make([]string, len(columns))
 				shares := make([]string, len(columns))
 				tones := make([]export.Tone, len(columns))
+				// The Rit column is too narrow for a name, so it is used last.
+				slots := []int{1, 2, 4}
+				for column := 5; column < len(columns); column++ {
+					slots = append(slots, column)
+				}
+				slots = append(slots, 3)
 				for index, material := range row.Materials {
-					names[1+index], shares[1+index] = material.ExportLabel, material.Percent
-					tones[1+index] = materialTone(material.Key)
+					if index >= len(slots) {
+						break
+					}
+					slot := slots[index]
+					names[slot], shares[slot] = material.Label, material.Percent
+					tones[slot] = export.Tone(material.Color)
+					if material.Color != "" && !legended[material.Label] {
+						legended[material.Label] = true
+						legend = append(legend, export.LegendItem{Tone: export.Tone(material.Color),
+							Label: material.Label, Text: "Rit bermuatan " + strings.ToLower(material.Label)})
+					}
 				}
 				section.Rows = append(section.Rows,
 					export.ReportRow{Kind: export.RowSub, Cells: names},
@@ -508,7 +526,7 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 				}
 				for column, cell := range row.Times {
 					if 7+column < len(tones) {
-						tones[7+column] = materialTone(cell.Material)
+						tones[7+column] = export.Tone(cell.Color)
 					}
 				}
 				section.Rows = append(section.Rows, export.ReportRow{Cells: cells, Values: values, Tones: tones})
@@ -528,15 +546,10 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 			SpanTail: tail,
 		})
 	}
-	section.Legend = []export.LegendItem{
-		{Tone: export.ToneTanah, Label: "Tanah", Text: "Rit bermuatan tanah"},
-		{Tone: export.ToneSirtu, Label: "Sirtu", Text: "Rit bermuatan sirtu"},
-		{Tone: export.ToneBatu, Label: "Batu", Text: "Rit bermuatan batu"},
-		{Tone: export.TonePasir, Label: "Pasir", Text: "Rit bermuatan pasir"},
-		{Tone: export.ToneGranula, Label: "Granula", Text: "Rit bermuatan granula"},
+	section.Legend = append(legend, []export.LegendItem{
 		{Tone: export.TonePlain, Label: "12:30*", Text: "Rit yang tercatat saat Rest 1 (12:00–13:00)"},
-		{Tone: export.ToneBad, Label: "Merah", Text: "Unit dengan hanya 1 rit"},
-	}
+		{Tone: export.ToneBad, Label: "Teks merah", Text: "Unit dengan hanya 1 rit"},
+	}...)
 	section.Notes = []string{
 		"Jam per rit berdasarkan jam scan penuh. Interval rata-rata = (rit terakhir − rit pertama) ÷ (jumlah rit − 1), " +
 			"termasuk waktu istirahat dan antrean, jadi bukan cycle time murni. Jenis DT dari rata-rata muatan unit pada hari itu.",

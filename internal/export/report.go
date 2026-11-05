@@ -49,12 +49,17 @@ const (
 	ToneGroup   Tone = "group"
 	TonePlain   Tone = "plain"
 
-	// The materials a load can carry, each with its own colour.
-	ToneTanah   Tone = "tanah"
-	ToneSirtu   Tone = "sirtu"
-	ToneBatu    Tone = "batu"
-	TonePasir   Tone = "pasir"
-	ToneGranula Tone = "granula"
+	// The colours a material can take. Each value is the colour's name, which
+	// the page's stylesheet shares.
+	ToneMerah  Tone = "merah"
+	ToneKuning Tone = "kuning"
+	ToneHijau  Tone = "hijau"
+	ToneBiru   Tone = "biru"
+	ToneAbu    Tone = "abu"
+	ToneOranye Tone = "oranye"
+	ToneUngu   Tone = "ungu"
+	ToneTeal   Tone = "teal"
+	TonePink   Tone = "pink"
 )
 
 // tonePaint is a tone's colours: the text, the fill behind it (empty to keep
@@ -74,11 +79,15 @@ var tonePaints = map[Tone]tonePaint{
 	ToneBadText: {text: "B42318", bold: true},
 	ToneGroup:   {text: "102F48", fill: "F3F1EC", bold: true},
 	TonePlain:   {text: "6B7785", fill: "FFFFFF", bold: true},
-	ToneTanah:   {text: "1F6B2A", fill: "D3EFD0"},
-	ToneSirtu:   {text: "6E5500", fill: "FFF0A8"},
-	ToneBatu:    {text: "9B1C12", fill: "FAD2CE"},
-	TonePasir:   {text: "46515E", fill: "E1E5EA"},
-	ToneGranula: {text: "1D4ED8", fill: "D3E3FB"},
+	ToneMerah:   {text: "9B1C12", fill: "FAD2CE"},
+	ToneKuning:  {text: "6E5500", fill: "FFF0A8"},
+	ToneHijau:   {text: "1F6B2A", fill: "D3EFD0"},
+	ToneBiru:    {text: "1D4ED8", fill: "D3E3FB"},
+	ToneAbu:     {text: "46515E", fill: "E1E5EA"},
+	ToneOranye:  {text: "9A4A06", fill: "FDE3C8"},
+	ToneUngu:    {text: "5B34A8", fill: "E6DCFA"},
+	ToneTeal:    {text: "0F6B62", fill: "CDEEEA"},
+	TonePink:    {text: "A1225F", fill: "FBD9E8"},
 }
 
 // LegendItem is one line of a section's key: a chip in the tone it explains,

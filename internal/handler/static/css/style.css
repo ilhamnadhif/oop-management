@@ -2179,11 +2179,15 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
    and the day, with a gap between them so one vendor ends before the next. */
 .detail-block + .detail-block { margin-top: 1.6rem; }
 .detail-caption { margin: 0 0 0.6rem; color: var(--navy-dark); font-size: 1rem; font-weight: 700; }
-.ritase-table .material-tanah, .ritase-legend .material-tanah { color: #1f6b2a; background: #d3efd0; }
-.ritase-table .material-sirtu, .ritase-legend .material-sirtu { color: #6e5500; background: #fff0a8; }
-.ritase-table .material-batu, .ritase-legend .material-batu { color: #9b1c12; background: #fad2ce; }
-.ritase-table .material-pasir, .ritase-legend .material-pasir { color: #46515e; background: #e1e5ea; }
-.ritase-table .material-granula, .ritase-legend .material-granula { color: #1d4ed8; background: #d3e3fb; }
+.ritase-table .material-merah { color: #9b1c12; background: #fad2ce; }
+.ritase-table .material-kuning { color: #6e5500; background: #fff0a8; }
+.ritase-table .material-hijau { color: #1f6b2a; background: #d3efd0; }
+.ritase-table .material-biru { color: #1d4ed8; background: #d3e3fb; }
+.ritase-table .material-abu { color: #46515e; background: #e1e5ea; }
+.ritase-table .material-oranye { color: #9a4a06; background: #fde3c8; }
+.ritase-table .material-ungu { color: #5b34a8; background: #e6dcfa; }
+.ritase-table .material-teal { color: #0f6b62; background: #cdeeea; }
+.ritase-table .material-pink { color: #a1225f; background: #fbd9e8; }
 .detail-material { width: fit-content; max-width: 100%; margin-top: 0.6rem; }
 .detail-material .ritase-table { width: auto; min-width: 0; }
 .detail-material th, .detail-material td { min-width: 5.5rem; }

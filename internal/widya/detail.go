@@ -186,14 +186,10 @@ func DetailUnits(tickets []Ticket, day string, location *time.Location) UnitDeta
 	return report
 }
 
-// materialKey is the name a material is counted under: lower case, with berbatu
-// counted as sirtu, since the scanner uses both names for the same material.
+// materialKey is the name a material is counted under: lower case with its
+// spacing tidied, so one material typed two ways is still one.
 func materialKey(name string) string {
-	key := strings.ToLower(strings.TrimSpace(name))
-	if key == "berbatu" {
-		return "sirtu"
-	}
-	return key
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
 }
 
 // classify names a truck's class from its average load.

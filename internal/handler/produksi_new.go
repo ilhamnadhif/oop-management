@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"math"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"opp-management/internal/export"
 	"opp-management/internal/model"
@@ -102,24 +105,21 @@ type RekapView struct {
 	Rows      []RekapRow
 }
 
-// DetailTime is one load's time in the per-rit columns. Material is the key of
-// what it carried, empty when that is not one of detailMaterials. Rest marks a
-// load scanned during the midday break; an empty Clock pads a truck with fewer
-// loads than the busiest.
+// DetailTime is one load's time in the per-rit columns. Color is that of what it
+// carried. Rest marks a load scanned during the midday break; an empty Clock
+// pads a truck with fewer loads than the busiest.
 type DetailTime struct {
-	Clock    string
-	Rest     bool
-	Material string
+	Clock string
+	Rest  bool
+	Color string
 }
 
-// DetailMaterial is one material's share of a vendor's volume. Key colours it,
-// and is empty for Lainnya, which has no colour. Label is its name on the page
-// and ExportLabel its name in the export.
+// DetailMaterial is one material's share of a vendor's volume. Color is empty
+// for loads with no material.
 type DetailMaterial struct {
-	Key         string
-	Label       string
-	ExportLabel string
-	Percent     string
+	Label   string
+	Color   string
+	Percent string
 }
 
 // DetailRow is one line of the unit detail: a vendor heading, one of its
@@ -482,78 +482,108 @@ func (s *Server) detailDay(value string) string {
 // detailView lays one day out like the site's detail sheet: a heading line per
 // vendor with its first and last load, its trucks under it with the time of
 // every load, and the total at the foot.
-// detailMaterials are the materials the site hauls, in the order the report
-// lists them.
-var detailMaterials = []struct {
-	Key, Label, ExportLabel string
-	Tone                    export.Tone
-}{
-	{"tanah", "Tanah", "Tanah", export.ToneTanah},
-	// The overview calls sirtu Berbatu. The scanner, the sheet and the export
-	// keep sirtu.
-	{"sirtu", "Berbatu", "Sirtu", export.ToneSirtu},
-	{"batu", "Batu", "Batu", export.ToneBatu},
-	{"pasir", "Pasir", "Pasir", export.TonePasir},
-	{"granula", "Granula", "Granula", export.ToneGranula},
+// materialColors fixes the colour of the materials known so far. The first
+// three are the site's own choice; the rest only have to stay apart.
+var materialColors = map[string]string{
+	"tanah":          "merah",
+	"berbatu besar":  "kuning",
+	"berbatu kecil":  "hijau",
+	"granula":        "biru",
+	"pasir":          "abu",
+	"sirtu":          "oranye",
+	"batu":           "ungu",
+	"berbatu":        "teal",
+	"tanah timbunan": "pink",
 }
 
-// knownMaterial returns key when it is one of detailMaterials, else nothing.
-func knownMaterial(key string) string {
-	for _, material := range detailMaterials {
-		if material.Key == key {
-			return key
+// materialsFirst are listed ahead of the others, in this order, and the others
+// follow by name, so the columns read alike from one vendor to the next.
+var materialsFirst = []string{"tanah", "berbatu besar", "berbatu kecil"}
+
+// spareColors are what a new material takes. Red, yellow and green are spoken
+// for.
+var spareColors = []string{"biru", "abu", "oranye", "ungu", "teal", "pink"}
+
+// materialColor is the colour a material is shown in: its own, or for one not
+// seen before a spare picked from its name, so it keeps that colour on every
+// page and every day. A load with no material has none.
+func materialColor(key string) string {
+	if key == "" {
+		return ""
+	}
+	if color, ok := materialColors[key]; ok {
+		return color
+	}
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(key))
+	return spareColors[hash.Sum32()%uint32(len(spareColors))]
+}
+
+// materialLabel writes a material's key back as a name: "berbatu besar" reads
+// "Berbatu Besar". A load with no material reads Lainnya.
+func materialLabel(key string) string {
+	if key == "" {
+		return "Lainnya"
+	}
+	words := strings.Fields(key)
+	for index, word := range words {
+		first, size := utf8.DecodeRuneInString(word)
+		words[index] = string(unicode.ToUpper(first)) + word[size:]
+	}
+	return strings.Join(words, " ")
+}
+
+// materialOrder lists the materials hauled: the site's own first, then the
+// others by name, with no material last.
+func materialOrder(volumes map[string]float64) []string {
+	rank := func(key string) int {
+		if key == "" {
+			return len(materialsFirst) + 1
+		}
+		for index, first := range materialsFirst {
+			if key == first {
+				return index
+			}
+		}
+		return len(materialsFirst)
+	}
+	keys := make([]string, 0, len(volumes))
+	for key, volume := range volumes {
+		if volume > 0 {
+			keys = append(keys, key)
 		}
 	}
-	return ""
-}
-
-// materialTone is the colour a material is printed in.
-func materialTone(key string) export.Tone {
-	for _, material := range detailMaterials {
-		if material.Key == key {
-			return material.Tone
+	sort.Slice(keys, func(i, j int) bool {
+		if rank(keys[i]) != rank(keys[j]) {
+			return rank(keys[i]) < rank(keys[j])
 		}
-	}
-	return export.ToneNone
+		return keys[i] < keys[j]
+	})
+	return keys
 }
 
-// materialShares splits a vendor's volume by material, listing only what it
-// hauled. Anything the scanner reports beyond the known materials falls under
-// Lainnya. Shares are rounded so they always add up to exactly 100.0%, which
-// plain rounding would not: three equal loads would read 99.9%. A vendor with
-// no volume has no shares.
+// materialShares splits a vendor's volume by material, listing what it hauled
+// under the names the scanner gives them. Shares are rounded so they always add
+// up to exactly 100.0%, which plain rounding would not: three equal loads would
+// read 99.9%. A vendor with no volume has no shares.
 func materialShares(volumes map[string]float64) []DetailMaterial {
-	total := 0.0
-	for _, volume := range volumes {
-		total += volume
-	}
-	if total <= 0 {
+	keys := materialOrder(volumes)
+	if len(keys) == 0 {
 		return nil
 	}
-	rest := total
-	shares := make([]DetailMaterial, 0, len(detailMaterials)+1)
-	parts := make([]float64, 0, len(detailMaterials)+1)
-	for _, material := range detailMaterials {
-		volume := volumes[material.Key]
-		rest -= volume
-		if volume > 0 {
-			shares = append(shares, DetailMaterial{Key: material.Key, Label: material.Label, ExportLabel: material.ExportLabel})
-			parts = append(parts, volume)
-		}
-	}
-	if rest > 0.005 {
-		shares = append(shares, DetailMaterial{Label: "Lainnya", ExportLabel: "Lainnya"})
-		parts = append(parts, rest)
+	total := 0.0
+	for _, key := range keys {
+		total += volumes[key]
 	}
 
 	// Counted in tenths of a percent: each share rounds down, then the tenths
 	// left over go to the shares that lost the most.
-	tenths := make([]int, len(parts))
-	lost := make([]float64, len(parts))
-	order := make([]int, len(parts))
+	tenths := make([]int, len(keys))
+	lost := make([]float64, len(keys))
+	order := make([]int, len(keys))
 	left := 1000
-	for index, volume := range parts {
-		exact := volume / total * 1000
+	for index, key := range keys {
+		exact := volumes[key] / total * 1000
 		tenths[index] = int(math.Floor(exact))
 		lost[index] = exact - float64(tenths[index])
 		order[index] = index
@@ -563,8 +593,10 @@ func materialShares(volumes map[string]float64) []DetailMaterial {
 	for index := 0; index < left; index++ {
 		tenths[order[index%len(order)]]++
 	}
-	for index := range shares {
-		shares[index].Percent = fmt.Sprintf("%d.%d%%", tenths[index]/10, tenths[index]%10)
+	shares := make([]DetailMaterial, len(keys))
+	for index, key := range keys {
+		shares[index] = DetailMaterial{Label: materialLabel(key), Color: materialColor(key),
+			Percent: fmt.Sprintf("%d.%d%%", tenths[index]/10, tenths[index]%10)}
 	}
 	return shares
 }
@@ -642,7 +674,7 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 			for column := 0; column < columns; column++ {
 				var cell DetailTime
 				if column < len(unit.Times) {
-					cell = DetailTime{Clock: unit.Times[column], Rest: unit.RestLoads[column], Material: knownMaterial(unit.Materials[column])}
+					cell = DetailTime{Clock: unit.Times[column], Rest: unit.RestLoads[column], Color: materialColor(unit.Materials[column])}
 				}
 				row.Times = append(row.Times, cell)
 			}

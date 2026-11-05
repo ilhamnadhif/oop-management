@@ -177,7 +177,7 @@ func TestProduksiNewExportWritesASheetPerTable(t *testing.T) {
 			total = details[i+2]
 		}
 	}
-	if len(total) != 4 || total[1] != "41.5%" || total[2] != "40.7%" || total[3] != "17.8%" {
+	if len(total) != 5 || total[1] != "41.5%" || total[2] != "17.8%" || total[3] != "" || total[4] != "40.7%" {
 		t.Fatalf("total material shares = %q", total)
 	}
 
