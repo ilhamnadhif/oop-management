@@ -628,7 +628,6 @@ func TestDetailTimesCarryTheirMaterial(t *testing.T) {
 		`<th scope="col" class="ritase-value">Batu</th>`,
 		// Sirtu goes by Berbatu here; the sheet and the export keep sirtu.
 		`<th scope="col" class="ritase-value">Berbatu</th>`,
-		`<span class="material-sirtu">Berbatu</span>Rit bermuatan berbatu`,
 		`<td class="ritase-value material-batu">`,
 		`<th scope="col" class="ritase-value">Lainnya</th>`,
 	} {
@@ -700,6 +699,9 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 	}
 	if !(strings.Index(last, ">HPP<") < strings.Index(last, ">MNP<") && strings.Index(last, ">MNP<") < strings.Index(last, ">TOTAL<")) {
 		t.Fatalf("the total table is out of order\n%s", last)
+	}
+	if strings.Contains(today, "Rit bermuatan") {
+		t.Fatalf("the detail still carries its legend\n%s", today)
 	}
 	if headers := strings.Count(today, "<colgroup>"); headers != 3 {
 		t.Fatalf("today's detail has %d tables, want 3\n%s", headers, today)
