@@ -377,6 +377,7 @@ func TestProjectRowRoundTrip(t *testing.T) {
 		Settings: model.ProjectSettings{
 			WorkStart: "07:00", WorkEnd: "16:00", LateToleranceMinutes: 10,
 			Company: "PT Contoh", SignatoryPlace: "Balikpapan",
+			WidyaURL: "https://kendal.example", WidyaEmail: "a@example.com", WidyaPasswordSealed: "v1.abc",
 		},
 	}
 	row := projectToRow(project)
@@ -385,6 +386,15 @@ func TestProjectRowRoundTrip(t *testing.T) {
 	}
 	if row[3] != "produksi,unit" {
 		t.Fatalf("menu_aktif = %v, want the list joined", row[3])
+	}
+	// The cells ListProjects reads them from, under their headers, and the
+	// last of them inside the range a read and a write reach.
+	if row[18] != "https://kendal.example" || row[19] != "a@example.com" || row[20] != "v1.abc" ||
+		projectHeaders[18] != "widya_url" || projectHeaders[20] != "widya_password" {
+		t.Fatalf("widya cells = %v, %v, %v", row[18], row[19], row[20])
+	}
+	if last := 'A' + rune(len(projectHeaders)) - 1; string(last) != projectLastColumn {
+		t.Fatalf("projectLastColumn = %s, the headers end at %c", projectLastColumn, last)
 	}
 	// A2BWorkMinutes was never set, so the cell must be empty rather than 0.
 	if row[8] != "" {

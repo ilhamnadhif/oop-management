@@ -217,6 +217,9 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 			ClearLogoSistem:      marks.ClearLogoSistem,
 			ClearLogoExport:      marks.ClearLogoExport,
 			ClearFavicon:         marks.ClearFavicon,
+			WidyaURL:             r.FormValue("widya_url"),
+			WidyaEmail:           r.FormValue("widya_email"),
+			WidyaPassword:        r.FormValue("widya_password"),
 		})
 		actionErr = err
 		if err == nil {
@@ -225,6 +228,14 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 			// rather than left holding figures the sheet no longer says.
 			s.bundles.forget(updated)
 			view.success = "Setelan project " + updated.Nama + " tersimpan."
+			if s.widyaApply != nil {
+				// The settings are saved whatever happens here. Say so plainly
+				// rather than leave a sync running on the old account unnoticed.
+				if err := s.widyaApply(r.Context(), updated); err != nil {
+					log.Printf("apply widya of %s: %v", updated.Nama, err)
+					view.success += " Sinkron Widya belum bisa dimulai, simpan lagi sebentar lagi."
+				}
+			}
 		}
 	case "export":
 		config := exportConfigFromForm(r, strings.TrimSpace(r.FormValue("project_id")))

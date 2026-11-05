@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"opp-management/internal/secret"
 )
 
 type Config struct {
@@ -46,7 +48,10 @@ type Config struct {
 	WidyaEmail        string
 	WidyaPassword     string
 	WidyaLoginCompany string
-	WidyaRefresh      time.Duration
+	// WidyaSecretKey seals the Widya passwords kept per project. Empty means no
+	// project can save an account.
+	WidyaSecretKey string
+	WidyaRefresh   time.Duration
 }
 
 func Load() (Config, error) {
@@ -109,6 +114,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("WIDYA_REFRESH must be a duration of at least 5s")
 	}
 
+	widyaSecretKey := strings.TrimSpace(os.Getenv("WIDYA_SECRET_KEY"))
+	if widyaSecretKey != "" && len(widyaSecretKey) < secret.MinKeyLength {
+		return Config{}, fmt.Errorf("WIDYA_SECRET_KEY must be at least %d characters", secret.MinKeyLength)
+	}
+
 	lateTolerance, err := parseInt("ATTENDANCE_LATE_TOLERANCE_MINUTES", getenv("ATTENDANCE_LATE_TOLERANCE_MINUTES", "15"))
 	if err != nil || lateTolerance < 0 {
 		return Config{}, fmt.Errorf("ATTENDANCE_LATE_TOLERANCE_MINUTES must be a non-negative integer")
@@ -141,6 +151,7 @@ func Load() (Config, error) {
 		WidyaPassword:         os.Getenv("WIDYA_PASSWORD"),
 		WidyaLoginCompany:     strings.TrimSpace(os.Getenv("WIDYA_LOGIN_COMPANY")),
 		WidyaRefresh:          widyaRefresh,
+		WidyaSecretKey:        widyaSecretKey,
 	}
 
 	if cfg.GoogleSpreadsheetID == "" {

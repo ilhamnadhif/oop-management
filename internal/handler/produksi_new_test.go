@@ -91,7 +91,7 @@ func newProduksiNewServerWithStore(t *testing.T, feed WidyaFeed) (*httptest.Serv
 		t.Fatalf("new server: %v", err)
 	}
 	if feed != nil {
-		server.WithWidya(feed, testProjectName)
+		server.WithWidya(func(string) WidyaFeed { return feed }, nil)
 	}
 	return startFixtureServer(t, server, deps), store
 }
@@ -177,7 +177,7 @@ func TestProduksiNewSaysWhenItIsNotSetUp(t *testing.T) {
 	client := loggedInClient(t, testServer)
 
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
-	if !strings.Contains(page, "WIDYA_URL") || strings.Contains(page, "data-widya ") {
+	if !strings.Contains(page, `Isi URL, email, dan password Widya`) || strings.Contains(page, "data-widya ") {
 		t.Fatal("an unconfigured page does not say what to set")
 	}
 }
@@ -477,7 +477,17 @@ func TestProduksiNewBelongsToOneProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
-	server.WithWidya(widyaFixture(), testProjectName)
+	feed := widyaFixture()
+	home, err := deps.Projects.Find(context.Background(), testProjectName)
+	if err != nil {
+		t.Fatalf("find project: %v", err)
+	}
+	server.WithWidya(func(projectID string) WidyaFeed {
+		if projectID == home.ProjectID {
+			return feed
+		}
+		return nil
+	}, nil)
 	testServer := startFixtureServer(t, server, deps)
 	client := loggedInClient(t, testServer)
 
@@ -488,7 +498,7 @@ func TestProduksiNewBelongsToOneProject(t *testing.T) {
 
 	switchProject(t, client, testServer, csrfFromForm(t, page), secondProjectName)
 	page = fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
-	if strings.Contains(page, ">6.803<") || !strings.Contains(page, "terhubung ke project <strong>"+testProjectName+"</strong>") {
+	if strings.Contains(page, ">6.803<") || !strings.Contains(page, "Akun Widya project ini belum diatur") {
 		t.Fatalf("%s shows another project's scanner", secondProjectName)
 	}
 }

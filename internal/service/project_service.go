@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +13,7 @@ import (
 	"opp-management/internal/model"
 	"opp-management/internal/photo"
 	"opp-management/internal/repository"
+	"opp-management/internal/secret"
 )
 
 // projectsCacheTTL keeps the switcher and the access check from re-reading the
@@ -30,9 +34,100 @@ type ProjectService struct {
 	location *time.Location
 	now      NowFunc
 
+	// secrets seals the Widya passwords, and is nil when the deployment has no
+	// key. widyaCheck tries an account before it is saved.
+	secrets    *secret.Box
+	widyaCheck WidyaCheck
+
 	mu       sync.Mutex
 	cached   []model.Project
 	cachedAt time.Time
+}
+
+// WidyaCheck signs in with an account and reports whether that worked.
+type WidyaCheck func(ctx context.Context, account model.WidyaAccount) error
+
+// widyaCheckTimeout keeps a scanner that does not answer inside the request
+// that is saving the settings.
+const widyaCheckTimeout = 15 * time.Second
+
+// WithWidya gives the service what the Widya settings need. Without a box an
+// account cannot be saved, and the screen says why.
+func (s *ProjectService) WithWidya(box *secret.Box, check WidyaCheck) *ProjectService {
+	s.secrets = box
+	s.widyaCheck = check
+	return s
+}
+
+// WidyaAccount reads a project's account back with its password in the clear.
+// It is for signing in and for nothing else: a project with no account gives
+// the empty one, and a password that will not open is an error, so the caller
+// can leave the running sync alone rather than sign in with nothing.
+func (s *ProjectService) WidyaAccount(project model.Project) (model.WidyaAccount, error) {
+	settings := project.Settings
+	if settings.WidyaURL == "" || settings.WidyaEmail == "" || settings.WidyaPasswordSealed == "" {
+		return model.WidyaAccount{}, nil
+	}
+	if s.secrets == nil {
+		return model.WidyaAccount{}, errors.New("WIDYA_SECRET_KEY is not set")
+	}
+	password, err := s.secrets.Open(settings.WidyaPasswordSealed, project.ProjectID)
+	if err != nil {
+		return model.WidyaAccount{}, err
+	}
+	return model.WidyaAccount{URL: settings.WidyaURL, Email: settings.WidyaEmail, Password: password}, nil
+}
+
+// widyaFields settles what the settings save keeps for the Widya account: its
+// URL, its email and the sealed password. All three blank clears the account.
+// A blank password alone keeps the stored one, because the screen never shows
+// it. Anything that changed is tried before it is written, so a mistyped
+// password is told to the person typing it rather than failing in the
+// background; saving the screen with the account untouched reaches nothing.
+func (s *ProjectService) widyaFields(ctx context.Context, stored *model.Project, address, email, password string) (string, string, string, error) {
+	address = strings.TrimRight(strings.TrimSpace(address), "/")
+	email = strings.TrimSpace(email)
+	if address == "" && email == "" && password == "" {
+		return "", "", "", nil
+	}
+	parsed, err := url.Parse(address)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", "", "", fmt.Errorf("%w: URL Widya harus berupa alamat https://", ErrValidation)
+	}
+	if email == "" {
+		return "", "", "", fmt.Errorf("%w: Email Widya wajib diisi", ErrValidation)
+	}
+	sealed := stored.Settings.WidyaPasswordSealed
+	if password == "" && sealed == "" {
+		return "", "", "", fmt.Errorf("%w: Password Widya wajib diisi", ErrValidation)
+	}
+	if password == "" && address == stored.Settings.WidyaURL && email == stored.Settings.WidyaEmail {
+		return address, email, sealed, nil
+	}
+	if s.secrets == nil {
+		return "", "", "", fmt.Errorf("%w: Akun Widya belum bisa disimpan karena WIDYA_SECRET_KEY belum diatur di server", ErrValidation)
+	}
+
+	plain := password
+	if plain == "" {
+		if plain, err = s.secrets.Open(sealed, stored.ProjectID); err != nil {
+			return "", "", "", fmt.Errorf("%w: Password Widya yang tersimpan tidak bisa dibaca, isi ulang passwordnya", ErrValidation)
+		}
+	}
+	if s.widyaCheck != nil {
+		checkCtx, cancel := context.WithTimeout(ctx, widyaCheckTimeout)
+		defer cancel()
+		if err := s.widyaCheck(checkCtx, model.WidyaAccount{URL: address, Email: email, Password: plain}); err != nil {
+			log.Printf("check widya account of %s: %v", stored.ProjectID, err)
+			return "", "", "", fmt.Errorf("%w: Tidak bisa masuk ke Widya. Periksa URL, email, dan password", ErrValidation)
+		}
+	}
+	if password != "" {
+		if sealed, err = s.secrets.Seal(password, stored.ProjectID); err != nil {
+			return "", "", "", fmt.Errorf("seal widya password: %w", err)
+		}
+	}
+	return address, email, sealed, nil
 }
 
 func NewProjectService(store repository.MasterStore, defaults model.ProjectSettings, location *time.Location, now NowFunc) *ProjectService {
@@ -299,6 +394,11 @@ type ProjectUpdate struct {
 	ClearLogoSistem bool
 	ClearLogoExport bool
 	ClearFavicon    bool
+
+	// The Widya account. A blank password keeps the stored one; see widyaFields.
+	WidyaURL      string
+	WidyaEmail    string
+	WidyaPassword string
 }
 
 // Update saves the settings screen. Blank settings are stored blank rather than
@@ -360,6 +460,11 @@ func (s *ProjectService) Update(ctx context.Context, projectID string, update Pr
 		status = model.StatusAktif
 	}
 
+	widyaURL, widyaEmail, widyaSealed, err := s.widyaFields(ctx, stored, update.WidyaURL, update.WidyaEmail, update.WidyaPassword)
+	if err != nil {
+		return model.Project{}, err
+	}
+
 	stored.Nama = nama
 	stored.MenuAktif = cleanMenus(update.MenuAktif)
 	stored.Status = status
@@ -374,6 +479,10 @@ func (s *ProjectService) Update(ctx context.Context, projectID string, update Pr
 		LogoSistem:     keptMark(stored.Settings.LogoSistem, update.LogoSistem, update.ClearLogoSistem),
 		LogoExport:     keptMark(stored.Settings.LogoExport, update.LogoExport, update.ClearLogoExport),
 		Favicon:        keptMark(stored.Settings.Favicon, update.Favicon, update.ClearFavicon),
+
+		WidyaURL:            widyaURL,
+		WidyaEmail:          widyaEmail,
+		WidyaPasswordSealed: widyaSealed,
 	}
 	stored.UpdatedAt = s.now().In(s.location)
 

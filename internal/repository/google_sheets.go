@@ -135,7 +135,13 @@ var projectHeaders = []string{
 	// The marks came after the rest, so they sit at the end: adding them in the
 	// middle would move every column an existing row already fills.
 	"logo_sistem", "logo_export", "favicon",
+	// widya_password is sealed: see the secret package. The sheet alone cannot
+	// read it.
+	"widya_url", "widya_email", "widya_password",
 }
+
+// projectLastColumn is the letter of the last of projectHeaders.
+const projectLastColumn = "U"
 
 // exportConfigHeaders hold one row per project-and-export setting. The three
 // slots are left, centre and right in sheet order; TTD count says how many of
@@ -478,7 +484,7 @@ func headerNeedsWriting(sheetName string, actual []interface{}, expected []strin
 // order is the order the switcher offers, so a site can be moved up the list by
 // moving its row.
 func (r *GoogleSheetsRepository) ListProjects(ctx context.Context) ([]model.Project, error) {
-	rows, err := r.readRows(ctx, projectSheet, "R")
+	rows, err := r.readRows(ctx, projectSheet, projectLastColumn)
 	if err != nil {
 		return nil, err
 	}
@@ -509,6 +515,9 @@ func (r *GoogleSheetsRepository) ListProjects(ctx context.Context) ([]model.Proj
 				LogoSistem:           strings.TrimSpace(cellString(row[15])),
 				LogoExport:           strings.TrimSpace(cellString(row[16])),
 				Favicon:              strings.TrimSpace(cellString(row[17])),
+				WidyaURL:             strings.TrimSpace(cellString(row[18])),
+				WidyaEmail:           strings.TrimSpace(cellString(row[19])),
+				WidyaPasswordSealed:  strings.TrimSpace(cellString(row[20])),
 			},
 			CreatedAt: createdAt,
 			UpdatedAt: updatedAt,
@@ -524,7 +533,7 @@ func (r *GoogleSheetsRepository) CreateProject(ctx context.Context, project *mod
 // FindProjectRow locates a project and reports the row it sits on, so the
 // settings screen can write back to it.
 func (r *GoogleSheetsRepository) FindProjectRow(ctx context.Context, projectID string) (*model.Project, int, error) {
-	rows, err := r.readRows(ctx, projectSheet, "R")
+	rows, err := r.readRows(ctx, projectSheet, projectLastColumn)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -554,7 +563,7 @@ func (r *GoogleSheetsRepository) UpdateProject(ctx context.Context, rowNumber in
 	if rowNumber < 2 {
 		return fmt.Errorf("invalid row number %d for sheet %q", rowNumber, projectSheet)
 	}
-	rangeName := fmt.Sprintf("%s!B%d:R%d", quoteSheet(projectSheet), rowNumber, rowNumber)
+	rangeName := fmt.Sprintf("%s!B%d:%s%d", quoteSheet(projectSheet), rowNumber, projectLastColumn, rowNumber)
 	_, err := r.service.Spreadsheets.Values.Update(r.spreadsheetID, rangeName,
 		&sheets.ValueRange{Values: [][]interface{}{projectToRow(project)[1:]}}).
 		ValueInputOption("RAW").Context(ctx).Do()
@@ -848,6 +857,7 @@ func projectToRow(project *model.Project) []interface{} {
 		project.Settings.Company, "", "", project.Settings.SignatoryPlace,
 		formatDateTime(project.CreatedAt), formatDateTime(project.UpdatedAt),
 		project.Settings.LogoSistem, project.Settings.LogoExport, project.Settings.Favicon,
+		project.Settings.WidyaURL, project.Settings.WidyaEmail, project.Settings.WidyaPasswordSealed,
 	}
 }
 

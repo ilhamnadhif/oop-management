@@ -9,6 +9,7 @@ import (
 
 	"opp-management/internal/model"
 	"opp-management/internal/repository"
+	"opp-management/internal/secret"
 )
 
 func newProjectServiceFixture(t *testing.T) (*ProjectService, *repository.TestRepository) {
@@ -338,5 +339,140 @@ func TestCreateChecksForDuplicatesBeforeTouchingTheSpreadsheet(t *testing.T) {
 	}
 	if touched {
 		t.Fatal("a duplicate name still had sheets written into its spreadsheet")
+	}
+}
+
+// widyaUpdate is a project's Widya account saved through the settings screen,
+// with every other field left as a save would send it.
+func widyaUpdate(address, email, password string) ProjectUpdate {
+	return ProjectUpdate{Nama: "PCPM", Status: model.StatusAktif,
+		WidyaURL: address, WidyaEmail: email, WidyaPassword: password}
+}
+
+func newWidyaProjects(t *testing.T) (*ProjectService, model.Project, *[]model.WidyaAccount, *error) {
+	t.Helper()
+	box, err := secret.NewBox("0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatalf("new box: %v", err)
+	}
+	projects := NewProjectService(repository.NewTestRepository(), model.ProjectSettings{}, time.UTC, nil)
+	var tried []model.WidyaAccount
+	var refuse error
+	projects.WithWidya(box, func(_ context.Context, account model.WidyaAccount) error {
+		tried = append(tried, account)
+		return refuse
+	})
+	first, err := projects.EnsureFirst(context.Background(), "PCPM", "sheet-1")
+	if err != nil {
+		t.Fatalf("ensure first: %v", err)
+	}
+	return projects, first, &tried, &refuse
+}
+
+func TestWidyaAccountIsSealedAndReadsBack(t *testing.T) {
+	projects, first, tried, _ := newWidyaProjects(t)
+	ctx := context.Background()
+
+	saved, err := projects.Update(ctx, first.ProjectID, widyaUpdate(" https://kendal.example/ ", "a@example.com", "rahasia"))
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	if saved.Settings.WidyaURL != "https://kendal.example" || saved.Settings.WidyaEmail != "a@example.com" {
+		t.Fatalf("settings = %+v", saved.Settings)
+	}
+	if saved.Settings.WidyaPasswordSealed == "" || strings.Contains(saved.Settings.WidyaPasswordSealed, "rahasia") {
+		t.Fatalf("the password reached the sheet readable: %q", saved.Settings.WidyaPasswordSealed)
+	}
+	if len(*tried) != 1 || (*tried)[0].Password != "rahasia" {
+		t.Fatalf("the account was not tried before saving: %+v", *tried)
+	}
+	account, err := projects.WidyaAccount(saved)
+	if err != nil || account.Password != "rahasia" || !account.Configured() {
+		t.Fatalf("account = %+v, %v", account, err)
+	}
+
+	// Saving the screen again with a blank password keeps it and reaches
+	// nothing: the rest of the settings must not depend on the scanner.
+	again, err := projects.Update(ctx, first.ProjectID, widyaUpdate("https://kendal.example", "a@example.com", ""))
+	if err != nil {
+		t.Fatalf("save again: %v", err)
+	}
+	if again.Settings.WidyaPasswordSealed != saved.Settings.WidyaPasswordSealed || len(*tried) != 1 {
+		t.Fatalf("an untouched account changed: %d tries", len(*tried))
+	}
+
+	// A new URL with the stored password is tried with that password.
+	moved, err := projects.Update(ctx, first.ProjectID, widyaUpdate("https://baru.example", "a@example.com", ""))
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if len(*tried) != 2 || (*tried)[1].Password != "rahasia" || (*tried)[1].URL != "https://baru.example" ||
+		moved.Settings.WidyaPasswordSealed != saved.Settings.WidyaPasswordSealed {
+		t.Fatalf("tries = %+v", *tried)
+	}
+
+	// All three blank lets the account go.
+	cleared, err := projects.Update(ctx, first.ProjectID, widyaUpdate("", "", ""))
+	if err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if cleared.Settings.WidyaURL != "" || cleared.Settings.WidyaPasswordSealed != "" {
+		t.Fatalf("settings = %+v", cleared.Settings)
+	}
+	if account, err := projects.WidyaAccount(cleared); err != nil || account.Configured() {
+		t.Fatalf("cleared account = %+v, %v", account, err)
+	}
+}
+
+func TestWidyaAccountIsRefusedWhenItCannotWork(t *testing.T) {
+	projects, first, _, refuse := newWidyaProjects(t)
+	ctx := context.Background()
+
+	for name, update := range map[string]ProjectUpdate{
+		"no scheme":   widyaUpdate("kendal.example", "a@example.com", "rahasia"),
+		"plain http":  widyaUpdate("http://kendal.example", "a@example.com", "rahasia"),
+		"no email":    widyaUpdate("https://kendal.example", "", "rahasia"),
+		"no password": widyaUpdate("https://kendal.example", "a@example.com", ""),
+	} {
+		if _, err := projects.Update(ctx, first.ProjectID, update); !errors.Is(err, ErrValidation) {
+			t.Fatalf("%s: err = %v", name, err)
+		}
+	}
+
+	// A refused sign-in saves nothing, and does not say why in the scanner's
+	// own words.
+	*refuse = errors.New("status 500 from scanner")
+	_, err := projects.Update(ctx, first.ProjectID, widyaUpdate("https://kendal.example", "a@example.com", "salah"))
+	if !errors.Is(err, ErrValidation) || strings.Contains(err.Error(), "500") {
+		t.Fatalf("err = %v", err)
+	}
+	stored, err := projects.Find(ctx, "PCPM")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if stored.Settings.WidyaURL != "" || stored.Settings.WidyaPasswordSealed != "" {
+		t.Fatalf("a refused account was saved: %+v", stored.Settings)
+	}
+
+	// Without the key nothing can be sealed, and the screen says what is wrong.
+	*refuse = nil
+	projects.WithWidya(nil, nil)
+	_, err = projects.Update(ctx, first.ProjectID, widyaUpdate("https://kendal.example", "a@example.com", "rahasia"))
+	if !errors.Is(err, ErrValidation) || !strings.Contains(err.Error(), "WIDYA_SECRET_KEY") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A password sealed for one project does not open on another's row.
+func TestWidyaPasswordBelongsToItsProject(t *testing.T) {
+	projects, first, _, _ := newWidyaProjects(t)
+	saved, err := projects.Update(context.Background(), first.ProjectID, widyaUpdate("https://kendal.example", "a@example.com", "rahasia"))
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	copied := saved
+	copied.ProjectID = "PRJ-9999"
+	if _, err := projects.WidyaAccount(copied); err == nil {
+		t.Fatal("a password opened on another project's row")
 	}
 }

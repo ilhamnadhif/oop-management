@@ -1,16 +1,21 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"opp-management/internal/model"
 	"opp-management/internal/repository"
+	"opp-management/internal/secret"
 	"opp-management/internal/service"
 )
 
@@ -655,5 +660,93 @@ func TestTheChosenProjectSurvivesReloads(t *testing.T) {
 	}
 	if rows := stores.forProject(testProjectName).UnitDTList(); len(rows) != 0 {
 		t.Fatal("the fixture leaked into the other project's store")
+	}
+}
+
+// Saving a project hands its account to the sync, and the password never comes
+// back to the page, neither as typed nor as stored.
+func TestProjectSettingsSavesTheWidyaAccount(t *testing.T) {
+	store := repository.NewTestRepository()
+	location := time.FixedZone("WIB", 7*60*60)
+	now := time.Date(2026, 10, 24, 9, 0, 0, 0, location)
+	deps := testDeps(t, store, location, func() time.Time { return now }, defaultTestBranding())
+	box, err := secret.NewBox("0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatalf("new box: %v", err)
+	}
+	deps.Projects.WithWidya(box, func(context.Context, model.WidyaAccount) error { return nil })
+	server, err := NewServer(deps)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	var applied []model.Project
+	server.WithWidya(func(string) WidyaFeed { return nil }, func(_ context.Context, project model.Project) error {
+		applied = append(applied, project)
+		return nil
+	})
+	testServer := startFixtureServer(t, server, deps)
+	client := loggedInClient(t, testServer)
+
+	project, err := deps.Projects.Find(context.Background(), testProjectName)
+	if err != nil {
+		t.Fatalf("find project: %v", err)
+	}
+	detail := testServer.URL + "/project/settings?project=" + url.QueryEscape(project.Nama)
+	page := fetchAuthedPage(t, client, detail)
+	if !strings.Contains(page, `name="widya_password" type="password"`) || !strings.Contains(page, "Belum diatur") {
+		t.Fatalf("the form has no Widya section\n%s", page)
+	}
+
+	// The settings form carries uploads, so it goes as a browser sends it.
+	var form bytes.Buffer
+	writer := multipart.NewWriter(&form)
+	for name, value := range map[string]string{
+		"csrf_token": csrfFromForm(t, page), "aksi": "simpan", "project_id": project.ProjectID,
+		"nama": project.Nama, "status": model.StatusAktif,
+		"widya_url": "https://kendal.example", "widya_email": "a@example.com", "widya_password": "rahasia-kendal",
+	} {
+		if err := writer.WriteField(name, value); err != nil {
+			t.Fatalf("write field: %v", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close form: %v", err)
+	}
+	response, err := client.Post(testServer.URL+"/project/settings", writer.FormDataContentType(), &form)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status %d\n%s", response.StatusCode, body)
+	}
+	if len(applied) != 1 || applied[0].Settings.WidyaURL != "https://kendal.example" {
+		t.Fatalf("the sync was not told: %+v", applied)
+	}
+
+	saved, err := deps.Projects.Find(context.Background(), project.Nama)
+	if err != nil {
+		t.Fatalf("find again: %v", err)
+	}
+	sealed := saved.Settings.WidyaPasswordSealed
+	if sealed == "" || strings.Contains(sealed, "rahasia-kendal") {
+		t.Fatalf("sealed = %q", sealed)
+	}
+	page = fetchAuthedPage(t, client, detail)
+	for name, leaked := range map[string]bool{
+		"the answer to the save": strings.Contains(string(body), "rahasia-kendal"),
+		"the password":           strings.Contains(page, "rahasia-kendal"),
+		"the sealed value":       strings.Contains(page, sealed),
+	} {
+		if leaked {
+			t.Fatalf("%s reached the page", name)
+		}
+	}
+	if !strings.Contains(page, `value="https://kendal.example"`) || !strings.Contains(page, "Tersimpan, kosongkan bila tidak diganti") {
+		t.Fatalf("the saved account is not shown\n%s", page)
 	}
 }

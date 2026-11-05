@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"opp-management/internal/export"
+	"opp-management/internal/model"
 	"opp-management/internal/widya"
 )
 
@@ -27,20 +28,24 @@ type WidyaFeed interface {
 	MaxAge() time.Duration
 }
 
-// WithWidya enables Produksi New for one project, the one whose spreadsheet
-// keeps the scanner's tickets. Like the scanners it is optional: without an
-// account the page renders and says the source has not been set up, and in any
-// other project it says the scanner belongs elsewhere.
-func (s *Server) WithWidya(feed WidyaFeed, project string) *Server {
-	s.widya = feed
-	s.widyaProject = strings.TrimSpace(project)
+// WidyaFeeds finds a project's feed, or nil when the project has no scanner.
+type WidyaFeeds func(projectID string) WidyaFeed
+
+// WidyaApply brings a project's sync in line with what it now has saved.
+type WidyaApply func(ctx context.Context, project model.Project) error
+
+// WithWidya enables Produksi New. Each project has its own scanner, set on the
+// project settings screen; a project without one renders the page and says the
+// source has not been set up.
+func (s *Server) WithWidya(feeds WidyaFeeds, apply WidyaApply) *Server {
+	s.widyas = feeds
+	s.widyaApply = apply
 	return s
 }
 
-// widyaHere reports whether this request's project is the one the scanner is
-// tied to.
+// widyaHere reports whether this request's project has a scanner.
 func (s *Server) widyaHere() bool {
-	return s.widya != nil && strings.EqualFold(strings.TrimSpace(s.project.Nama), s.widyaProject)
+	return s.widya != nil
 }
 
 // WidyaStat is one figure off the scanner's dashboard, already written the way
@@ -191,18 +196,15 @@ type RitView struct {
 // ProduksiNewView is the figures as both the page and its refresh read them,
 // so the first paint and every refresh after it say the same thing.
 type ProduksiNewView struct {
-	Configured bool `json:"configured"`
-	// OtherProject is set when the scanner is configured but tied to a
-	// different project than the one being viewed.
-	OtherProject string      `json:"-"`
-	Available    bool        `json:"available"`
-	UpdatedAt    string      `json:"updatedAt"`
-	Error        string      `json:"error"`
-	Stats        []WidyaStat `json:"stats"`
-	From         string      `json:"from"`
-	To           string      `json:"to"`
-	RekapFrom    string      `json:"rekapFrom"`
-	RekapTo      string      `json:"rekapTo"`
+	Configured bool        `json:"configured"`
+	Available  bool        `json:"available"`
+	UpdatedAt  string      `json:"updatedAt"`
+	Error      string      `json:"error"`
+	Stats      []WidyaStat `json:"stats"`
+	From       string      `json:"from"`
+	To         string      `json:"to"`
+	RekapFrom  string      `json:"rekapFrom"`
+	RekapTo    string      `json:"rekapTo"`
 	// RitaseTitle and RekapTitle head the two range tables. They name the
 	// range, and for a single day whether it is still going.
 	RitaseTitle string      `json:"ritaseTitle"`
@@ -290,9 +292,6 @@ func (s *Server) produksiNewView(ctx context.Context, query url.Values, withTick
 		RitaseTitle: s.rangeTitle("Summary Ritase", from, to),
 		RekapTitle:  s.rangeTitle("Ritase Per Vendor dan Jenis DT,", rekapFrom, rekapTo)}
 	if !view.Configured {
-		if s.widya != nil {
-			view.OtherProject = s.widyaProject
-		}
 		return view
 	}
 	var problems []string

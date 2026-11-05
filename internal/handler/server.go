@@ -72,11 +72,13 @@ type Server struct {
 	// copied mutex would guard a copy of nothing.
 	scan      *scanGate
 	templates *template.Template
-	// widya is the weighbridge feed Produksi New reads, and widyaProject the
-	// one project whose spreadsheet keeps its tickets. The account is the
-	// deployment's, like the scan gate; widya is nil when none is configured.
-	widya        WidyaFeed
-	widyaProject string
+	// widyas finds a project's weighbridge feed and widyaApply brings the sync
+	// in line with a project's saved account; both are nil when the deployment
+	// has no Widya at all. widya is the bound project's feed, nil when that
+	// project has no scanner.
+	widyas     WidyaFeeds
+	widyaApply WidyaApply
+	widya      WidyaFeed
 
 	// Bound per request by forProject. Nil until then.
 	project model.Project
@@ -113,6 +115,9 @@ func (s *Server) forProject(ctx context.Context, project model.Project, reachabl
 	bound := *s
 	bound.project = project
 	bound.reachable = reachable
+	if s.widyas != nil {
+		bound.widya = s.widyas(project.ProjectID)
+	}
 	// Read off the bound copy: the rules belong to the project being opened.
 	bound.rules = bound.accessRules(ctx)
 	bound.attendance = services.Attendance

@@ -177,6 +177,26 @@ type ProjectSettings struct {
 	LogoSistem string
 	LogoExport string
 	Favicon    string
+	// The account this project signs in to its Widya Load Scanner with. The
+	// password is kept sealed, see the secret package: it is never shown, and
+	// reads back only through ProjectService.WidyaAccount.
+	WidyaURL            string
+	WidyaEmail          string
+	WidyaPasswordSealed string
+}
+
+// WidyaAccount is what signs in to one Widya Load Scanner.
+type WidyaAccount struct {
+	URL      string
+	Email    string
+	Password string
+	// LoginCompany is empty for the scanner to name itself.
+	LoginCompany string
+}
+
+// Configured reports whether the account has what a sign-in needs.
+func (a WidyaAccount) Configured() bool {
+	return a.URL != "" && a.Email != "" && a.Password != ""
 }
 
 // ExportSlot is one signature position in an export's closing block: the name

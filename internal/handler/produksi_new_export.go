@@ -22,7 +22,6 @@ import (
 type ProduksiNewExportPageData struct {
 	ShellPageData
 	Configured    bool
-	OtherProject  string
 	Aktif         bool
 	From          string
 	To            string
@@ -92,9 +91,6 @@ func (s *Server) handleProduksiNewExport(w http.ResponseWriter, r *http.Request)
 	}
 	data.From, data.To = s.ritaseRange(r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 	if !data.Configured {
-		if s.widya != nil {
-			data.OtherProject = s.widyaProject
-		}
 		s.render(w, "produksi_new_export", data, http.StatusOK)
 		return
 	}

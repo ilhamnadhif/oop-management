@@ -13,6 +13,7 @@
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="aksi" value="simpan">
     <input type="hidden" name="project_id" value="{{.Selected.ProjectID}}">
+    <input type="hidden" name="project_nama" value="{{.Selected.Nama}}">
 
     <section class="panel">
       <div class="panel-heading">
@@ -97,6 +98,33 @@
             {{template "fieldHelp" "Satu shift penuh dalam menit. Pembacaan hour meter alat berat diukur terhadap angka ini."}}
           </div>
           <input id="a2b_work_minutes" name="a2b_work_minutes" type="number" min="0" step="1" value="{{.Selected.Settings.A2BWorkMinutes}}">
+        </div>
+      </div>
+    </section>
+
+    {{/* The password is never drawn back into the page: blank keeps what is
+         stored, which is why the box says so rather than showing anything. */}}
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">{{template "icon" "refresh"}}WIDYA LOAD SCANNER</p>
+          <h2>Sumber data Produksi New</h2>
+        </div>
+        <span class="status-chip {{if .Selected.Settings.WidyaPasswordSealed}}approved{{else}}cancelled{{end}}">{{if .Selected.Settings.WidyaPasswordSealed}}Tersimpan{{else}}Belum diatur{{end}}</span>
+      </div>
+      <p class="hint">Tiket disimpan di spreadsheet project ini. Akun dicoba saat disimpan, dan password disimpan terenkripsi. Kosongkan ketiganya untuk melepas akun. Project pertama memakai akun dari konfigurasi server selama kolom ini kosong.</p>
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="widya_url">{{template "icon" "pin"}}URL Widya</label>
+          <input id="widya_url" name="widya_url" type="url" value="{{.Selected.Settings.WidyaURL}}" placeholder="https://..." autocomplete="off">
+        </div>
+        <div>
+          <label for="widya_email">{{template "icon" "info"}}Email</label>
+          <input id="widya_email" name="widya_email" type="email" value="{{.Selected.Settings.WidyaEmail}}" autocomplete="off">
+        </div>
+        <div>
+          <label for="widya_password">{{template "icon" "check"}}Password</label>
+          <input id="widya_password" name="widya_password" type="password" autocomplete="new-password" placeholder="{{if .Selected.Settings.WidyaPasswordSealed}}Tersimpan, kosongkan bila tidak diganti{{end}}">
         </div>
       </div>
     </section>

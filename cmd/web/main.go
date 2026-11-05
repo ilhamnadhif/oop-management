@@ -23,11 +23,30 @@ import (
 	"opp-management/internal/model"
 	"opp-management/internal/receipt"
 	"opp-management/internal/repository"
+	"opp-management/internal/secret"
 	"opp-management/internal/service"
 	"opp-management/internal/session"
 	"opp-management/internal/tally"
 	"opp-management/internal/widya"
 )
+
+// widyaAccountFor is the account a project's sync signs in with: none for a
+// project switched off, then its own, then for the first project the one in the
+// environment.
+func widyaAccountFor(projects *service.ProjectService, project, first model.Project, cfg config.Config) (model.WidyaAccount, error) {
+	if !project.Aktif() {
+		return model.WidyaAccount{}, nil
+	}
+	account, err := projects.WidyaAccount(project)
+	if err != nil || account.Configured() {
+		return account, err
+	}
+	if strings.EqualFold(project.ProjectID, first.ProjectID) {
+		return model.WidyaAccount{URL: cfg.WidyaURL, Email: cfg.WidyaEmail, Password: cfg.WidyaPassword,
+			LoginCompany: cfg.WidyaLoginCompany}, nil
+	}
+	return model.WidyaAccount{}, nil
+}
 
 func main() {
 	cfg, err := config.Load()
@@ -83,16 +102,25 @@ func main() {
 	authService := service.NewAuthService(master, cfg.Timezone, now)
 	sessions := session.NewManager(cfg.SessionTTL, cfg.SessionCookieSecure)
 
+	// storeFor reaches one project's spreadsheet, the master when that is where
+	// its books are kept.
+	storeFor := func(ctx context.Context, spreadsheetID string) (repository.Store, error) {
+		if strings.EqualFold(strings.TrimSpace(spreadsheetID), cfg.GoogleSpreadsheetID) {
+			return master, nil
+		}
+		projectStore := repository.NewGoogleSheetsRepository(sheetsClient, spreadsheetID, cfg.Timezone)
+		if err := projectStore.EnsureSchema(ctx); err != nil {
+			return nil, err
+		}
+		return projectStore, nil
+	}
+
 	// Each project's services are built the first time that project is opened,
 	// over a store pointed at its own spreadsheet.
 	factory := func(ctx context.Context, project model.Project) (*handler.ProjectServices, error) {
-		store := repository.Store(master)
-		if !strings.EqualFold(strings.TrimSpace(project.SpreadsheetID), cfg.GoogleSpreadsheetID) {
-			projectStore := repository.NewGoogleSheetsRepository(sheetsClient, project.SpreadsheetID, cfg.Timezone)
-			if err := projectStore.EnsureSchema(ctx); err != nil {
-				return nil, err
-			}
-			store = projectStore
+		store, err := storeFor(ctx, project.SpreadsheetID)
+		if err != nil {
+			return nil, err
 		}
 		return buildProjectServices(store, projectService, project, cfg.Timezone, now)
 	}
@@ -164,35 +192,66 @@ func main() {
 		log.Printf("Scan MiMo nonaktif: MIMO_API_KEY belum diatur")
 	}
 
-	// Produksi New reads the weighbridge. Its tickets are kept in the first
-	// project's spreadsheet, the site the scanner stands at: the archive reads
-	// that sheet once, then asks the scanner only for today's tickets each
-	// interval, and yesterday's once a day. It is optional: without an account
-	// the page renders and says it has not been set up.
-	if cfg.WidyaURL != "" && cfg.WidyaEmail != "" && cfg.WidyaPassword != "" {
+	// Produksi New reads the weighbridge. Each project signs in to its own
+	// scanner with the account on its settings screen and keeps the tickets in
+	// its own spreadsheet. The account in the environment predates that: it
+	// stands in for the first project until that project is given one.
+	var secrets *secret.Box
+	if cfg.WidyaSecretKey != "" {
+		if secrets, err = secret.NewBox(cfg.WidyaSecretKey); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		log.Printf("WIDYA_SECRET_KEY belum diatur: akun Widya per project tidak bisa disimpan")
+	}
+	widyaClient := func(account model.WidyaAccount) *widya.Client {
 		// A page of tickets is a few megabytes; a slow link to the scanner needs
 		// longer than a dashboard read to bring one down.
-		client := widya.NewClient(cfg.WidyaURL, cfg.WidyaEmail, cfg.WidyaPassword,
-			cfg.WidyaLoginCompany, &http.Client{Timeout: 60 * time.Second})
-		store := repository.Store(master)
-		if !strings.EqualFold(strings.TrimSpace(first.SpreadsheetID), cfg.GoogleSpreadsheetID) {
-			projectStore := repository.NewGoogleSheetsRepository(sheetsClient, first.SpreadsheetID, cfg.Timezone)
-			schemaCtx, cancelSchema := context.WithTimeout(ctx, 60*time.Second)
-			err := projectStore.EnsureSchema(schemaCtx)
-			cancelSchema()
-			if err != nil {
-				log.Fatalf("siapkan sheet Widya di project %s: %v", first.Nama, err)
-			}
-			store = projectStore
-		}
-		archive := widya.NewArchive(client, store, cfg.Timezone, cfg.WidyaRefresh, now)
-		go archive.Run(ctx)
-		webServer.WithWidya(archive, first.Nama)
-		log.Printf("Widya Load Scanner aktif (%s, refresh %s, disimpan di project %s)",
-			cfg.WidyaURL, cfg.WidyaRefresh, first.Nama)
-	} else {
-		log.Printf("Widya Load Scanner nonaktif: WIDYA_URL, WIDYA_EMAIL atau WIDYA_PASSWORD belum diatur")
+		return widya.NewClient(account.URL, account.Email, account.Password, account.LoginCompany,
+			&http.Client{Timeout: 60 * time.Second})
 	}
+	projectService.WithWidya(secrets, func(ctx context.Context, account model.WidyaAccount) error {
+		_, err := widyaClient(account).Fetch(ctx)
+		return err
+	})
+	hub := widya.NewHub(ctx,
+		func(ctx context.Context, spreadsheetID string) (widya.TicketStore, error) {
+			return storeFor(ctx, spreadsheetID)
+		},
+		func(account model.WidyaAccount) widya.Source { return widyaClient(account) },
+		cfg.Timezone, cfg.WidyaRefresh, now)
+	applyWidya := func(ctx context.Context, project model.Project) error {
+		account, err := widyaAccountFor(projectService, project, first, cfg)
+		if err != nil {
+			return err
+		}
+		return hub.Apply(ctx, project.ProjectID, project.SpreadsheetID, account)
+	}
+	webServer.WithWidya(func(projectID string) handler.WidyaFeed {
+		// Returned through an if: a nil *Archive in the interface would not
+		// read as nil to the handler.
+		if archive := hub.For(projectID); archive != nil {
+			return archive
+		}
+		return nil
+	}, applyWidya)
+
+	widyaCtx, cancelWidya := context.WithTimeout(ctx, 2*time.Minute)
+	projects, err := projectService.List(widyaCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, project := range projects {
+		// One project's bad setting must not keep the app or the others down.
+		if err := applyWidya(widyaCtx, project); err != nil {
+			log.Printf("Widya project %s tidak dimulai: %v", project.Nama, err)
+			continue
+		}
+		if hub.For(project.ProjectID) != nil {
+			log.Printf("Widya Load Scanner aktif untuk project %s (refresh %s)", project.Nama, cfg.WidyaRefresh)
+		}
+	}
+	cancelWidya()
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
