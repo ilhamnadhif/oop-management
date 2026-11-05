@@ -169,10 +169,22 @@ func TestProduksiNewExportWritesASheetPerTable(t *testing.T) {
 		t.Fatalf("material shares = %q", shares)
 	}
 
+	// The last materials on the sheet are every vendor's together, under the
+	// total.
+	var total []string
+	for i, row := range details {
+		if len(row) > 1 && row[1] == "TOTAL" {
+			total = details[i+2]
+		}
+	}
+	if len(total) != 4 || total[1] != "41.5%" || total[2] != "40.7%" || total[3] != "17.8%" {
+		t.Fatalf("total material shares = %q", total)
+	}
+
 	// The per-load list titles the day and lists each load to the second.
 	loads, _ := file.GetRows("Detail Rit per Unit")
 	text := strings.Join(flatten(loads), "|")
-	for _, fragment := range []string{"Ritase 24 Oktober 2026 | Mid Day", "08:06:00", "TOTAL"} {
+	for _, fragment := range []string{"Ritase 24 Oktober 2026 | Mid Day (09:00.00 WIB)", "08:06:00", "TOTAL"} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("the per-load sheet is missing %q", fragment)
 		}

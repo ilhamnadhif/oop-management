@@ -448,7 +448,7 @@ func TestProduksiNewRekapHasItsOwnRange(t *testing.T) {
 		t.Fatalf("ranges = %s-%s and %s-%s", view.From, view.To, view.RekapFrom, view.RekapTo)
 	}
 	if view.RitaseTitle != "Summary Ritase 1 – 24 Oktober 2026" ||
-		view.RekapTitle != "Ritase Per Vendor dan Jenis DT, 18 Oktober 2026 | End of Day" {
+		view.RekapTitle != "Ritase Per Vendor dan Jenis DT, 18 Oktober 2026 | End of Day (09:00.00 WIB)" {
 		t.Fatalf("titles = %q and %q", view.RitaseTitle, view.RekapTitle)
 	}
 	// Nothing hauled on the 18th: the rekap is its total alone.
@@ -502,10 +502,10 @@ func TestProduksiNewTitlesTheRange(t *testing.T) {
 
 	for _, c := range []struct{ query, ritase, rekap string }{
 		{"?from=2026-10-24&to=2026-10-24&rekap_from=2026-10-24&rekap_to=2026-10-24",
-			"Summary Ritase 24 Oktober 2026 | Mid Day",
-			"Ritase Per Vendor dan Jenis DT, 24 Oktober 2026 | Mid Day"},
+			"Summary Ritase 24 Oktober 2026 | Mid Day (09:00.00 WIB)",
+			"Ritase Per Vendor dan Jenis DT, 24 Oktober 2026 | Mid Day (09:00.00 WIB)"},
 		{"?from=2026-10-23&to=2026-10-23&rekap_from=2026-10-01&rekap_to=2026-10-24",
-			"Summary Ritase 23 Oktober 2026 | End of Day",
+			"Summary Ritase 23 Oktober 2026 | End of Day (09:00.00 WIB)",
 			"Ritase Per Vendor dan Jenis DT, 1 – 24 Oktober 2026"},
 	} {
 		response, err := client.Get(testServer.URL + "/produksi-new/overview/data" + c.query)
@@ -525,8 +525,8 @@ func TestProduksiNewTitlesTheRange(t *testing.T) {
 
 	// Opened with nothing picked, both tables are today's Mid Day report.
 	page := fetchAuthedPage(t, client, testServer.URL+"/produksi-new/overview")
-	if !strings.Contains(page, `<h2 data-ritase-title>Summary Ritase 24 Oktober 2026 | Mid Day</h2>`) ||
-		!strings.Contains(page, `<h2 data-rekap-title>Ritase Per Vendor dan Jenis DT, 24 Oktober 2026 | Mid Day</h2>`) {
+	if !strings.Contains(page, `<h2 data-ritase-title>Summary Ritase 24 Oktober 2026 | Mid Day (09:00.00 WIB)</h2>`) ||
+		!strings.Contains(page, `<h2 data-rekap-title>Ritase Per Vendor dan Jenis DT, 24 Oktober 2026 | Mid Day (09:00.00 WIB)</h2>`) {
 		t.Fatal("the page does not open on today's Mid Day report")
 	}
 }
@@ -566,13 +566,13 @@ func TestMaterialSharesCoverTheVolume(t *testing.T) {
 		volumes map[string]float64
 		want    string
 	}{
-		{map[string]float64{"sirtu": 50, "tanah": 25, "pasir": 25}, "tanah:Tanah 25.0%,sirtu:Sirtu 50.0%,pasir:Pasir 25.0%,"},
+		{map[string]float64{"sirtu": 50, "tanah": 25, "pasir": 25}, "tanah:Tanah 25.0%,sirtu:Berbatu 50.0%,pasir:Pasir 25.0%,"},
 		{map[string]float64{"batu": 30, "": 10}, "batu:Batu 75.0%,:Lainnya 25.0%,"},
 		{map[string]float64{"pasir": 12}, "pasir:Pasir 100.0%,"},
-		{map[string]float64{"granula": 3, "sirtu": 1}, "sirtu:Sirtu 25.0%,granula:Granula 75.0%,"},
+		{map[string]float64{"granula": 3, "sirtu": 1}, "sirtu:Berbatu 25.0%,granula:Granula 75.0%,"},
 		// A third each rounds to 33.3%, 99.9% in all.
-		{map[string]float64{"tanah": 10, "sirtu": 10, "batu": 10}, "tanah:Tanah 33.4%,sirtu:Sirtu 33.3%,batu:Batu 33.3%,"},
-		{map[string]float64{"tanah": 1, "sirtu": 5}, "tanah:Tanah 16.7%,sirtu:Sirtu 83.3%,"},
+		{map[string]float64{"tanah": 10, "sirtu": 10, "batu": 10}, "tanah:Tanah 33.4%,sirtu:Berbatu 33.3%,batu:Batu 33.3%,"},
+		{map[string]float64{"tanah": 1, "sirtu": 5}, "tanah:Tanah 16.7%,sirtu:Berbatu 83.3%,"},
 		{nil, ""},
 		{map[string]float64{"sirtu": 0}, ""},
 	} {
@@ -592,7 +592,8 @@ func TestDetailTimesCarryTheirMaterial(t *testing.T) {
 	feed := widyaFixture()
 	feed.tickets = append(feed.tickets,
 		widya.Ticket{Vehicle: "B 2 A", Supplier: "MNP", Material: "granula", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 5, 20, 0, 0, time.UTC)},
-		widya.Ticket{Vehicle: "B 2 A", Supplier: "MNP", Material: "kerikil", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 6, 20, 0, 0, time.UTC)})
+		widya.Ticket{Vehicle: "B 2 A", Supplier: "MNP", Material: "kerikil", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 6, 20, 0, 0, time.UTC)},
+		widya.Ticket{Vehicle: "B 2 A", Supplier: "MNP", Material: "BERBATU", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 7, 20, 0, 0, time.UTC)})
 	testServer := newProduksiNewServer(t, feed)
 	client := loggedInClient(t, testServer)
 
@@ -611,8 +612,13 @@ func TestDetailTimesCarryTheirMaterial(t *testing.T) {
 		`<td class="ritase-value detail-time material-granula">12:20*</td>`,
 		// A material with no colour of its own is printed plain.
 		`<td class="ritase-value detail-time">13:20</td>`,
+		// A load the scanner calls berbatu is the same material as sirtu.
+		`<td class="ritase-value detail-time material-sirtu">14:20</td>`,
 		// The share takes the colour; the header stays plain.
 		`<th scope="col" class="ritase-value">Batu</th>`,
+		// Sirtu goes by Berbatu here; the sheet and the export keep sirtu.
+		`<th scope="col" class="ritase-value">Berbatu</th>`,
+		`<span class="material-sirtu">Berbatu</span>Rit bermuatan berbatu`,
 		`<td class="ritase-value material-batu">`,
 		`<th scope="col" class="ritase-value">Lainnya</th>`,
 	} {
@@ -650,19 +656,23 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 	for _, fragment := range []string{
 		// Each vendor is its own table: the title, then the header, then the
 		// vendor's line.
-		`<h3 class="detail-caption">Ritase HPP, 24 Oktober 2026 | Mid Day</h3> <div class="table-scroll"> <table class="ritase-table detail-table"> <colgroup>`,
+		`<h3 class="detail-caption">Ritase HPP, 24 Oktober 2026 | Mid Day (09:00.00 WIB)</h3> <div class="table-scroll"> <table class="ritase-table detail-table"> <colgroup>`,
 		`</thead> <tbody> <tr class="ritase-head"> <th scope="rowgroup" colspan="2">HPP</th>`,
-		`<h3 class="detail-caption">Ritase MNP, 24 Oktober 2026 | Mid Day</h3>`,
-		`<h3 class="detail-caption">Total semua vendor, 24 Oktober 2026 | Mid Day</h3>`,
+		`<h3 class="detail-caption">Ritase MNP, 24 Oktober 2026 | Mid Day (09:00.00 WIB)</h3>`,
+		`<h3 class="detail-caption">Total semua vendor, 24 Oktober 2026 | Mid Day (09:00.00 WIB)</h3>`,
 	} {
 		if !strings.Contains(today, fragment) {
 			t.Fatalf("today's detail is missing %q\n%s", fragment, today)
 		}
 	}
 	// Three tables: HPP, MNP and the total, each with its header.
-	// Each vendor closes with its materials; the total has none.
-	if materials := strings.Count(today, `class="table-scroll detail-material"`); materials != 2 {
-		t.Fatalf("today's detail has %d material tables, want 2\n%s", materials, today)
+	// Each vendor closes with its materials, and so does the total: HPP's
+	// 27.5 sirtu and 28 tanah with MNP's 12 batu.
+	if materials := strings.Count(today, `class="table-scroll detail-material"`); materials != 3 {
+		t.Fatalf("today's detail has %d material tables, want 3\n%s", materials, today)
+	}
+	if !strings.Contains(today, `<td class="ritase-value material-tanah">41.5%</td><td class="ritase-value material-sirtu">40.7%</td><td class="ritase-value material-batu">17.8%</td>`) {
+		t.Fatalf("the total's materials are not under it\n%s", today)
 	}
 	if !strings.Contains(today, `<tbody> <tr> <td class="ritase-value material-tanah">50.5%</td><td class="ritase-value material-sirtu">49.5%</td> </tr>`) {
 		t.Fatalf("HPP's materials are not under its table\n%s", today)
@@ -670,7 +680,7 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 	if headers := strings.Count(today, "<colgroup>"); headers != 3 {
 		t.Fatalf("today's detail has %d tables, want 3\n%s", headers, today)
 	}
-	if closed := read("?day=2026-10-23"); !strings.Contains(closed, ">Ritase MNP, 23 Oktober 2026 | End of Day<") {
+	if closed := read("?day=2026-10-23"); !strings.Contains(closed, ">Ritase MNP, 23 Oktober 2026 | End of Day (09:00.00 WIB)<") {
 		t.Fatalf("a closed day is not titled End of Day\n%s", closed)
 	}
 }

@@ -468,7 +468,7 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 				shares := make([]string, len(columns))
 				tones := make([]export.Tone, len(columns))
 				for index, material := range row.Materials {
-					names[1+index], shares[1+index] = material.Label, material.Percent
+					names[1+index], shares[1+index] = material.ExportLabel, material.Percent
 					tones[1+index] = materialTone(material.Key)
 				}
 				section.Rows = append(section.Rows,

@@ -25,7 +25,7 @@ type UnitDetail struct {
 	Times []string
 	// RestLoads marks which of Times fall in the midday break.
 	RestLoads []bool
-	// Materials are what each of Times carried, in lower case; empty for a
+	// Materials are what each of Times carried, by materialKey; empty for a
 	// ticket with no material.
 	Materials []string
 	// IntervalMinutes is the average gap between loads; -1 with one load.
@@ -42,8 +42,8 @@ type VendorDetail struct {
 	Volume    float64
 	FirstScan string
 	LastScan  string
-	// MaterialVolumes is what the vendor hauled, by material name in lower
-	// case. A ticket with no material counts under "".
+	// MaterialVolumes is what the vendor hauled, by materialKey. A ticket with
+	// no material counts under "".
 	MaterialVolumes map[string]float64
 }
 
@@ -92,7 +92,7 @@ func DetailUnits(tickets []Ticket, day string, location *time.Location) UnitDeta
 			perVendor[vendor] = make(map[string]*truckDay)
 			perMaterial[vendor] = make(map[string]float64)
 		}
-		material := strings.ToLower(strings.TrimSpace(ticket.Material))
+		material := materialKey(ticket.Material)
 		perMaterial[vendor][material] += ticket.Volume
 		truck := perVendor[vendor][ticket.Vehicle]
 		if truck == nil {
@@ -184,6 +184,16 @@ func DetailUnits(tickets []Ticket, day string, location *time.Location) UnitDeta
 		return strings.ToLower(report.Vendors[i].Name) < strings.ToLower(report.Vendors[j].Name)
 	})
 	return report
+}
+
+// materialKey is the name a material is counted under: lower case, with berbatu
+// counted as sirtu, since the scanner uses both names for the same material.
+func materialKey(name string) string {
+	key := strings.ToLower(strings.TrimSpace(name))
+	if key == "berbatu" {
+		return "sirtu"
+	}
+	return key
 }
 
 // classify names a truck's class from its average load.

@@ -108,11 +108,13 @@ type DetailTime struct {
 }
 
 // DetailMaterial is one material's share of a vendor's volume. Key colours it,
-// and is empty for Lainnya, which has no colour.
+// and is empty for Lainnya, which has no colour. Label is its name on the page
+// and ExportLabel its name in the export.
 type DetailMaterial struct {
-	Key     string
-	Label   string
-	Percent string
+	Key         string
+	Label       string
+	ExportLabel string
+	Percent     string
 }
 
 // DetailRow is one line of the unit detail: a vendor heading, one of its
@@ -148,8 +150,8 @@ type DetailRow struct {
 type DetailBlock struct {
 	Caption string
 	Rows    []DetailRow
-	// Materials is the vendor's volume by material, under its table. The
-	// total has none.
+	// Materials is the volume by material under the table: the vendor's, or
+	// on the total every vendor's together.
 	Materials []DetailMaterial
 }
 
@@ -484,14 +486,16 @@ func (s *Server) detailDay(value string) string {
 // detailMaterials are the materials the site hauls, in the order the report
 // lists them.
 var detailMaterials = []struct {
-	Key, Label string
-	Tone       export.Tone
+	Key, Label, ExportLabel string
+	Tone                    export.Tone
 }{
-	{"tanah", "Tanah", export.ToneTanah},
-	{"sirtu", "Sirtu", export.ToneSirtu},
-	{"batu", "Batu", export.ToneBatu},
-	{"pasir", "Pasir", export.TonePasir},
-	{"granula", "Granula", export.ToneGranula},
+	{"tanah", "Tanah", "Tanah", export.ToneTanah},
+	// The overview calls sirtu Berbatu. The scanner, the sheet and the export
+	// keep sirtu.
+	{"sirtu", "Berbatu", "Sirtu", export.ToneSirtu},
+	{"batu", "Batu", "Batu", export.ToneBatu},
+	{"pasir", "Pasir", "Pasir", export.TonePasir},
+	{"granula", "Granula", "Granula", export.ToneGranula},
 }
 
 // knownMaterial returns key when it is one of detailMaterials, else nothing.
@@ -534,12 +538,12 @@ func materialShares(volumes map[string]float64) []DetailMaterial {
 		volume := volumes[material.Key]
 		rest -= volume
 		if volume > 0 {
-			shares = append(shares, DetailMaterial{Key: material.Key, Label: material.Label})
+			shares = append(shares, DetailMaterial{Key: material.Key, Label: material.Label, ExportLabel: material.ExportLabel})
 			parts = append(parts, volume)
 		}
 	}
 	if rest > 0.005 {
-		shares = append(shares, DetailMaterial{Label: "Lainnya"})
+		shares = append(shares, DetailMaterial{Label: "Lainnya", ExportLabel: "Lainnya"})
 		parts = append(parts, rest)
 	}
 
@@ -604,9 +608,13 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		return formatCount(int(math.Round(float64(total) / float64(counted))))
 	}
 	var everyUnit []widya.UnitDetail
+	everyMaterial := make(map[string]float64)
 	number := 0
 	for _, vendor := range report.Vendors {
 		everyUnit = append(everyUnit, vendor.Units...)
+		for material, volume := range vendor.MaterialVolumes {
+			everyMaterial[material] += volume
+		}
 		// Each vendor's trucks are headed by a title naming the vendor and the
 		// day, so a block cut out of the table still says what it is.
 		caption := "Ritase " + vendor.Name + ", " + dayTitle
@@ -654,7 +662,12 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		Avg: avg(report.Volume, report.Ritase), Porsi: porsi(report.Volume),
 		Note: "Jam operasi " + operasi, Interval: interval(everyUnit),
 	})
-	view.Blocks = append(view.Blocks, DetailBlock{Caption: "Total semua vendor, " + dayTitle, Rows: view.Rows[len(view.Rows)-1:]})
+	materials := materialShares(everyMaterial)
+	view.Blocks = append(view.Blocks, DetailBlock{Caption: "Total semua vendor, " + dayTitle,
+		Rows: view.Rows[len(view.Rows)-1 : len(view.Rows) : len(view.Rows)], Materials: materials})
+	if len(materials) > 0 {
+		view.Rows = append(view.Rows, DetailRow{Materials: materials})
+	}
 	return view
 }
 
@@ -741,14 +754,16 @@ func dayPhase(day string, now time.Time) string {
 }
 
 // rangeTitle heads a range table the way the site titles its reports. One
-// day is named with its phase, see dayPhase; a longer range is named by its
+// day is named with its phase, see dayPhase, and the moment the report was
+// read, since a phase says little without it; a longer range is named by its
 // ends alone.
 func (s *Server) rangeTitle(prefix, from, to string) string {
 	title := prefix + " " + rangeLabel(from, to, s.location)
 	if from != to {
 		return title
 	}
-	return title + " | " + dayPhase(from, s.now().In(s.location))
+	now := s.now().In(s.location)
+	return title + " | " + dayPhase(from, now) + now.Format(" (15:04.05 MST)")
 }
 
 // rangeLabel heads the summary: one date when the range is a day, else both

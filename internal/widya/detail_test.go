@@ -8,7 +8,7 @@ func TestDetailUnitsListsEachTruck(t *testing.T) {
 	day := "2026-10-18"
 	report := DetailUnits([]Ticket{
 		{Vehicle: "AB 8094 ZR", Supplier: "HPP", Material: "Sirtu", Volume: 27, ScanFullAt: at(day, "11:31")},
-		{Vehicle: "AB 8094 ZR", Supplier: "HPP", Material: " sirtu ", Volume: 28, ScanFullAt: at(day, "08:06")},
+		{Vehicle: "AB 8094 ZR", Supplier: "HPP", Material: " BERBATU ", Volume: 28, ScanFullAt: at(day, "08:06")},
 		{Vehicle: "AB 8094 ZR", Supplier: "HPP", Volume: 28, ScanFullAt: at(day, "12:20")},
 		{Vehicle: "AB 8091 ZR", Supplier: "HPP", Volume: 26.77, ScanFullAt: at(day, "08:34")},
 		{Vehicle: "B 1 A", Supplier: "MNP", Volume: 12, ScanFullAt: at(day, "16:36")},
@@ -22,13 +22,17 @@ func TestDetailUnitsListsEachTruck(t *testing.T) {
 	if len(report.Vendors) != 2 || report.Vendors[0].Name != "HPP" || report.Vendors[0].Ritase != 4 {
 		t.Fatalf("vendors = %+v", report.Vendors)
 	}
-	// A material is counted whatever its case; no material counts under "".
+	// A material is counted whatever its case, berbatu counts as sirtu, and
+	// no material counts under "".
 	if got := report.Vendors[0].MaterialVolumes; len(got) != 2 || got["sirtu"] != 55 || round2(got[""]) != 54.77 {
 		t.Fatalf("materials = %v", got)
 	}
 	busiest := report.Vendors[0].Units[0]
 	if busiest.Vehicle != "AB 8094 ZR" || busiest.Class != "DTT" || busiest.Volume != 83 {
 		t.Fatalf("busiest = %+v", busiest)
+	}
+	if got := busiest.Materials; len(got) != 3 || got[0] != "sirtu" || got[1] != "sirtu" {
+		t.Fatalf("load materials = %v", got)
 	}
 	if got := busiest.Times; len(got) != 3 || got[0] != "08:06" || got[1] != "11:31" || got[2] != "12:20" {
 		t.Fatalf("times = %v", got)
