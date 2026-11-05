@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,16 +97,26 @@ type RekapView struct {
 	Rows      []RekapRow
 }
 
-// DetailTime is one load's time in the per-rit columns. Rest marks a load
-// scanned during the midday break; an empty Clock pads a truck with fewer
+// DetailTime is one load's time in the per-rit columns. Material is the key of
+// what it carried, empty when that is not one of detailMaterials. Rest marks a
+// load scanned during the midday break; an empty Clock pads a truck with fewer
 // loads than the busiest.
 type DetailTime struct {
-	Clock string
-	Rest  bool
+	Clock    string
+	Rest     bool
+	Material string
+}
+
+// DetailMaterial is one material's share of a vendor's volume. Key colours it,
+// and is empty for Lainnya, which has no colour.
+type DetailMaterial struct {
+	Key     string
+	Label   string
+	Percent string
 }
 
 // DetailRow is one line of the unit detail: a vendor heading, one of its
-// trucks, or the total at the foot.
+// trucks, its material breakdown, or the total at the foot.
 type DetailRow struct {
 	// Caption is the title line over a vendor: "Ritase MNP, 27 Oktober 2026 |
 	// Mid Day". It spans the table and carries only Label.
@@ -127,6 +138,9 @@ type DetailRow struct {
 	Interval string
 	// Single marks a truck that made one load all day.
 	Single bool
+	// Materials, when set, makes this the line closing a vendor: its volume by
+	// material, and nothing else.
+	Materials []DetailMaterial
 }
 
 // DetailBlock is one table of the page: a vendor and its trucks, or the
@@ -134,6 +148,9 @@ type DetailRow struct {
 type DetailBlock struct {
 	Caption string
 	Rows    []DetailRow
+	// Materials is the vendor's volume by material, under its table. The
+	// total has none.
+	Materials []DetailMaterial
 }
 
 // DetailView is one day, vendor by vendor and truck by truck.
@@ -464,6 +481,91 @@ func (s *Server) detailDay(value string) string {
 // detailView lays one day out like the site's detail sheet: a heading line per
 // vendor with its first and last load, its trucks under it with the time of
 // every load, and the total at the foot.
+// detailMaterials are the materials the site hauls, in the order the report
+// lists them.
+var detailMaterials = []struct {
+	Key, Label string
+	Tone       export.Tone
+}{
+	{"tanah", "Tanah", export.ToneTanah},
+	{"sirtu", "Sirtu", export.ToneSirtu},
+	{"batu", "Batu", export.ToneBatu},
+	{"pasir", "Pasir", export.TonePasir},
+	{"granula", "Granula", export.ToneGranula},
+}
+
+// knownMaterial returns key when it is one of detailMaterials, else nothing.
+func knownMaterial(key string) string {
+	for _, material := range detailMaterials {
+		if material.Key == key {
+			return key
+		}
+	}
+	return ""
+}
+
+// materialTone is the colour a material is printed in.
+func materialTone(key string) export.Tone {
+	for _, material := range detailMaterials {
+		if material.Key == key {
+			return material.Tone
+		}
+	}
+	return export.ToneNone
+}
+
+// materialShares splits a vendor's volume by material, listing only what it
+// hauled. Anything the scanner reports beyond the known materials falls under
+// Lainnya. Shares are rounded so they always add up to exactly 100.0%, which
+// plain rounding would not: three equal loads would read 99.9%. A vendor with
+// no volume has no shares.
+func materialShares(volumes map[string]float64) []DetailMaterial {
+	total := 0.0
+	for _, volume := range volumes {
+		total += volume
+	}
+	if total <= 0 {
+		return nil
+	}
+	rest := total
+	shares := make([]DetailMaterial, 0, len(detailMaterials)+1)
+	parts := make([]float64, 0, len(detailMaterials)+1)
+	for _, material := range detailMaterials {
+		volume := volumes[material.Key]
+		rest -= volume
+		if volume > 0 {
+			shares = append(shares, DetailMaterial{Key: material.Key, Label: material.Label})
+			parts = append(parts, volume)
+		}
+	}
+	if rest > 0.005 {
+		shares = append(shares, DetailMaterial{Label: "Lainnya"})
+		parts = append(parts, rest)
+	}
+
+	// Counted in tenths of a percent: each share rounds down, then the tenths
+	// left over go to the shares that lost the most.
+	tenths := make([]int, len(parts))
+	lost := make([]float64, len(parts))
+	order := make([]int, len(parts))
+	left := 1000
+	for index, volume := range parts {
+		exact := volume / total * 1000
+		tenths[index] = int(math.Floor(exact))
+		lost[index] = exact - float64(tenths[index])
+		order[index] = index
+		left -= tenths[index]
+	}
+	sort.SliceStable(order, func(i, j int) bool { return lost[order[i]] > lost[order[j]] })
+	for index := 0; index < left; index++ {
+		tenths[order[index%len(order)]]++
+	}
+	for index := range shares {
+		shares[index].Percent = fmt.Sprintf("%d.%d%%", tenths[index]/10, tenths[index]%10)
+	}
+	return shares
+}
+
 func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle string) *DetailView {
 	dayTitle = strings.TrimSpace(dayTitle)
 	view := &DetailView{DateLabel: rangeLabel(report.Day, report.Day, location)}
@@ -530,13 +632,17 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 			for column := 0; column < columns; column++ {
 				var cell DetailTime
 				if column < len(unit.Times) {
-					cell = DetailTime{Clock: unit.Times[column], Rest: unit.RestLoads[column]}
+					cell = DetailTime{Clock: unit.Times[column], Rest: unit.RestLoads[column], Material: knownMaterial(unit.Materials[column])}
 				}
 				row.Times = append(row.Times, cell)
 			}
 			view.Rows = append(view.Rows, row)
 		}
-		view.Blocks = append(view.Blocks, DetailBlock{Caption: caption, Rows: view.Rows[start:len(view.Rows):len(view.Rows)]})
+		materials := materialShares(vendor.MaterialVolumes)
+		view.Blocks = append(view.Blocks, DetailBlock{Caption: caption, Rows: view.Rows[start:len(view.Rows):len(view.Rows)], Materials: materials})
+		if len(materials) > 0 {
+			view.Rows = append(view.Rows, DetailRow{Materials: materials})
+		}
 	}
 	operasi := "-"
 	if report.Ritase > 0 {
@@ -588,7 +694,7 @@ func ritView(report widya.UnitDetailReport, location *time.Location) *RitView {
 const ritaseRangeDays = 62
 
 // ritaseRange settles the range the summary covers. Nothing given is today
-// alone, the Mid Day report the page is opened for; a start that is not a date
+// alone, the report the page is opened for; a start that is not a date
 // falls back to the end's day; the end never runs past today, a range given
 // backwards is turned round, and a range longer than the cap keeps its end and
 // loses its start.
@@ -616,19 +722,33 @@ func (s *Server) ritaseRange(from, to string) (string, string) {
 	return start.Format("2006-01-02"), end.Format("2006-01-02")
 }
 
+// Today's report reads Mid Day from midDayStartHour up to endOfDayHour, on the
+// site's clock.
+const (
+	midDayStartHour = 5
+	endOfDayHour    = 16
+)
+
+// dayPhase says how far along a day's report is at now, which must be in the
+// site's location. Only today can be Mid Day, and only during working hours:
+// from four in the afternoon until five the next morning today already reads
+// End of Day, as does every day before it.
+func dayPhase(day string, now time.Time) string {
+	if day == now.Format("2006-01-02") && now.Hour() >= midDayStartHour && now.Hour() < endOfDayHour {
+		return "Mid Day"
+	}
+	return "End of Day"
+}
+
 // rangeTitle heads a range table the way the site titles its reports. One
-// day is named with whether it is still going - "Mid Day" for today, "End of
-// Day" for a day that has closed - since a report of today is a report of a
-// day not over; a longer range is named by its ends alone.
+// day is named with its phase, see dayPhase; a longer range is named by its
+// ends alone.
 func (s *Server) rangeTitle(prefix, from, to string) string {
 	title := prefix + " " + rangeLabel(from, to, s.location)
 	if from != to {
 		return title
 	}
-	if from == s.now().In(s.location).Format("2006-01-02") {
-		return title + " | Mid Day"
-	}
-	return title + " | End of Day"
+	return title + " | " + dayPhase(from, s.now().In(s.location))
 }
 
 // rangeLabel heads the summary: one date when the range is a day, else both

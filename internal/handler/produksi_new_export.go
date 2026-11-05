@@ -461,6 +461,19 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 			switch {
 			case row.Caption:
 				section.Rows = append(section.Rows, export.ReportRow{Kind: export.RowCaption, Cells: []string{row.Label}})
+			case row.Materials != nil:
+				// Under the vendor, from its unit names rightwards: the
+				// materials, then each one's share.
+				names := make([]string, len(columns))
+				shares := make([]string, len(columns))
+				tones := make([]export.Tone, len(columns))
+				for index, material := range row.Materials {
+					names[1+index], shares[1+index] = material.Label, material.Percent
+					tones[1+index] = materialTone(material.Key)
+				}
+				section.Rows = append(section.Rows,
+					export.ReportRow{Kind: export.RowSub, Cells: names},
+					export.ReportRow{Cells: shares, Tones: tones})
 			case row.Vendor, row.Total:
 				label := row.Label
 				kind := export.RowGroup
@@ -482,21 +495,24 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 					clock := ""
 					if column < len(row.Times) {
 						clock = row.Times[column].Clock
+						if row.Times[column].Rest {
+							clock += "*"
+						}
 					}
 					cells = append(cells, clock)
 					values = append(values, clock)
 				}
 				cells = append(cells, row.Interval)
 				values = append(values, countValue(row.Interval))
-				// A load in the midday break is amber, a truck with one load
-				// all day has its count in red, as on the page.
+				// A load takes its material's colour, a truck with one load all
+				// day has its count in red, as on the page.
 				tones := make([]export.Tone, len(cells))
 				if row.Single {
 					tones[3] = export.ToneBadText
 				}
 				for column, cell := range row.Times {
-					if cell.Rest && 7+column < len(tones) {
-						tones[7+column] = export.TonePeak
+					if 7+column < len(tones) {
+						tones[7+column] = materialTone(cell.Material)
 					}
 				}
 				section.Rows = append(section.Rows, export.ReportRow{Cells: cells, Values: values, Tones: tones})
@@ -517,7 +533,12 @@ func (s *Server) detailSection(days []widya.UnitDetailReport, maxRit int, from, 
 		})
 	}
 	section.Legend = []export.LegendItem{
-		{Tone: export.TonePeak, Label: "Kuning", Text: "Rit yang tercatat saat Rest 1 (12:00–13:00)"},
+		{Tone: export.ToneTanah, Label: "Tanah", Text: "Rit bermuatan tanah"},
+		{Tone: export.ToneSirtu, Label: "Sirtu", Text: "Rit bermuatan sirtu"},
+		{Tone: export.ToneBatu, Label: "Batu", Text: "Rit bermuatan batu"},
+		{Tone: export.TonePasir, Label: "Pasir", Text: "Rit bermuatan pasir"},
+		{Tone: export.ToneGranula, Label: "Granula", Text: "Rit bermuatan granula"},
+		{Tone: export.TonePlain, Label: "12:30*", Text: "Rit yang tercatat saat Rest 1 (12:00–13:00)"},
 		{Tone: export.ToneBad, Label: "Merah", Text: "Unit dengan hanya 1 rit"},
 	}
 	section.Notes = []string{

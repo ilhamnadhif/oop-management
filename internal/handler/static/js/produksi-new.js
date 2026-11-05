@@ -45,8 +45,8 @@
         if (cell) cell.textContent = stat.value;
       }
     }
-    // The titles name the range the server settled, and whether a single day
-    // is still going, which changes at midnight without anyone touching a date.
+    // The titles name the range the server settled, and a single day's phase,
+    // which follows the clock without anyone touching a date.
     if (ritaseTitle && view.ritaseTitle) ritaseTitle.textContent = view.ritaseTitle;
     if (rekapTitle && view.rekapTitle) rekapTitle.textContent = view.rekapTitle;
     // The fragment is the server's own template, escaped there.

@@ -25,6 +25,9 @@ type UnitDetail struct {
 	Times []string
 	// RestLoads marks which of Times fall in the midday break.
 	RestLoads []bool
+	// Materials are what each of Times carried, in lower case; empty for a
+	// ticket with no material.
+	Materials []string
 	// IntervalMinutes is the average gap between loads; -1 with one load.
 	IntervalMinutes int
 	// Loads are the loads themselves, in the order of Times.
@@ -39,6 +42,9 @@ type VendorDetail struct {
 	Volume    float64
 	FirstScan string
 	LastScan  string
+	// MaterialVolumes is what the vendor hauled, by material name in lower
+	// case. A ticket with no material counts under "".
+	MaterialVolumes map[string]float64
 }
 
 // UnitDetailReport is one day, vendor by vendor and truck by truck.
@@ -62,14 +68,16 @@ type UnitDetailReport struct {
 func DetailUnits(tickets []Ticket, day string, location *time.Location) UnitDetailReport {
 	report := UnitDetailReport{Day: day, RestStart: rest1Start, RestEnd: rest1End}
 	type load struct {
-		at     time.Time
-		volume float64
+		at       time.Time
+		volume   float64
+		material string
 	}
 	type truckDay struct {
 		loads  []load
 		volume float64
 	}
 	perVendor := make(map[string]map[string]*truckDay)
+	perMaterial := make(map[string]map[string]float64)
 	perVehicle := make(map[string][]float64)
 	for _, ticket := range tickets {
 		scanned := ticket.ScanFullAt.In(location)
@@ -82,13 +90,16 @@ func DetailUnits(tickets []Ticket, day string, location *time.Location) UnitDeta
 		}
 		if perVendor[vendor] == nil {
 			perVendor[vendor] = make(map[string]*truckDay)
+			perMaterial[vendor] = make(map[string]float64)
 		}
+		material := strings.ToLower(strings.TrimSpace(ticket.Material))
+		perMaterial[vendor][material] += ticket.Volume
 		truck := perVendor[vendor][ticket.Vehicle]
 		if truck == nil {
 			truck = &truckDay{}
 			perVendor[vendor][ticket.Vehicle] = truck
 		}
-		truck.loads = append(truck.loads, load{at: scanned, volume: ticket.Volume})
+		truck.loads = append(truck.loads, load{at: scanned, volume: ticket.Volume, material: material})
 		truck.volume += ticket.Volume
 		perVehicle[ticket.Vehicle] = append(perVehicle[ticket.Vehicle], ticket.Volume)
 		report.Ritase++
@@ -107,7 +118,7 @@ func DetailUnits(tickets []Ticket, day string, location *time.Location) UnitDeta
 	}
 
 	for name, trucks := range perVendor {
-		vendor := VendorDetail{Name: name}
+		vendor := VendorDetail{Name: name, MaterialVolumes: perMaterial[name]}
 		var first, last time.Time
 		for vehicle, truck := range trucks {
 			sort.Slice(truck.loads, func(i, j int) bool { return truck.loads[i].at.Before(truck.loads[j].at) })
@@ -126,6 +137,7 @@ func DetailUnits(tickets []Ticket, day string, location *time.Location) UnitDeta
 				unit.Loads = append(unit.Loads, LoadDetail{Clock: scanned.Format("15:04:05"), Volume: round2(truck.loads[i].volume)})
 				unit.Times = append(unit.Times, scanned.Format("15:04"))
 				unit.RestLoads = append(unit.RestLoads, scanned.Hour() >= rest1Start && scanned.Hour() < rest1End)
+				unit.Materials = append(unit.Materials, truck.loads[i].material)
 			}
 			if unit.Ritase > 1 {
 				span := times[len(times)-1].Sub(times[0]).Minutes()

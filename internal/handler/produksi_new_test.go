@@ -102,9 +102,9 @@ func widyaFixture() *stubWidyaFeed {
 			Operators: 10, Units: 3, Users: 4},
 		FetchedAt: time.Date(2026, 10, 24, 2, 0, 0, 0, time.UTC),
 	}, tickets: []widya.Ticket{
-		{Vehicle: "B 1 A", Supplier: "HPP", Volume: 27.5, ScanFullAt: time.Date(2026, 10, 24, 1, 6, 0, 0, time.UTC)},
-		{Vehicle: "B 1 A", Supplier: "HPP", Volume: 28, ScanFullAt: time.Date(2026, 10, 24, 2, 10, 0, 0, time.UTC)},
-		{Vehicle: "B 2 A", Supplier: "MNP", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 2, 40, 0, 0, time.UTC)},
+		{Vehicle: "B 1 A", Supplier: "HPP", Material: "sirtu", Volume: 27.5, ScanFullAt: time.Date(2026, 10, 24, 1, 6, 0, 0, time.UTC)},
+		{Vehicle: "B 1 A", Supplier: "HPP", Material: "tanah", Volume: 28, ScanFullAt: time.Date(2026, 10, 24, 2, 10, 0, 0, time.UTC)},
+		{Vehicle: "B 2 A", Supplier: "MNP", Material: "batu", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 2, 40, 0, 0, time.UTC)},
 	}}
 }
 
@@ -342,10 +342,10 @@ func TestProduksiNewDetailsEachTruckForOneDay(t *testing.T) {
 		`>Jam operasi 08:06 – 12:15</td> <td class="ritase-value detail-avg">125<span>Avg total</span></td>`,
 		// B 1 A: 08:06, 09:10 and 12:15, the last in the break; 249 minutes
 		// over two gaps rounds to 125.
-		`<td class="ritase-value detail-time">08:06</td><td class="ritase-value detail-time">09:10</td><td class="ritase-value detail-time tone-peak">12:15</td> <td class="ritase-value">125</td>`,
+		`<td class="ritase-value detail-time material-sirtu">08:06</td><td class="ritase-value detail-time material-tanah">09:10</td><td class="ritase-value detail-time">12:15*</td> <td class="ritase-value">125</td>`,
 		// B 2 A made one load: flagged, two empty rit cells, no interval.
 		`<td class="ritase-value tone-bad-text">1</td>`,
-		`<td class="ritase-value detail-time">09:40</td><td class="ritase-value detail-time"></td><td class="ritase-value detail-time"></td> <td class="ritase-value">-</td>`,
+		`<td class="ritase-value detail-time material-batu">09:40</td><td class="ritase-value detail-time"></td><td class="ritase-value detail-time"></td> <td class="ritase-value">-</td>`,
 	} {
 		if !strings.Contains(compact, fragment) {
 			t.Fatalf("the detail is missing %q\n%s", fragment, compact)
@@ -494,8 +494,8 @@ func TestProduksiNewBelongsToOneProject(t *testing.T) {
 }
 
 // The two range tables are titled with their range. A single day says whether
-// it is still going: today is Mid Day, a day that has closed is End of Day,
-// and a longer range carries no such label.
+// it is still going: today in working hours is Mid Day, a day that has closed
+// is End of Day, and a longer range carries no such label.
 func TestProduksiNewTitlesTheRange(t *testing.T) {
 	testServer := newProduksiNewServer(t, widyaFixture())
 	client := loggedInClient(t, testServer)
@@ -531,9 +531,100 @@ func TestProduksiNewTitlesTheRange(t *testing.T) {
 	}
 }
 
+// Today reads Mid Day from 05:00 until just before 16:00 by the real clock, and
+// End of Day the rest of the time. A day before today is always End of Day.
+func TestDayPhaseFollowsTheClock(t *testing.T) {
+	location := time.FixedZone("WIB", 7*60*60)
+	at := func(hour, minute int) time.Time {
+		return time.Date(2026, 11, 5, hour, minute, 0, 0, location)
+	}
+	for _, c := range []struct {
+		day  string
+		now  time.Time
+		want string
+	}{
+		{"2026-11-05", at(0, 0), "End of Day"},
+		{"2026-11-05", at(4, 59), "End of Day"},
+		{"2026-11-05", at(5, 0), "Mid Day"},
+		{"2026-11-05", at(15, 59), "Mid Day"},
+		{"2026-11-05", at(16, 0), "End of Day"},
+		{"2026-11-05", at(23, 59), "End of Day"},
+		{"2026-11-04", at(9, 0), "End of Day"},
+		{"2026-11-04", at(2, 0), "End of Day"},
+	} {
+		if got := dayPhase(c.day, c.now); got != c.want {
+			t.Fatalf("%s at %s = %q, want %q", c.day, c.now.Format("15:04"), got, c.want)
+		}
+	}
+}
+
+// A vendor lists only the materials it hauled, in the report's order, and
+// whatever the scanner reports beyond them falls under Lainnya. The shares add
+// up to exactly 100.0%, even where plain rounding would not.
+func TestMaterialSharesCoverTheVolume(t *testing.T) {
+	for _, c := range []struct {
+		volumes map[string]float64
+		want    string
+	}{
+		{map[string]float64{"sirtu": 50, "tanah": 25, "pasir": 25}, "tanah:Tanah 25.0%,sirtu:Sirtu 50.0%,pasir:Pasir 25.0%,"},
+		{map[string]float64{"batu": 30, "": 10}, "batu:Batu 75.0%,:Lainnya 25.0%,"},
+		{map[string]float64{"pasir": 12}, "pasir:Pasir 100.0%,"},
+		{map[string]float64{"granula": 3, "sirtu": 1}, "sirtu:Sirtu 25.0%,granula:Granula 75.0%,"},
+		// A third each rounds to 33.3%, 99.9% in all.
+		{map[string]float64{"tanah": 10, "sirtu": 10, "batu": 10}, "tanah:Tanah 33.4%,sirtu:Sirtu 33.3%,batu:Batu 33.3%,"},
+		{map[string]float64{"tanah": 1, "sirtu": 5}, "tanah:Tanah 16.7%,sirtu:Sirtu 83.3%,"},
+		{nil, ""},
+		{map[string]float64{"sirtu": 0}, ""},
+	} {
+		got := ""
+		for _, share := range materialShares(c.volumes) {
+			got += share.Key + ":" + share.Label + " " + share.Percent + ","
+		}
+		if got != c.want {
+			t.Fatalf("shares of %v = %q, want %q", c.volumes, got, c.want)
+		}
+	}
+}
+
+// A load's time is coloured by what it carried, and one in the midday break is
+// starred: the star says so now that yellow means sirtu.
+func TestDetailTimesCarryTheirMaterial(t *testing.T) {
+	feed := widyaFixture()
+	feed.tickets = append(feed.tickets,
+		widya.Ticket{Vehicle: "B 2 A", Supplier: "MNP", Material: "granula", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 5, 20, 0, 0, time.UTC)},
+		widya.Ticket{Vehicle: "B 2 A", Supplier: "MNP", Material: "kerikil", Volume: 12, ScanFullAt: time.Date(2026, 10, 24, 6, 20, 0, 0, time.UTC)})
+	testServer := newProduksiNewServer(t, feed)
+	client := loggedInClient(t, testServer)
+
+	response, err := client.Get(testServer.URL + "/produksi-new/overview/data")
+	if err != nil {
+		t.Fatalf("get data: %v", err)
+	}
+	defer response.Body.Close()
+	var view ProduksiNewView
+	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, fragment := range []string{
+		`<td class="ritase-value detail-time material-sirtu">08:06</td>`,
+		`<td class="ritase-value detail-time material-tanah">09:10</td>`,
+		`<td class="ritase-value detail-time material-granula">12:20*</td>`,
+		// A material with no colour of its own is printed plain.
+		`<td class="ritase-value detail-time">13:20</td>`,
+		// The share takes the colour; the header stays plain.
+		`<th scope="col" class="ritase-value">Batu</th>`,
+		`<td class="ritase-value material-batu">`,
+		`<th scope="col" class="ritase-value">Lainnya</th>`,
+	} {
+		if !strings.Contains(view.DetailHTML, fragment) {
+			t.Fatalf("the detail is missing %q\n%s", fragment, view.DetailHTML)
+		}
+	}
+}
+
 // Each vendor in the unit detail is headed by a title naming it and the day,
-// Mid Day for today and End of Day for a day that has closed, spanning the
-// whole table.
+// Mid Day for today in working hours and End of Day for a day that has closed,
+// spanning the whole table.
 func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 	feed := widyaFixture()
 	// One load on the 23rd, so a closed day has a vendor to title.
@@ -569,7 +660,14 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 		}
 	}
 	// Three tables: HPP, MNP and the total, each with its header.
-	if headers := strings.Count(today, "<thead>"); headers != 3 {
+	// Each vendor closes with its materials; the total has none.
+	if materials := strings.Count(today, `class="table-scroll detail-material"`); materials != 2 {
+		t.Fatalf("today's detail has %d material tables, want 2\n%s", materials, today)
+	}
+	if !strings.Contains(today, `<tbody> <tr> <td class="ritase-value material-tanah">50.5%</td><td class="ritase-value material-sirtu">49.5%</td> </tr>`) {
+		t.Fatalf("HPP's materials are not under its table\n%s", today)
+	}
+	if headers := strings.Count(today, "<colgroup>"); headers != 3 {
 		t.Fatalf("today's detail has %d tables, want 3\n%s", headers, today)
 	}
 	if closed := read("?day=2026-10-23"); !strings.Contains(closed, ">Ritase MNP, 23 Oktober 2026 | End of Day<") {

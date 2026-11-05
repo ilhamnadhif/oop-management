@@ -371,7 +371,7 @@
             <td class="ritase-value">{{.Volume}}</td>
             <td class="ritase-value">{{.Avg}}</td>
             <td class="ritase-value">{{.Porsi}}</td>
-            {{range .Times}}<td class="ritase-value detail-time{{if .Rest}} tone-peak{{end}}">{{.Clock}}</td>{{end}}
+            {{range .Times}}<td class="ritase-value detail-time{{with .Material}} material-{{.}}{{end}}">{{.Clock}}{{if .Rest}}*{{end}}</td>{{end}}
             <td class="ritase-value">{{.Interval}}</td>
           </tr>
           {{end}}
@@ -379,12 +379,33 @@
         </tbody>
       </table>
     </div>
+    {{with .Materials}}
+    <div class="table-scroll detail-material">
+      <table class="ritase-table">
+        <thead>
+          <tr>
+            {{range .}}<th scope="col" class="ritase-value">{{.Label}}</th>{{end}}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {{range .}}<td class="ritase-value{{with .Key}} material-{{.}}{{end}}">{{.Percent}}</td>{{end}}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    {{end}}
   </div>
   {{end}}
   <div class="ritase-legend" aria-label="Keterangan">
     <p class="eyebrow">Keterangan</p>
     <ul>
-      <li><span class="tone-peak">Kuning</span>Rit yang tercatat saat Rest 1 (12:00–13:00)</li>
+      <li><span class="material-tanah">Tanah</span>Rit bermuatan tanah</li>
+      <li><span class="material-sirtu">Sirtu</span>Rit bermuatan sirtu</li>
+      <li><span class="material-batu">Batu</span>Rit bermuatan batu</li>
+      <li><span class="material-pasir">Pasir</span>Rit bermuatan pasir</li>
+      <li><span class="material-granula">Granula</span>Rit bermuatan granula</li>
+      <li><span>12:30*</span>Rit yang tercatat saat Rest 1 (12:00–13:00)</li>
       <li><span class="tone-bad">Merah</span>Unit dengan hanya 1 rit</li>
     </ul>
   </div>

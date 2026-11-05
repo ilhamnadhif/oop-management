@@ -154,6 +154,21 @@ func TestProduksiNewExportWritesASheetPerTable(t *testing.T) {
 		t.Fatalf("hpp detail row = %q", vendor)
 	}
 
+	// Under each vendor, the materials it hauled and no others.
+	var names, shares []string
+	for i, row := range details {
+		if len(row) > 1 && row[1] == "Tanah" {
+			names, shares = row, details[i+1]
+			break
+		}
+	}
+	if len(names) != 3 || names[2] != "Sirtu" {
+		t.Fatalf("material names = %q", names)
+	}
+	if len(shares) != 3 || shares[1] != "50.5%" || shares[2] != "49.5%" {
+		t.Fatalf("material shares = %q", shares)
+	}
+
 	// The per-load list titles the day and lists each load to the second.
 	loads, _ := file.GetRows("Detail Rit per Unit")
 	text := strings.Join(flatten(loads), "|")
