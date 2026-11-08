@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -102,11 +103,61 @@ func (s *Server) handleProjectSettingsPage(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	query := r.URL.Query()
 	view := projectSettingsView{
-		selected: strings.TrimSpace(r.URL.Query().Get("project")),
-		openNew:  r.URL.Query().Get("tambah") == "1",
+		selected: strings.TrimSpace(query.Get("project")),
+		openNew:  query.Get("tambah") == "1",
 	}
+	view.success = s.savedMessage(r, query)
 	s.renderProjectSettings(w, r, user, sessionValue, view, http.StatusOK)
+}
+
+// savedMessage words what the last save did, from the code the save redirected
+// with. The page is reached by a redirect after every save so that the menu,
+// the access rules and the branding are read again with the new settings; the
+// request that saved them was bound before they changed. Only codes travel in
+// the address, and a project is named only when it exists, so a link cannot be
+// made to announce something that did not happen.
+func (s *Server) savedMessage(r *http.Request, query url.Values) string {
+	exists := func(nama string) bool {
+		projects, err := s.projects.List(r.Context())
+		if err != nil {
+			return false
+		}
+		for _, project := range projects {
+			if strings.EqualFold(strings.TrimSpace(project.Nama), strings.TrimSpace(nama)) {
+				return true
+			}
+		}
+		return false
+	}
+	switch query.Get("tersimpan") {
+	case "project":
+		nama := strings.TrimSpace(query.Get("project"))
+		if !exists(nama) {
+			return ""
+		}
+		message := "Setelan project " + nama + " tersimpan."
+		if query.Get("widya") == "tertunda" {
+			message += " Sinkron Widya belum bisa dimulai, simpan lagi sebentar lagi."
+		}
+		return message
+	case "dibuat":
+		nama := strings.TrimSpace(query.Get("nama"))
+		if !exists(nama) {
+			return ""
+		}
+		return "Project " + nama + " dibuat. Buka Atur untuk memilih menu dan setelannya."
+	case "export":
+		label := exportLabels[model.ExportTypeKey(query.Get("export"))]
+		if label == "" {
+			label = "Export"
+		}
+		return "Setelan export " + label + " tersimpan."
+	case "tugaskan":
+		return "Penugasan pengguna tersimpan."
+	}
+	return ""
 }
 
 // projectSettingsView is which of the two views to draw and what to say on it.
@@ -167,6 +218,9 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 	}
 
 	view := projectSettingsView{selected: strings.TrimSpace(r.FormValue("project_nama"))}
+	// saved is where a successful save sends the browser: the same page, read
+	// afresh, so the sidebar shows the menus just switched on or off.
+	saved := url.Values{}
 	var actionErr error
 	switch strings.TrimSpace(r.FormValue("aksi")) {
 	case "tambah":
@@ -177,7 +231,8 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 		// rather than dragging the person into a form they did not ask for.
 		view.selected = ""
 		if err == nil {
-			view.success = "Project " + created.Nama + " dibuat. Buka Atur untuk memilih menu dan setelannya."
+			saved.Set("tersimpan", "dibuat")
+			saved.Set("nama", created.Nama)
 			break
 		}
 		// Answered inside the dialog, which reopens holding what was typed. The
@@ -227,13 +282,14 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 			// The services were built from the old settings, so they are dropped
 			// rather than left holding figures the sheet no longer says.
 			s.bundles.forget(updated)
-			view.success = "Setelan project " + updated.Nama + " tersimpan."
+			saved.Set("tersimpan", "project")
+			saved.Set("project", updated.Nama)
 			if s.widyaApply != nil {
 				// The settings are saved whatever happens here. Say so plainly
 				// rather than leave a sync running on the old account unnoticed.
 				if err := s.widyaApply(r.Context(), updated); err != nil {
 					log.Printf("apply widya of %s: %v", updated.Nama, err)
-					view.success += " Sinkron Widya belum bisa dimulai, simpan lagi sebentar lagi."
+					saved.Set("widya", "tertunda")
 				}
 			}
 		}
@@ -243,16 +299,19 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 		if actionErr == nil {
 			// Nothing to drop from the service cache: the closing block is read
 			// off the project on each request, and saving invalidated that list.
-			label := exportLabels[model.ExportTypeKey(config.ExportKey)]
-			if label == "" {
-				label = "Export"
+			saved.Set("tersimpan", "export")
+			saved.Set("export", config.ExportKey)
+			if view.selected != "" {
+				saved.Set("project", view.selected)
 			}
-			view.success = "Setelan export " + label + " tersimpan."
 		}
 	case "tugaskan":
 		actionErr = s.projects.Assign(r.Context(), strings.TrimSpace(r.FormValue("user_id")), r.FormValue("user_project"))
 		if actionErr == nil {
-			view.success = "Penugasan pengguna tersimpan."
+			saved.Set("tersimpan", "tugaskan")
+			if view.selected != "" {
+				saved.Set("project", view.selected)
+			}
 		}
 	default:
 		actionErr = errors.New("aksi tidak dikenal")
@@ -268,7 +327,7 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 		s.renderProjectSettings(w, r, user, sessionValue, view, http.StatusUnprocessableEntity)
 		return
 	}
-	s.renderProjectSettings(w, r, user, sessionValue, view, http.StatusOK)
+	http.Redirect(w, r, "/project/settings?"+saved.Encode(), http.StatusSeeOther)
 }
 
 func (s *Server) renderProjectSettings(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, view projectSettingsView, status int) {

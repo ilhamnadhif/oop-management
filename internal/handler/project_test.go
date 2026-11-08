@@ -750,3 +750,66 @@ func TestProjectSettingsSavesTheWidyaAccount(t *testing.T) {
 		t.Fatalf("the saved account is not shown\n%s", page)
 	}
 }
+
+// A menu switched off is gone from the sidebar of the page the save lands on,
+// not only from the next one: the save redirects, so the page is drawn from
+// the settings just written rather than the ones the request started with.
+func TestProjectSettingsSaveRedrawsTheSidebar(t *testing.T) {
+	store := repository.NewTestRepository()
+	location := time.FixedZone("WIB", 7*60*60)
+	now := time.Date(2026, 10, 24, 9, 0, 0, 0, location)
+	deps := testDeps(t, store, location, func() time.Time { return now }, defaultTestBranding())
+	server, err := NewServer(deps)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	testServer := startFixtureServer(t, server, deps)
+	client := loggedInClient(t, testServer)
+	project, err := deps.Projects.Find(context.Background(), testProjectName)
+	if err != nil {
+		t.Fatalf("find project: %v", err)
+	}
+	detail := testServer.URL + "/project/settings?project=" + url.QueryEscape(project.Nama)
+	page := fetchAuthedPage(t, client, detail)
+	if !strings.Contains(page, `href="/nota/overview"`) {
+		t.Fatal("the sidebar has no Nota to begin with")
+	}
+
+	var form bytes.Buffer
+	writer := multipart.NewWriter(&form)
+	fields := [][2]string{
+		{"csrf_token", csrfFromForm(t, page)}, {"aksi", "simpan"}, {"project_id", project.ProjectID},
+		{"nama", project.Nama}, {"status", model.StatusAktif}, {"menu", "hr"}, {"menu", "unit"},
+	}
+	for _, field := range fields {
+		if err := writer.WriteField(field[0], field[1]); err != nil {
+			t.Fatalf("write field: %v", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close form: %v", err)
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Post(testServer.URL+"/project/settings", writer.FormDataContentType(), &form)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	response.Body.Close()
+	client.CheckRedirect = nil
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status %d, want a redirect", response.StatusCode)
+	}
+	landed := fetchAuthedPage(t, client, testServer.URL+response.Header.Get("Location"))
+	if !strings.Contains(landed, "Setelan project "+project.Nama+" tersimpan.") {
+		t.Fatal("the page does not say the settings were saved")
+	}
+	if strings.Contains(landed, `href="/nota/overview"`) {
+		t.Fatal("Nota is still in the sidebar after it was switched off")
+	}
+
+	// A made-up project in the address announces nothing.
+	forged := fetchAuthedPage(t, client, testServer.URL+"/project/settings?tersimpan=dibuat&nama=Palsu")
+	if strings.Contains(forged, "Palsu dibuat") {
+		t.Fatal("a link announced a project that does not exist")
+	}
+}
