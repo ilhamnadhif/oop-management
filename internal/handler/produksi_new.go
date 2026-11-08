@@ -641,7 +641,6 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 	var everyUnit []widya.UnitDetail
 	everyMaterial := make(map[string]float64)
 	var vendorLines []DetailRow
-	number := 0
 	for _, vendor := range report.Vendors {
 		everyUnit = append(everyUnit, vendor.Units...)
 		for material, volume := range vendor.MaterialVolumes {
@@ -661,10 +660,10 @@ func detailView(report widya.UnitDetailReport, location *time.Location, dayTitle
 		}
 		vendorLines = append(vendorLines, vendorLine)
 		view.Rows = append(view.Rows, vendorLine)
-		for _, unit := range vendor.Units {
-			number++
+		// Each vendor's trucks are numbered from 1.
+		for index, unit := range vendor.Units {
 			row := DetailRow{
-				No: number, Label: unit.Vehicle, Kategori: unit.Class, Rit: formatCount(unit.Ritase),
+				No: index + 1, Label: unit.Vehicle, Kategori: unit.Class, Rit: formatCount(unit.Ritase),
 				Volume: formatRitaseVolume(unit.Volume), Avg: avg(unit.Volume, unit.Ritase),
 				Porsi: porsi(unit.Volume), Interval: "-", Single: unit.Ritase == 1,
 			}

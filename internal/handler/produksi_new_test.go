@@ -733,3 +733,27 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 		t.Fatalf("a closed day is not titled End of Day\n%s", closed)
 	}
 }
+
+// Each vendor's trucks are numbered from 1, so a vendor's block reads on its
+// own.
+func TestDetailNumbersEachVendorFromOne(t *testing.T) {
+	report := widya.UnitDetailReport{Day: "2026-10-24", MaxRitase: 1, Vendors: []widya.VendorDetail{
+		{Name: "HPP", Units: []widya.UnitDetail{
+			{Vehicle: "A 1", Ritase: 1, Times: []string{"08:00"}, RestLoads: []bool{false}, Materials: []string{""}},
+			{Vehicle: "A 2", Ritase: 1, Times: []string{"08:10"}, RestLoads: []bool{false}, Materials: []string{""}},
+		}},
+		{Name: "MNP", Units: []widya.UnitDetail{
+			{Vehicle: "B 1", Ritase: 1, Times: []string{"08:20"}, RestLoads: []bool{false}, Materials: []string{""}},
+		}},
+	}}
+	view := detailView(report, time.UTC, "24 Oktober 2026")
+	var numbers []int
+	for _, row := range view.Rows {
+		if row.No > 0 {
+			numbers = append(numbers, row.No)
+		}
+	}
+	if !slices.Equal(numbers, []int{1, 2, 1}) {
+		t.Fatalf("numbers = %v, want [1 2 1]", numbers)
+	}
+}
