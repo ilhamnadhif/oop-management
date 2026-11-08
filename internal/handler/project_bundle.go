@@ -29,6 +29,7 @@ type ProjectServices struct {
 	FuelMasuk    *service.FuelMasukService
 	FuelKeluar   *service.FuelKeluarService
 	HourMeter    *service.HourMeterService
+	A2BBaru      *service.A2BBaruService
 	Company      string
 	Signatory    export.Signatory
 }

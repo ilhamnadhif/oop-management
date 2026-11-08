@@ -340,6 +340,7 @@ func buildProjectServices(store repository.Store, projects *service.ProjectServi
 		UnitOverview: service.NewUnitOverviewService(store, location, now),
 		FuelMasuk:    service.NewFuelMasukService(store, location, now),
 		FuelKeluar:   service.NewFuelKeluarService(store, location, now),
+		A2BBaru:      service.NewA2BBaruService(store, location, now),
 		HourMeter:    service.NewHourMeterService(store, location, now).WithWorkMinutes(project.Settings.A2BWorkMinutes),
 		Company:      project.Settings.Company,
 		Signatory: export.Signatory{

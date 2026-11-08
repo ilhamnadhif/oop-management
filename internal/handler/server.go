@@ -100,6 +100,7 @@ type Server struct {
 	fuelMasuk    *service.FuelMasukService
 	fuelKeluar   *service.FuelKeluarService
 	hourMeter    *service.HourMeterService
+	a2bBaru      *service.A2BBaruService
 	company      string
 	signatory    export.Signatory
 }
@@ -131,6 +132,7 @@ func (s *Server) forProject(ctx context.Context, project model.Project, reachabl
 	bound.fuelMasuk = services.FuelMasuk
 	bound.fuelKeluar = services.FuelKeluar
 	bound.hourMeter = services.HourMeter
+	bound.a2bBaru = services.A2BBaru
 	bound.company = services.Company
 	bound.signatory = services.Signatory
 	return &bound, nil
@@ -476,6 +478,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/a2b/fuel-masuk/foto", s.handleFuelMasukPhoto)
 	mux.HandleFunc("/unit/export", s.handleUnitExport)
 	mux.HandleFunc("/unit/export/download", s.handleUnitDownload)
+	mux.HandleFunc("/a2b-baru/overview", s.handleA2BBaruOverview)
+	mux.HandleFunc("/a2b-baru/unit", s.handleA2BBaruUnit)
+	mux.HandleFunc("/a2b-baru/fuel-masuk", s.handleA2BBaruFuelMasuk)
+	mux.HandleFunc("/a2b-baru/fuel-keluar", s.handleA2BBaruFuelKeluar)
 	mux.HandleFunc("/a2b/export", s.handleA2BExport)
 	mux.HandleFunc("/a2b/export/download", s.handleA2BPerformanceDownload)
 	mux.HandleFunc("/a2b/export/hm/download", s.handleA2BHMExportDownload)

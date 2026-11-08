@@ -33,6 +33,10 @@ type TestRepository struct {
 	projects      []*model.Project
 	exportConfigs []model.ExportConfig
 	widyaTickets  []model.WidyaTicket
+
+	a2bBaruUnits      []model.A2BBaruUnit
+	a2bBaruFuelMasuk  []model.A2BBaruFuelMasuk
+	a2bBaruFuelKeluar []model.A2BBaruFuelKeluar
 }
 
 func NewTestRepository() *TestRepository {
@@ -1254,4 +1258,60 @@ func (r *TestRepository) UpdateWidyaTickets(_ context.Context, tickets []model.W
 		r.widyaTickets[index] = ticket
 	}
 	return nil
+}
+
+func (r *TestRepository) ListA2BBaruUnits(context.Context) ([]model.A2BBaruUnit, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]model.A2BBaruUnit(nil), r.a2bBaruUnits...), nil
+}
+
+func (r *TestRepository) AppendA2BBaruUnits(_ context.Context, units []model.A2BBaruUnit) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.a2bBaruUnits = append(r.a2bBaruUnits, units...)
+	return nil
+}
+
+func (r *TestRepository) ListA2BBaruFuelMasuk(context.Context) ([]model.A2BBaruFuelMasuk, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]model.A2BBaruFuelMasuk(nil), r.a2bBaruFuelMasuk...), nil
+}
+
+func (r *TestRepository) AppendA2BBaruFuelMasuk(_ context.Context, orders []model.A2BBaruFuelMasuk) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.a2bBaruFuelMasuk = append(r.a2bBaruFuelMasuk, orders...)
+	return nil
+}
+
+// ListA2BBaruFuelKeluar copies the optional readings too, so a caller cannot
+// reach into the store through a pointer.
+func (r *TestRepository) ListA2BBaruFuelKeluar(context.Context) ([]model.A2BBaruFuelKeluar, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	fills := make([]model.A2BBaruFuelKeluar, 0, len(r.a2bBaruFuelKeluar))
+	for _, fill := range r.a2bBaruFuelKeluar {
+		fill.HMAwalA2B, fill.HMAkhirA2B = copyFloat(fill.HMAwalA2B), copyFloat(fill.HMAkhirA2B)
+		fill.HMAwalFM, fill.HMAkhirFM = copyFloat(fill.HMAwalFM), copyFloat(fill.HMAkhirFM)
+		fill.HMSaatIsi = copyFloat(fill.HMSaatIsi)
+		fills = append(fills, fill)
+	}
+	return fills, nil
+}
+
+func (r *TestRepository) AppendA2BBaruFuelKeluar(_ context.Context, fills []model.A2BBaruFuelKeluar) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.a2bBaruFuelKeluar = append(r.a2bBaruFuelKeluar, fills...)
+	return nil
+}
+
+func copyFloat(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }

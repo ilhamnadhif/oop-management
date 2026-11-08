@@ -1,0 +1,71 @@
+{{define "a2b_baru_fuel_masuk"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "fuel"}}FUEL MASUK</p>
+        <h2>Catat purchase order fuel</h2>
+      </div>
+    </div>
+    <form method="post" action="/a2b-baru/fuel-masuk" class="stack-form" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-grid form-grid-3">
+        <div>
+          <label for="phase">{{template "icon" "tag"}}Phase</label>
+          <input id="phase" name="phase" type="text" value="{{.Form.Phase}}" placeholder="PO-1" required>
+        </div>
+        <div>
+          <label for="tanggal">{{template "icon" "calendar"}}Tanggal</label>
+          <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
+        </div>
+        <div>
+          <label for="no_po">{{template "icon" "hash"}}No. PO</label>
+          <input id="no_po" name="no_po" type="text" value="{{.Form.NoPO}}" placeholder="046/POR" required>
+        </div>
+      </div>
+      <p class="eyebrow">PURCHASE ORDER</p>
+      <div class="form-grid">
+        <div>
+          <label for="po_volume">{{template "icon" "fuel"}}Vol. (L)</label>
+          <input id="po_volume" name="po_volume" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.POVolume}}" placeholder="8000" required>
+        </div>
+        <div>
+          <label for="po_harga">{{template "icon" "wallet"}}Harga satuan (Rp/L)</label>
+          <input id="po_harga" name="po_harga" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.POHargaSatuan}}" placeholder="17928" required>
+        </div>
+      </div>
+      <p class="eyebrow">DITERIMA SITE</p>
+      <div class="form-grid">
+        <div>
+          <label for="site_volume">{{template "icon" "fuel"}}Vol. (L) <span class="hint">(kosongkan bila belum tiba)</span></label>
+          <input id="site_volume" name="site_volume" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.SiteVolume}}" placeholder="8010">
+        </div>
+        <div>
+          <label for="site_harga">{{template "icon" "wallet"}}Harga satuan (Rp/L)</label>
+          <input id="site_harga" name="site_harga" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.SiteHargaSatuan}}" placeholder="17928">
+        </div>
+      </div>
+      <p class="hint">Jumlah harga dan deviasi dihitung otomatis: volume × harga satuan, lalu PO dikurangi diterima site.</p>
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "save"}}<span data-submit-label>Simpan fuel masuk</span>
+      </button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}RIWAYAT</p>
+        <h2>{{len .Table.Rows}} purchase order</h2>
+      </div>
+    </div>
+    {{template "a2bBaruOrderTable" .Table}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

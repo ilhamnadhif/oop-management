@@ -95,6 +95,14 @@ type Store interface {
 	MaxHourMeterSequence(ctx context.Context, prefix string) (int, error)
 	CreateHourMeter(ctx context.Context, reading *model.HourMeter) error
 	ListHourMeter(ctx context.Context) ([]model.HourMeter, error)
+	// The A2B Baru books. Appends take a batch, so an import is one request a
+	// sheet rather than one a row.
+	ListA2BBaruUnits(ctx context.Context) ([]model.A2BBaruUnit, error)
+	AppendA2BBaruUnits(ctx context.Context, units []model.A2BBaruUnit) error
+	ListA2BBaruFuelMasuk(ctx context.Context) ([]model.A2BBaruFuelMasuk, error)
+	AppendA2BBaruFuelMasuk(ctx context.Context, orders []model.A2BBaruFuelMasuk) error
+	ListA2BBaruFuelKeluar(ctx context.Context) ([]model.A2BBaruFuelKeluar, error)
+	AppendA2BBaruFuelKeluar(ctx context.Context, fills []model.A2BBaruFuelKeluar) error
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	ListAttendanceByUser(ctx context.Context, userID string) ([]model.Attendance, error)
 	ListAttendanceBetween(ctx context.Context, from, to string) ([]model.Attendance, error)

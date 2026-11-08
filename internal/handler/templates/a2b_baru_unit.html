@@ -1,0 +1,57 @@
+{{define "a2b_baru_unit"}}
+{{template "appShellOpen" .}}
+  {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "cube"}}UNIT A2B BARU</p>
+        <h2>Daftarkan unit</h2>
+      </div>
+    </div>
+    <form method="post" action="/a2b-baru/unit" class="stack-form" data-loading-form>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="form-grid">
+        <div>
+          <label for="id_unit">{{template "icon" "hash"}}ID unit</label>
+          <input id="id_unit" name="id_unit" type="text" value="{{.Form.IDUnit}}" placeholder="contoh EXC-01" required>
+        </div>
+        <div>
+          <label for="nama_unit">{{template "icon" "truck"}}Nama unit</label>
+          <input id="nama_unit" name="nama_unit" type="text" value="{{.Form.NamaUnit}}" placeholder="contoh Excavator PC200 Kobelco (Rent)" required>
+        </div>
+      </div>
+      <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
+        <span class="spinner" aria-hidden="true" hidden></span>
+        {{template "icon" "save"}}<span data-submit-label>Simpan unit</span>
+      </button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}DAFTAR</p>
+        <h2>{{len .Units}} unit terdaftar</h2>
+      </div>
+    </div>
+    {{if .Units}}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead><tr><th scope="col">No</th><th scope="col">ID unit</th><th scope="col">Nama unit</th></tr></thead>
+        <tbody>
+          {{range .Units}}
+          <tr><td>{{.No}}</td><td>{{.IDUnit}}</td><td class="wrap">{{.NamaUnit}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="panel-empty">Belum ada unit terdaftar.</p>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

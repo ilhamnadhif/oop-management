@@ -2227,3 +2227,38 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
    the same gap under its label, and a box exactly as tall as an input. */
 .filter-form .unit-picker-field { gap: 0.35rem; }
 .filter-form .unit-picker > summary { box-sizing: border-box; min-height: 56px; padding-top: 0; padding-bottom: 0; }
+
+/* A2B Baru: the purchase order table is headed in the workbook's colours, so
+   a reader moving between the two finds the same three bands. */
+.a2b-baru-po thead th { text-align: center; color: #3b2f1e; }
+.a2b-baru-po thead th.numeric { text-align: right; }
+.a2b-baru-po .po-order { background: #f6d5c3; }
+.a2b-baru-po .po-site { background: #fbe8a6; }
+.a2b-baru-po .po-dev { background: #cfe5c0; }
+.a2b-baru-po thead tr:last-child th.po-order { background: #fbe6db; }
+.a2b-baru-po thead tr:last-child th.po-site { background: #fdf3cf; }
+.a2b-baru-po thead tr:last-child th.po-dev { background: #e4f1da; }
+.a2b-baru-po .po-pct { display: block; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.data-table .po-total th, .data-table .po-total td { font-weight: 700; background: var(--surface-muted, #f6f7f9); }
+.data-table td.negative, .kpi-value.negative { color: #c0392b; }
+
+/* A2B Baru ratio table: the unit and its totals stay on the left while the
+   months scroll past them. The fixed cells need set widths so each knows
+   where the one before it ends, and a background so the months do not show
+   through. On a phone the whole table scrolls instead: six fixed columns
+   would leave no room for a month. */
+.a2b-baru-ratio thead th { vertical-align: bottom; line-height: 1.35; }
+.a2b-baru-ratio thead th.month-group { text-align: center; vertical-align: middle; }
+@media (min-width: 761px) {
+  .a2b-baru-ratio .fix { position: sticky; z-index: 1; box-sizing: border-box; background: #fff; }
+  .a2b-baru-ratio thead .fix { z-index: 2; background: #f0f5fd; }
+  .a2b-baru-ratio .po-total .fix { background: var(--surface-muted, #f6f7f9); }
+  .a2b-baru-ratio tbody tr:hover .fix { background: #f7faff; }
+  .a2b-baru-ratio .fix-1 { left: 0; width: 6.5rem; min-width: 6.5rem; max-width: 6.5rem; }
+  .a2b-baru-ratio .fix-2 { left: 6.5rem; width: 9.5rem; min-width: 9.5rem; max-width: 9.5rem; }
+  .a2b-baru-ratio tbody .fix-2 { white-space: normal; }
+  .a2b-baru-ratio .fix-3 { left: 16rem; width: 6rem; min-width: 6rem; max-width: 6rem; }
+  .a2b-baru-ratio .fix-4 { left: 22rem; width: 8rem; min-width: 8rem; max-width: 8rem; }
+  .a2b-baru-ratio .fix-5 { left: 30rem; width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem; }
+  .a2b-baru-ratio .fix-6 { left: 35.5rem; width: 8.5rem; min-width: 8.5rem; max-width: 8.5rem; box-shadow: inset -1px 0 0 #d9e2f0, 6px 0 8px -6px rgba(15, 35, 70, 0.18); }
+}

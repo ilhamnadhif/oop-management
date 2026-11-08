@@ -106,6 +106,7 @@ func testProjectServices(store repository.Store, location *time.Location, nowFun
 		UnitOverview: service.NewUnitOverviewService(store, location, nowFunc),
 		FuelMasuk:    service.NewFuelMasukService(store, location, nowFunc),
 		FuelKeluar:   service.NewFuelKeluarService(store, location, nowFunc),
+		A2BBaru:      service.NewA2BBaruService(store, location, nowFunc),
 		HourMeter:    service.NewHourMeterService(store, location, nowFunc),
 		Company:      project.Settings.Company,
 		Signatory:    export.Signatory{Place: project.Settings.SignatoryPlace},

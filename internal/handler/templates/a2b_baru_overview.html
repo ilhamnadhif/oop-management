@@ -1,0 +1,112 @@
+{{define "a2b_baru_overview"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="kpi-grid kpi-grid-4">
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">JUMLAH UNIT</p>
+        <p class="kpi-value">{{.Units}}</p>
+        <p class="kpi-note">Unit terdaftar</p>
+      </div>
+      <span class="kpi-icon blue">{{template "icon" "cube"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">STOCK FUEL (L)</p>
+        <p class="kpi-value{{if .StockLow}} negative{{end}}">{{.Stock}}</p>
+        <p class="kpi-note">Diterima site dikurangi fuel keluar</p>
+      </div>
+      <span class="kpi-icon green">{{template "icon" "fuel"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">FUEL KELUAR (L)</p>
+        <p class="kpi-value">{{.FuelKeluar}}</p>
+        <p class="kpi-note">Total pengisian ke unit</p>
+      </div>
+      <span class="kpi-icon amber">{{template "icon" "activity"}}</span>
+    </article>
+    <article class="panel kpi-card">
+      <div>
+        <p class="eyebrow">FUEL DITERIMA (L)</p>
+        <p class="kpi-value">{{.FuelDiterima}}</p>
+        <p class="kpi-note">Total diterima site dari PO</p>
+      </div>
+      <span class="kpi-icon purple">{{template "icon" "receipt"}}</span>
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "fuel"}}FUEL MASUK</p>
+        <h2>Purchase order dan diterima site</h2>
+      </div>
+      <a class="button subtle" href="/a2b-baru/fuel-masuk">{{template "icon" "plus"}}Input</a>
+    </div>
+    {{template "a2bBaruOrderTable" .Orders}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "percent"}}RATIO FUEL PER UNIT</p>
+        <h2>Ratio rata-rata (L/jam)</h2>
+      </div>
+    </div>
+    {{if .Ratios}}
+    <div class="table-scroll">
+      {{/* The six columns on the left stay put; the months scroll beside them. */}}
+      <table class="data-table a2b-baru-ratio">
+        <thead>
+          <tr>
+            <th scope="col" rowspan="2" class="fix fix-1">ID Unit</th><th scope="col" rowspan="2" class="fix fix-2">Nama Unit</th>
+            <th scope="col" rowspan="2" class="numeric fix fix-3">Total BBM<br>Keluar (L)</th>
+            <th scope="col" rowspan="2" class="numeric fix fix-4">Total BBM<br>untuk Ratio (L)</th>
+            <th scope="col" rowspan="2" class="numeric fix fix-5">Total<br>Jam Kerja</th>
+            <th scope="col" rowspan="2" class="numeric fix fix-6">Ratio Rata-rata<br>(L/jam)</th>
+            {{if .Months}}<th scope="colgroup" colspan="{{len .Months}}" class="month-group">Ratio per Bulan (L/jam)</th>{{end}}
+          </tr>
+          <tr>{{range .Months}}<th scope="col" class="numeric">{{.}}</th>{{end}}</tr>
+        </thead>
+        <tbody>
+          {{range .Ratios}}
+          <tr>
+            <td class="fix fix-1">{{.IDUnit}}</td><td class="wrap fix fix-2">{{.NamaUnit}}</td>
+            <td class="numeric fix fix-3">{{.FuelKeluar}}</td><td class="numeric fix fix-4">{{.FuelRatio}}</td>
+            <td class="numeric fix fix-5">{{.JamKerja}}</td><td class="numeric fix fix-6">{{.Ratio}}</td>
+            {{range .Monthly}}<td class="numeric">{{.}}</td>{{end}}
+          </tr>
+          {{end}}
+          {{with .RatioTotal}}
+          <tr class="po-total">
+            <th scope="row" class="fix fix-1">TOTAL</th><td class="fix fix-2"></td>
+            <td class="numeric fix fix-3">{{.FuelKeluar}}</td><td class="numeric fix fix-4">{{.FuelRatio}}</td>
+            <td class="numeric fix fix-5">{{.JamKerja}}</td><td class="numeric fix fix-6">{{.Ratio}}</td>
+            {{range $.Months}}<td></td>{{end}}
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">BBM untuk ratio hanya pengisian yang punya jam kerja. Unit tanpa HM seperti genset tidak punya ratio.</p>
+    {{else}}
+    <p class="panel-empty">Belum ada fuel keluar tercatat.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "list"}}FUEL KELUAR &amp; HM</p>
+        <h2>{{len .Fills.Rows}} pengisian, terbaru di atas</h2>
+      </div>
+      <a class="button subtle" href="/a2b-baru/fuel-keluar">{{template "icon" "plus"}}Input</a>
+    </div>
+    {{template "a2bBaruFillTable" .Fills}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/auth.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

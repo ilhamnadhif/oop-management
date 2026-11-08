@@ -356,6 +356,9 @@ var projectSheets = []sheetDefinition{
 	{name: hourMeterSheet, headers: hourMeterHeaders},
 	{name: hourMeterKegiatanSheet, headers: hourMeterKegiatanHeaders},
 	{name: widyaTicketSheet, headers: widyaTicketHeaders},
+	{name: a2bBaruUnitSheet, headers: a2bBaruUnitHeaders},
+	{name: a2bBaruFuelMasukSheet, headers: a2bBaruFuelMasukHeaders},
+	{name: a2bBaruFuelKeluarSheet, headers: a2bBaruFuelKeluarHeaders},
 }
 
 // EnsureSchema prepares the sheets one project's books need. It is what a

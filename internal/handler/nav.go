@@ -121,6 +121,18 @@ var navItems = []NavItem{
 		{Key: "a2b-export", Label: "Export Data", Path: "/a2b/export", Icon: "save",
 			Lede: "Unduh daftar alat berat dalam XLSX atau PDF."},
 	}},
+	// A2B Baru is the fuel book kept the way the site's own workbook keeps it,
+	// on sheets of its own, beside the older module rather than inside it.
+	{Key: "a2b-baru", Label: "A2B Baru", Icon: "fuel", Children: []NavItem{
+		{Key: "a2b-baru-overview", Label: "Overview", Path: "/a2b-baru/overview", Icon: "activity",
+			Lede: "Jumlah unit, stock fuel, fuel keluar, dan ratio fuel per unit."},
+		{Key: "a2b-baru-unit", Label: "Unit", Path: "/a2b-baru/unit", Icon: "cube",
+			Lede: "Daftar unit yang menerima fuel."},
+		{Key: "a2b-baru-fuel-masuk", Label: "Fuel Masuk", Path: "/a2b-baru/fuel-masuk", Icon: "fuel",
+			Lede: "Catat purchase order fuel dan volume yang diterima site."},
+		{Key: "a2b-baru-fuel-keluar", Label: "Fuel Keluar & HM", Path: "/a2b-baru/fuel-keluar", Icon: "clock",
+			Lede: "Catat pengisian fuel tiap unit beserta HM dan jam kerjanya."},
+	}},
 }
 
 // JabatanManagement sees every menu. It is the one position defined by what it
@@ -141,8 +153,10 @@ var menuAccess = map[string][]string{
 	"unit":     {"Surveyor", "Produksi", "SPV", "Logistik"},
 	// Alat berat is the same fleet seen from another angle, so it is open to
 	// the same positions as the unit register.
-	"a2b":  {"Surveyor", "Produksi", "SPV", "Logistik"},
-	"nota": {"HR"},
+	"a2b": {"Surveyor", "Produksi", "SPV", "Logistik"},
+	// The same fleet's fuel, kept the site's way, so the same positions.
+	"a2b-baru": {"Surveyor", "Produksi", "SPV", "Logistik"},
+	"nota":     {"HR"},
 	// HR keeps the payroll and the meal money; SPV signs off the machines the
 	// rental is paid for. Management reaches every menu before this map is read.
 	"operasional": {"HR", "SPV"},
