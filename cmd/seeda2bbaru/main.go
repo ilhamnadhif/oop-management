@@ -8,6 +8,11 @@
 //
 // The workbook is read from disk and never committed: this repository is
 // public and the figures are operational data.
+//
+// With -photos it loads nothing from the workbook. It copies the flow meter
+// photos of the dispenses that came from the older Fuel Keluar sheet, matched
+// by transaction number, into the A2B Baru rows that have none yet. That is
+// safe to run again: a row that has a photo keeps it.
 package main
 
 import (
@@ -39,11 +44,16 @@ func main() {
 	apply := flag.Bool("apply", false, "write the rows to the sheets; without it nothing is written")
 	path := flag.String("file", "Monitoring Konsumsi BBM 03112026 R.1.xlsx", "the workbook to load")
 	spreadsheet := flag.String("spreadsheet", "", "the project spreadsheet to write into; the master when empty")
+	photos := flag.Bool("photos", false, "copy flow meter photos from the older Fuel Keluar sheet instead of loading the workbook")
 	flag.Parse()
 
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *photos {
+		copyPhotos(cfg, *spreadsheet, *apply)
+		return
 	}
 	book, err := readWorkbook(*path, cfg.Timezone)
 	if err != nil {
@@ -250,4 +260,65 @@ func optional(value string) *float64 {
 		return nil
 	}
 	return &parsed
+}
+
+// copyPhotos fills the A2B Baru rows from the older sheet's photos.
+func copyPhotos(cfg config.Config, spreadsheet string, apply bool) {
+	ctx := context.Background()
+	scope := sheets.SpreadsheetsReadonlyScope
+	if apply {
+		scope = sheets.SpreadsheetsScope
+	}
+	sheetService, err := sheets.NewService(ctx, option.WithCredentialsFile(cfg.GoogleCredentialsFile), option.WithScopes(scope))
+	if err != nil {
+		log.Fatal(err)
+	}
+	target := strings.TrimSpace(spreadsheet)
+	if target == "" {
+		target = cfg.GoogleSpreadsheetID
+	}
+	store := repository.NewGoogleSheetsRepository(sheetService, target, cfg.Timezone)
+	fills, err := store.ListA2BBaruFuelKeluar(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	old, err := store.ListFuelKeluar(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	inOld := make(map[string]bool, len(old))
+	for _, fill := range old {
+		inOld[strings.TrimSpace(fill.FuelOutID)] = true
+	}
+	var missing, already, matched int
+	for _, fill := range fills {
+		switch {
+		case fill.HasFoto:
+			already++
+		case inOld[strings.TrimSpace(fill.FuelOutID)]:
+			matched++
+		default:
+			missing++
+		}
+	}
+	log.Printf("A2B Baru: %d dispenses, %d already have a photo, %d found in the older sheet, %d not in it (LAMA rows and the like)",
+		len(fills), already, matched, missing)
+	if !apply {
+		log.Print("dry run: nothing written. Pass -apply to copy the photos.")
+		return
+	}
+	// The photo columns may not be on the sheet yet if the release that adds
+	// them has not started against it.
+	if err := store.EnsureSchema(ctx); err != nil {
+		log.Fatal(err)
+	}
+	photos, err := store.FuelKeluarPhotosByID(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	written, err := store.FillA2BBaruFuelKeluarPhotos(ctx, photos)
+	if err != nil {
+		log.Fatalf("%v (%d written before it stopped; run again to finish)", err, written)
+	}
+	log.Printf("written: %d photos", written)
 }

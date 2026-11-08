@@ -1296,6 +1296,8 @@ func (r *TestRepository) ListA2BBaruFuelKeluar(context.Context) ([]model.A2BBaru
 		fill.HMAwalA2B, fill.HMAkhirA2B = copyFloat(fill.HMAwalA2B), copyFloat(fill.HMAkhirA2B)
 		fill.HMAwalFM, fill.HMAkhirFM = copyFloat(fill.HMAwalFM), copyFloat(fill.HMAkhirFM)
 		fill.HMSaatIsi = copyFloat(fill.HMSaatIsi)
+		// The listing leaves the photo behind, as the sheet's does.
+		fill.HasFoto, fill.Foto = fill.Foto != "", ""
 		fills = append(fills, fill)
 	}
 	return fills, nil
@@ -1306,6 +1308,17 @@ func (r *TestRepository) AppendA2BBaruFuelKeluar(_ context.Context, fills []mode
 	defer r.mu.Unlock()
 	r.a2bBaruFuelKeluar = append(r.a2bBaruFuelKeluar, fills...)
 	return nil
+}
+
+func (r *TestRepository) ReadA2BBaruFuelKeluarPhoto(_ context.Context, fuelOutID string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, fill := range r.a2bBaruFuelKeluar {
+		if strings.EqualFold(fill.FuelOutID, fuelOutID) {
+			return fill.Foto, nil
+		}
+	}
+	return "", ErrNotFound
 }
 
 func copyFloat(value *float64) *float64 {

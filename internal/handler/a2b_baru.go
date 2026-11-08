@@ -6,10 +6,14 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"opp-management/internal/export"
 	"opp-management/internal/model"
+	"opp-management/internal/photo"
+	"opp-management/internal/repository"
 	"opp-management/internal/service"
 	"opp-management/internal/session"
 )
@@ -42,10 +46,20 @@ func (s *Server) a2bBaruPost(w http.ResponseWriter, r *http.Request, key string)
 	if !ok {
 		return nil, nil, session.Session{}, false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Form tidak valid", http.StatusBadRequest)
-		return nil, nil, session.Session{}, false
+	// A form carrying a photo is given room for it; the rest stay small.
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		maxBody := bound.maxUploadBytes + 64*1024
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+		if err := r.ParseMultipartForm(maxBody); err != nil {
+			http.Error(w, "Form tidak valid atau foto terlalu besar", http.StatusRequestEntityTooLarge)
+			return nil, nil, session.Session{}, false
+		}
+	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Form tidak valid", http.StatusBadRequest)
+			return nil, nil, session.Session{}, false
+		}
 	}
 	if !bound.sessions.ValidCSRFToken(r.FormValue("csrf_token"), sessionValue) {
 		http.Error(w, "CSRF token tidak valid", http.StatusForbidden)
@@ -264,16 +278,13 @@ func orderTable(overview service.A2BBaruOverview) A2BBaruOrderTable {
 // ---- Fuel keluar ----
 
 type A2BBaruFuelKeluarForm struct {
-	Tanggal    string
-	IDUnit     string
-	HMAwalA2B  string
-	HMAkhirA2B string
-	HMAwalFM   string
-	HMAkhirFM  string
-	FuelLiter  string
-	HMSaatIsi  string
-	JamKerja   string
-	Operator   string
+	Tanggal   string
+	IDUnit    string
+	HMAwalFM  string
+	HMAkhirFM string
+	HMSaatIsi string
+	JamKerja  string
+	Operator  string
 }
 
 // A2BBaruFillRow is one dispense as the tables print it.
@@ -283,6 +294,7 @@ type A2BBaruFillRow struct {
 	HMAwalA2B, HMAkhirA2B, HMAwalFM      string
 	HMAkhirFM, Fuel, HMSaatIsi, JamKerja string
 	Operator, Ratio                      string
+	PhotoURL                             string
 }
 
 // A2BBaruFillTable is the dispense list with its total, for the shared table.
@@ -300,6 +312,9 @@ type A2BBaruFuelKeluarPageData struct {
 	Fills           A2BBaruFillTable
 	Error           string
 	Success         string
+	// Warning rides beside Success: the row was saved, but its hour meter is
+	// worth a second look.
+	Warning string
 }
 
 func (s *Server) handleA2BBaruFuelKeluar(w http.ResponseWriter, r *http.Request) {
@@ -309,40 +324,55 @@ func (s *Server) handleA2BBaruFuelKeluar(w http.ResponseWriter, r *http.Request)
 		if !ok {
 			return
 		}
-		bound.renderA2BBaruFuelKeluar(w, r, user, sessionValue, A2BBaruFuelKeluarForm{}, a2bBaruNotice{}, http.StatusOK)
+		bound.renderA2BBaruFuelKeluar(w, r, user, sessionValue, A2BBaruFuelKeluarForm{}, a2bBaruNotice{}, "", http.StatusOK)
 	case http.MethodPost:
 		bound, user, sessionValue, ok := s.a2bBaruPost(w, r, "a2b-baru-fuel-keluar")
 		if !ok {
 			return
 		}
+		defer func() {
+			if r.MultipartForm != nil {
+				_ = r.MultipartForm.RemoveAll()
+			}
+		}()
 		form := A2BBaruFuelKeluarForm{
 			Tanggal: strings.TrimSpace(r.FormValue("tanggal")), IDUnit: strings.TrimSpace(r.FormValue("id_unit")),
-			HMAwalA2B: strings.TrimSpace(r.FormValue("hm_awal_a2b")), HMAkhirA2B: strings.TrimSpace(r.FormValue("hm_akhir_a2b")),
 			HMAwalFM: strings.TrimSpace(r.FormValue("hm_awal_fm")), HMAkhirFM: strings.TrimSpace(r.FormValue("hm_akhir_fm")),
-			FuelLiter: strings.TrimSpace(r.FormValue("fuel_liter")), HMSaatIsi: strings.TrimSpace(r.FormValue("hm_saat_isi")),
-			JamKerja: strings.TrimSpace(r.FormValue("jam_kerja")), Operator: strings.TrimSpace(r.FormValue("operator")),
+			HMSaatIsi: strings.TrimSpace(r.FormValue("hm_saat_isi")), JamKerja: strings.TrimSpace(r.FormValue("jam_kerja")),
+			Operator: strings.TrimSpace(r.FormValue("operator")),
 		}
-		fill, err := bound.a2bBaru.CreateFuelKeluar(r.Context(), user, service.A2BBaruFuelKeluarInput(form))
+		foto, err := bound.readOptionalPhoto(r, "foto_flow_meter")
+		if err != nil {
+			bound.renderA2BBaruFuelKeluar(w, r, user, sessionValue, form, a2bBaruNotice{errMessage: err.Error()}, "", http.StatusUnprocessableEntity)
+			return
+		}
+		fill, warning, err := bound.a2bBaru.CreateFuelKeluar(r.Context(), user, service.A2BBaruFuelKeluarInput{
+			Tanggal: form.Tanggal, IDUnit: form.IDUnit, HMAwalFM: form.HMAwalFM, HMAkhirFM: form.HMAkhirFM,
+			HMSaatIsi: form.HMSaatIsi, JamKerja: form.JamKerja, Operator: form.Operator, Foto: foto,
+		})
 		if err != nil {
 			message, status := a2bBaruFailure("create fuel keluar a2b baru", err)
-			bound.renderA2BBaruFuelKeluar(w, r, user, sessionValue, form, a2bBaruNotice{errMessage: message}, status)
+			if errors.Is(err, service.ErrInvalidPhoto) {
+				message, status = "Foto akhir flow meter tidak valid", http.StatusUnprocessableEntity
+			}
+			bound.renderA2BBaruFuelKeluar(w, r, user, sessionValue, form, a2bBaruNotice{errMessage: message}, "", status)
 			return
 		}
 		bound.renderA2BBaruFuelKeluar(w, r, user, sessionValue, A2BBaruFuelKeluarForm{}, a2bBaruNotice{
-			success: fmt.Sprintf("Fuel keluar %s tersimpan: %s L untuk %s.", fill.FuelOutID, formatDecimal(fill.FuelLiter, 2), fill.NamaUnit),
-		}, http.StatusOK)
+			success: fmt.Sprintf("Fuel keluar %s tersimpan: %s liter untuk %s.", fill.FuelOutID, formatLiter(fill.FuelLiter), fill.NamaUnit),
+		}, warning, http.StatusOK)
 	default:
 		methodNotAllowed(w)
 	}
 }
 
-func (s *Server) renderA2BBaruFuelKeluar(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form A2BBaruFuelKeluarForm, notice a2bBaruNotice, status int) {
+func (s *Server) renderA2BBaruFuelKeluar(w http.ResponseWriter, r *http.Request, user *model.User, sessionValue session.Session, form A2BBaruFuelKeluarForm, notice a2bBaruNotice, warning string, status int) {
 	if form.Tanggal == "" {
 		form.Tanggal = s.a2bBaru.Today()
 	}
 	data := A2BBaruFuelKeluarPageData{
 		ShellPageData: s.shellData(user, sessionValue, "a2b-baru-fuel-keluar"),
-		Form:          form, Error: notice.errMessage, Success: notice.success,
+		Form:          form, Error: notice.errMessage, Success: notice.success, Warning: warning,
 	}
 	fail := func(message string, err error) {
 		log.Printf("%s: %v", message, err)
@@ -361,7 +391,8 @@ func (s *Server) renderA2BBaruFuelKeluar(w http.ResponseWriter, r *http.Request,
 	if next, err := s.a2bBaru.NextFuelOutID(r.Context()); err == nil {
 		data.NextFuelOutID = next
 	}
-	// The pump's meter carries on from the last dispense; offered, not forced.
+	// The pump's totaliser carries on from the last dispense: offered, and
+	// left editable, since the number on the pump is the authority.
 	if data.Form.HMAwalFM == "" {
 		if last, err := s.a2bBaru.LastFlowMeter(r.Context()); err == nil && last > 0 {
 			data.Form.HMAwalFM = formatLiter(last)
@@ -373,6 +404,35 @@ func (s *Server) renderA2BBaruFuelKeluar(w http.ResponseWriter, r *http.Request,
 	}
 	data.Fills.Rows, data.Fills.Total = fillRows(fills, true)
 	s.render(w, "a2b_baru_fuel_keluar", data, status)
+}
+
+func (s *Server) handleA2BBaruFuelKeluarPhoto(w http.ResponseWriter, r *http.Request) {
+	bound, _, _, ok := s.requireAccess(w, r, "a2b-baru-fuel-keluar")
+	if !ok {
+		return
+	}
+	fuelOutID := strings.TrimSpace(r.URL.Query().Get("fuel_id"))
+	dataURL, err := bound.a2bBaru.FuelKeluarPhoto(r.Context(), fuelOutID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) || errors.Is(err, service.ErrValidation) {
+			http.NotFound(w, r)
+			return
+		}
+		log.Printf("read a2b baru photo: %v", err)
+		http.Error(w, "Gagal memuat foto flow meter", http.StatusInternalServerError)
+		return
+	}
+	payload, err := photo.DecodeDataURL(dataURL)
+	if err != nil {
+		log.Printf("decode a2b baru photo %s: %v", fuelOutID, err)
+		http.Error(w, "Foto flow meter rusak", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", fuelOutID+"-flowmeter.jpg"))
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	w.Header().Set("Cache-Control", "private, no-store")
+	_, _ = w.Write(payload)
 }
 
 // fillRows prints the dispenses, newest first when asked, numbered in the
@@ -389,6 +449,9 @@ func fillRows(fills []model.A2BBaruFuelKeluar, newestFirst bool) ([]A2BBaruFillR
 			HMAwalFM: optionalDecimal(fill.HMAwalFM, 0), HMAkhirFM: optionalDecimal(fill.HMAkhirFM, 0),
 			Fuel: formatDecimal(fill.FuelLiter, 2), HMSaatIsi: optionalDecimal(fill.HMSaatIsi, 1),
 			JamKerja: formatDecimal(fill.JamKerja, 1), Operator: fill.Operator, Ratio: "-",
+		}
+		if fill.HasFoto {
+			row.PhotoURL = "/a2b-baru/fuel-keluar/foto?fuel_id=" + url.QueryEscape(fill.FuelOutID)
 		}
 		if ratio, ok := fill.Ratio(); ok {
 			row.Ratio = formatDecimal(ratio, 2)

@@ -1476,6 +1476,9 @@ input[type="file"]::file-selector-button { margin: -0.25rem 0.85rem -0.25rem -0.
 .fuel-photo-links { display: flex; gap: 0.4rem; }
 .fuel-photo-links a { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
 .fuel-photo-links a:hover { border-color: var(--teal); color: var(--teal); }
+/* A dispense without a photo keeps the icon, greyed and inert, so the column
+   reads the same down the page and nobody clicks into an empty page. */
+.fuel-photo-links .photo-none { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); opacity: 0.4; cursor: not-allowed; }
 
 /* Responsive -------------------------------------------------------------- */
 

@@ -482,6 +482,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/a2b-baru/unit", s.handleA2BBaruUnit)
 	mux.HandleFunc("/a2b-baru/fuel-masuk", s.handleA2BBaruFuelMasuk)
 	mux.HandleFunc("/a2b-baru/fuel-keluar", s.handleA2BBaruFuelKeluar)
+	mux.HandleFunc("/a2b-baru/fuel-keluar/foto", s.handleA2BBaruFuelKeluarPhoto)
 	mux.HandleFunc("/a2b/export", s.handleA2BExport)
 	mux.HandleFunc("/a2b/export/download", s.handleA2BPerformanceDownload)
 	mux.HandleFunc("/a2b/export/hm/download", s.handleA2BHMExportDownload)

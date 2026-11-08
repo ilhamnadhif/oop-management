@@ -1,6 +1,8 @@
 {{define "a2b_baru_fuel_keluar"}}
 {{template "appShellOpen" .}}
   {{if .Success}}<div class="alert success" role="status">{{.Success}}</div>{{end}}
+  {{/* The row is saved; this is a second look worth taking, not a refusal. */}}
+  {{if .Warning}}<div class="alert warn" role="status">{{.Warning}}</div>{{end}}
   {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
 
   <section class="panel">
@@ -11,68 +13,77 @@
       </div>
     </div>
     {{if .Units}}
-    <form method="post" action="/a2b-baru/fuel-keluar" class="stack-form" data-loading-form>
+    {{/* The same form as the older fuel keluar page, so the people at the pump
+         do the same thing on either: pick the unit, read the flow meter, let
+         the litres work themselves out, photograph the closing reading. */}}
+    <form method="post" action="/a2b-baru/fuel-keluar" class="stack-form" enctype="multipart/form-data" data-loading-form data-fuel-keluar-form>
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <div class="form-grid form-grid-3">
+
+      <div class="form-grid">
         <div>
           <label for="no_transaksi">{{template "icon" "hash"}}No transaksi</label>
           <input id="no_transaksi" type="text" value="{{.NextFuelOutID}}" disabled>
         </div>
         <div>
-          <label for="tanggal">{{template "icon" "calendar"}}Tanggal</label>
+          <label for="tanggal">{{template "icon" "calendar"}}Tanggal input</label>
           <input id="tanggal" name="tanggal" type="date" value="{{.Form.Tanggal}}" required>
         </div>
+      </div>
+
+      <div class="form-grid">
         <div>
-          <label for="id_unit">{{template "icon" "cube"}}Unit</label>
-          <select id="id_unit" name="id_unit" required>
-            <option value="">Pilih unit…</option>
+          <label for="id_unit">{{template "icon" "cube"}}ID unit</label>
+          <select id="id_unit" name="id_unit" data-fuel-unit required>
+            <option value="">Pilih ID unit…</option>
             {{range .Units}}
-            <option value="{{.IDUnit}}"{{if eq .IDUnit $.Form.IDUnit}} selected{{end}}>{{.IDUnit}} · {{.NamaUnit}}</option>
+            <option value="{{.IDUnit}}" data-nama-unit="{{.NamaUnit}}"{{if eq .IDUnit $.Form.IDUnit}} selected{{end}}>{{.IDUnit}}</option>
             {{end}}
           </select>
         </div>
-      </div>
-      <div class="form-grid">
         <div>
-          <label for="hm_awal_a2b">{{template "icon" "clock"}}HM awal A2B <span class="hint">(opsional)</span></label>
-          <input id="hm_awal_a2b" name="hm_awal_a2b" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.HMAwalA2B}}">
-        </div>
-        <div>
-          <label for="hm_akhir_a2b">{{template "icon" "clock"}}HM akhir A2B <span class="hint">(opsional)</span></label>
-          <input id="hm_akhir_a2b" name="hm_akhir_a2b" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.HMAkhirA2B}}">
+          <label for="nama_unit">{{template "icon" "truck"}}Nama unit</label>
+          <input id="nama_unit" type="text" value="" placeholder="Terisi otomatis dari ID unit" data-fuel-nama-unit disabled>
         </div>
       </div>
+
       <div class="form-grid form-grid-3">
         <div>
           <label for="hm_awal_fm">{{template "icon" "clock"}}HM awal flow meter</label>
-          <input id="hm_awal_fm" name="hm_awal_fm" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.HMAwalFM}}">
+          <input id="hm_awal_fm" name="hm_awal_fm" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMAwalFM}}" data-fuel-awal required>
         </div>
         <div>
           <label for="hm_akhir_fm">{{template "icon" "clock"}}HM akhir flow meter</label>
-          <input id="hm_akhir_fm" name="hm_akhir_fm" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.HMAkhirFM}}">
+          <input id="hm_akhir_fm" name="hm_akhir_fm" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMAkhirFM}}" data-fuel-akhir required>
         </div>
         <div>
-          <label for="fuel_liter">{{template "icon" "fuel"}}Fuel (L)</label>
-          <input id="fuel_liter" name="fuel_liter" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.FuelLiter}}" required>
+          <label for="fuel_liter">{{template "icon" "fuel"}}Fuel (liter)</label>
+          <input id="fuel_liter" type="text" value="" placeholder="Selisih flow meter" data-fuel-liter disabled>
         </div>
       </div>
-      <p class="hint">HM awal flow meter terisi dari HM akhir terakhir. Ubah bila angka di flow meter berbeda.</p>
+      <p class="hint">HM awal terisi dari pengisian terakhir. Ubah bila angka di flow meter berbeda.</p>
+
       <div class="form-grid form-grid-3">
         <div>
-          <label for="hm_saat_isi">{{template "icon" "clock"}}HM A2B saat isi</label>
-          <input id="hm_saat_isi" name="hm_saat_isi" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.HMSaatIsi}}">
+          <label for="hm_saat_isi">{{template "icon" "clock"}}HM alat berat pengisian <span class="hint">(opsional)</span></label>
+          <input id="hm_saat_isi" name="hm_saat_isi" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.HMSaatIsi}}" placeholder="Pembacaan HM alat saat diisi">
         </div>
         <div>
-          <label for="jam_kerja">{{template "icon" "clock"}}Jam kerja</label>
-          <input id="jam_kerja" name="jam_kerja" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Angka, gunakan koma atau titik untuk desimal" value="{{.Form.JamKerja}}" placeholder="0 bila tanpa HM">
+          <label for="jam_kerja">{{template "icon" "clock"}}Jam kerja <span class="hint">(untuk ratio)</span></label>
+          <input id="jam_kerja" name="jam_kerja" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Gunakan koma atau titik untuk desimal, contoh 5064,30" value="{{.Form.JamKerja}}" placeholder="Kosongkan bila tanpa HM">
         </div>
         <div>
           <label for="operator">{{template "icon" "user"}}Operator</label>
-          <input id="operator" name="operator" type="text" list="operatorList" value="{{.Form.Operator}}" autocomplete="off" required>
-          <datalist id="operatorList">{{range .OperatorOptions}}<option value="{{.}}"></option>{{end}}</datalist>
+          <input id="operator" name="operator" type="text" list="operatorList" value="{{.Form.Operator}}" placeholder="Pilih atau ketik nama operator…" autocomplete="off" required>
+          <datalist id="operatorList">
+            {{range .OperatorOptions}}<option value="{{.}}"></option>{{end}}
+          </datalist>
         </div>
       </div>
-      <p class="hint">Ratio fuel dihitung otomatis: fuel ÷ jam kerja. Jam kerja 0 tidak punya ratio.</p>
+
+      <label for="foto_flow_meter">{{template "icon" "camera"}}Foto akhir flow meter</label>
+      <input id="foto_flow_meter" name="foto_flow_meter" type="file" accept="image/*" required>
+      <p class="hint">Bukti angka akhir yang diketik di atas. Foto dikecilkan otomatis sebelum disimpan.</p>
+
       <button class="button primary" type="submit" data-submit-button data-loading-label="Menyimpan…">
         <span class="spinner" aria-hidden="true" hidden></span>
         {{template "icon" "save"}}<span data-submit-label>Simpan fuel keluar</span>
@@ -94,5 +105,7 @@
   </section>
 {{template "appShellClose" .}}
 <script src="/static/js/auth.js" defer></script>
+<script src="/static/js/combobox.js" defer></script>
+<script src="/static/js/fuel-keluar.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}

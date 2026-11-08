@@ -54,45 +54,51 @@ func TestA2BBaruOverviewMatchesTheWorkbook(t *testing.T) {
 	}
 }
 
-// Each dispense is numbered within the day it was written, and the readings
-// are checked before anything is stored.
+// Each dispense is numbered within the day it was written, its litres are the
+// flow meter's distance, and the readings are checked before anything is
+// stored.
 func TestA2BBaruFuelKeluarIsChecked(t *testing.T) {
 	ctx := context.Background()
 	store := repository.NewTestRepository()
 	_ = store.AppendA2BBaruUnits(ctx, []model.A2BBaruUnit{{IDUnit: "EXC-01", NamaUnit: "Excavator"}})
 	now := func() time.Time { return time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC) }
 	service := NewA2BBaruService(store, time.UTC, now)
-	input := A2BBaruFuelKeluarInput{Tanggal: "2026-11-02", IDUnit: "exc-01", HMAwalFM: "108905", HMAkhirFM: "109031", FuelLiter: "131", JamKerja: "13,6", Operator: "Langgeng"}
+	input := A2BBaruFuelKeluarInput{Tanggal: "2026-11-02", IDUnit: "exc-01", HMAwalFM: "108905", HMAkhirFM: "109036",
+		JamKerja: "13,6", Operator: "Langgeng", Foto: testPhoto(t)}
 
 	for i, want := range []string{"FUELOUT-20261102-0001", "FUELOUT-20261102-0002"} {
-		fill, err := service.CreateFuelKeluar(ctx, nil, input)
-		if err != nil || fill.FuelOutID != want || fill.IDUnit != "EXC-01" || fill.JamKerja != 13.6 {
-			t.Fatalf("fill %d = %+v, %v", i, fill, err)
+		fill, warning, err := service.CreateFuelKeluar(ctx, nil, input)
+		if err != nil || warning != "" || fill.FuelOutID != want || fill.IDUnit != "EXC-01" || fill.FuelLiter != 131 || fill.JamKerja != 13.6 {
+			t.Fatalf("fill %d = %+v, %q, %v", i, fill, warning, err)
 		}
 		if ratio, ok := fill.Ratio(); !ok || math.Abs(ratio-9.632) > 0.001 {
 			t.Fatalf("ratio = %v", ratio)
 		}
 	}
 
-	backwards := input
-	backwards.HMAkhirFM = "100"
-	for name, bad := range map[string]A2BBaruFuelKeluarInput{
-		"backwards meter": backwards,
-		"no fuel":         {Tanggal: "2026-11-02", IDUnit: "EXC-01", Operator: "x"},
-		"unknown unit":    {Tanggal: "2026-11-02", IDUnit: "EXC-99", FuelLiter: "5", Operator: "x"},
-		"bad date":        {Tanggal: "02-11-2026", IDUnit: "EXC-01", FuelLiter: "5", Operator: "x"},
+	bad := func(change func(*A2BBaruFuelKeluarInput)) A2BBaruFuelKeluarInput {
+		copied := input
+		change(&copied)
+		return copied
+	}
+	for name, refused := range map[string]A2BBaruFuelKeluarInput{
+		"backwards meter": bad(func(in *A2BBaruFuelKeluarInput) { in.HMAkhirFM = "100" }),
+		"no photo":        bad(func(in *A2BBaruFuelKeluarInput) { in.Foto = "" }),
+		"unknown unit":    bad(func(in *A2BBaruFuelKeluarInput) { in.IDUnit = "EXC-99" }),
+		"bad date":        bad(func(in *A2BBaruFuelKeluarInput) { in.Tanggal = "02-11-2026" }),
+		"no operator":     bad(func(in *A2BBaruFuelKeluarInput) { in.Operator = " " }),
 	} {
-		if _, err := service.CreateFuelKeluar(ctx, nil, bad); err == nil {
+		if _, _, err := service.CreateFuelKeluar(ctx, nil, refused); err == nil {
 			t.Fatalf("%s was accepted", name)
 		}
 	}
-	if fills, _ := store.ListA2BBaruFuelKeluar(ctx); len(fills) != 2 {
-		t.Fatalf("stored %d fills, want 2", len(fills))
+	if fills, _ := store.ListA2BBaruFuelKeluar(ctx); len(fills) != 2 || !fills[0].HasFoto || fills[0].Foto != "" {
+		t.Fatalf("stored fills = %+v", fills)
 	}
 	if next, _ := service.NextFuelOutID(ctx); next != "FUELOUT-20261102-0003" {
 		t.Fatalf("next = %s", next)
 	}
-	if last, _ := service.LastFlowMeter(ctx); last != 109031 {
+	if last, _ := service.LastFlowMeter(ctx); last != 109036 {
 		t.Fatalf("last flow meter = %v", last)
 	}
 }

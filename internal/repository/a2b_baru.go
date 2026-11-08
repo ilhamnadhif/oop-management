@@ -2,8 +2,11 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
+
+	"google.golang.org/api/sheets/v4"
 
 	"opp-management/internal/model"
 )
@@ -28,8 +31,12 @@ var a2bBaruFuelKeluarHeaders = []string{
 	"no_transaksi", "tanggal", "id_unit", "nama_unit",
 	"hm_awal_a2b", "hm_akhir_a2b", "hm_awal_fm", "hm_akhir_fm",
 	"fuel_liter", "hm_saat_isi", "jam_kerja", "operator",
-	"created_by", "created_at",
+	"created_by", "created_at", "foto_ada", "foto_akhir_fm",
 }
+
+// a2bBaruFuelKeluarListWidth is every column but the photo, which is read one
+// row at a time when somebody opens it.
+var a2bBaruFuelKeluarListWidth = len(a2bBaruFuelKeluarHeaders) - 1
 
 func (r *GoogleSheetsRepository) ListA2BBaruUnits(ctx context.Context) ([]model.A2BBaruUnit, error) {
 	rows, err := r.readRows(ctx, a2bBaruUnitSheet, columnName(len(a2bBaruUnitHeaders)))
@@ -92,7 +99,7 @@ func (r *GoogleSheetsRepository) AppendA2BBaruFuelMasuk(ctx context.Context, ord
 }
 
 func (r *GoogleSheetsRepository) ListA2BBaruFuelKeluar(ctx context.Context) ([]model.A2BBaruFuelKeluar, error) {
-	rows, err := r.readRows(ctx, a2bBaruFuelKeluarSheet, columnName(len(a2bBaruFuelKeluarHeaders)))
+	rows, err := r.readRows(ctx, a2bBaruFuelKeluarSheet, columnName(a2bBaruFuelKeluarListWidth))
 	if err != nil {
 		return nil, err
 	}
@@ -110,9 +117,36 @@ func (r *GoogleSheetsRepository) ListA2BBaruFuelKeluar(ctx context.Context) ([]m
 			FuelLiter: parseFloatCell(row[8]), HMSaatIsi: lenientOptionalFloat(row[9]),
 			JamKerja: parseFloatCell(row[10]), Operator: cellString(row[11]),
 			CreatedBy: cellString(row[12]), CreatedAt: lenientDateTime(row[13], r.location),
+			HasFoto: strings.TrimSpace(cellString(row[14])) != "",
 		})
 	}
 	return fills, nil
+}
+
+// ReadA2BBaruFuelKeluarPhoto finds a dispense by its number and reads its
+// photo, empty when it has none.
+func (r *GoogleSheetsRepository) ReadA2BBaruFuelKeluarPhoto(ctx context.Context, fuelOutID string) (string, error) {
+	ids, err := r.readRows(ctx, a2bBaruFuelKeluarSheet, "A")
+	if err != nil {
+		return "", err
+	}
+	for index, row := range ids {
+		if index == 0 || len(row) == 0 || !strings.EqualFold(strings.TrimSpace(cellString(row[0])), strings.TrimSpace(fuelOutID)) {
+			continue
+		}
+		column := columnName(len(a2bBaruFuelKeluarHeaders))
+		values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID,
+			fmt.Sprintf("%s!%s%d", quoteSheet(a2bBaruFuelKeluarSheet), column, index+1)).
+			ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+		if err != nil {
+			return "", fmt.Errorf("read a2b baru photo %s: %w", fuelOutID, err)
+		}
+		if len(values.Values) == 0 || len(values.Values[0]) == 0 {
+			return "", nil
+		}
+		return cellString(values.Values[0][0]), nil
+	}
+	return "", ErrNotFound
 }
 
 func (r *GoogleSheetsRepository) AppendA2BBaruFuelKeluar(ctx context.Context, fills []model.A2BBaruFuelKeluar) error {
@@ -123,10 +157,18 @@ func (r *GoogleSheetsRepository) AppendA2BBaruFuelKeluar(ctx context.Context, fi
 			numberOrBlank(fill.HMAwalA2B), numberOrBlank(fill.HMAkhirA2B),
 			numberOrBlank(fill.HMAwalFM), numberOrBlank(fill.HMAkhirFM),
 			fill.FuelLiter, numberOrBlank(fill.HMSaatIsi), fill.JamKerja, fill.Operator,
-			fill.CreatedBy, formatDateTime(fill.CreatedAt),
+			fill.CreatedBy, formatDateTime(fill.CreatedAt), photoMark(fill.Foto), fill.Foto,
 		})
 	}
 	return r.appendRows(ctx, a2bBaruFuelKeluarSheet, rows)
+}
+
+// photoMark fills the column the listing reads to know a photo is there.
+func photoMark(foto string) string {
+	if strings.TrimSpace(foto) == "" {
+		return ""
+	}
+	return "ya"
 }
 
 // numberOrBlank writes a reading nobody took as an empty cell.
@@ -153,4 +195,83 @@ func lenientDateTime(cell interface{}, location *time.Location) time.Time {
 		return time.Time{}
 	}
 	return value
+}
+
+// photoChunk is how many rows one photo read or write covers. A photo is up to
+// a cell's worth of base64, so a chunk is a few megabytes.
+const photoChunk = 40
+
+// FuelKeluarPhotosByID reads every photo on the older Fuel Keluar sheet, by
+// transaction number, a chunk of rows at a time. It is for copying them into
+// A2B Baru once, not for a page.
+func (r *GoogleSheetsRepository) FuelKeluarPhotosByID(ctx context.Context) (map[string]string, error) {
+	ids, err := r.readRows(ctx, fuelKeluarSheet, "A")
+	if err != nil {
+		return nil, err
+	}
+	photos := make(map[string]string)
+	for start := 2; start <= len(ids); start += photoChunk {
+		end := start + photoChunk - 1
+		if end > len(ids) {
+			end = len(ids)
+		}
+		values, err := r.service.Spreadsheets.Values.Get(r.spreadsheetID,
+			fmt.Sprintf("%s!%s%d:%s%d", quoteSheet(fuelKeluarSheet), fuelOutPhotoColumn, start, fuelOutPhotoColumn, end)).
+			ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
+		if err != nil {
+			return nil, fmt.Errorf("read fuel keluar photos from row %d: %w", start, err)
+		}
+		for offset, row := range values.Values {
+			index := start - 1 + offset
+			if index >= len(ids) || len(ids[index]) == 0 || len(row) == 0 {
+				continue
+			}
+			id := strings.TrimSpace(cellString(ids[index][0]))
+			if foto := strings.TrimSpace(cellString(row[0])); id != "" && foto != "" {
+				photos[id] = foto
+			}
+		}
+	}
+	return photos, nil
+}
+
+// FillA2BBaruFuelKeluarPhotos writes photos into the A2B Baru dispenses that
+// have none yet, matched by transaction number, and reports how many it
+// wrote. A row that already has a photo keeps it.
+func (r *GoogleSheetsRepository) FillA2BBaruFuelKeluarPhotos(ctx context.Context, photos map[string]string) (int, error) {
+	markColumn := columnName(len(a2bBaruFuelKeluarHeaders) - 1)
+	photoColumn := columnName(len(a2bBaruFuelKeluarHeaders))
+	rows, err := r.readRows(ctx, a2bBaruFuelKeluarSheet, columnName(a2bBaruFuelKeluarListWidth))
+	if err != nil {
+		return 0, err
+	}
+	var pending []*sheets.ValueRange
+	for index, row := range rows {
+		if index == 0 || len(row) == 0 {
+			continue
+		}
+		row = padRow(row, a2bBaruFuelKeluarListWidth)
+		foto := photos[strings.TrimSpace(cellString(row[0]))]
+		if foto == "" || strings.TrimSpace(cellString(row[a2bBaruFuelKeluarListWidth-1])) != "" {
+			continue
+		}
+		pending = append(pending, &sheets.ValueRange{
+			Range:  fmt.Sprintf("%s!%s%d:%s%d", quoteSheet(a2bBaruFuelKeluarSheet), markColumn, index+1, photoColumn, index+1),
+			Values: [][]interface{}{{"ya", foto}},
+		})
+	}
+	written := 0
+	for start := 0; start < len(pending); start += photoChunk {
+		end := start + photoChunk
+		if end > len(pending) {
+			end = len(pending)
+		}
+		if _, err := r.service.Spreadsheets.Values.BatchUpdate(r.spreadsheetID, &sheets.BatchUpdateValuesRequest{
+			ValueInputOption: "RAW", Data: pending[start:end],
+		}).Context(ctx).Do(); err != nil {
+			return written, fmt.Errorf("write a2b baru photos: %w", err)
+		}
+		written = end
+	}
+	return written, nil
 }

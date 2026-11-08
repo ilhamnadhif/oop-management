@@ -103,6 +103,9 @@ type Store interface {
 	AppendA2BBaruFuelMasuk(ctx context.Context, orders []model.A2BBaruFuelMasuk) error
 	ListA2BBaruFuelKeluar(ctx context.Context) ([]model.A2BBaruFuelKeluar, error)
 	AppendA2BBaruFuelKeluar(ctx context.Context, fills []model.A2BBaruFuelKeluar) error
+	// ReadA2BBaruFuelKeluarPhoto reads one dispense's photo, ErrNotFound when
+	// there is no such dispense and empty when it has no photo.
+	ReadA2BBaruFuelKeluarPhoto(ctx context.Context, fuelOutID string) (string, error)
 	FindAttendanceByUserDate(ctx context.Context, userID, date string) (*model.Attendance, int, error)
 	ListAttendanceByUser(ctx context.Context, userID string) ([]model.Attendance, error)
 	ListAttendanceBetween(ctx context.Context, from, to string) ([]model.Attendance, error)

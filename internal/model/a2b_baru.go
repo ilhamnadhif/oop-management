@@ -74,6 +74,12 @@ type A2BBaruFuelKeluar struct {
 
 	CreatedBy string
 	CreatedAt time.Time
+
+	// Foto is the photo of the closing flow meter reading, as a data URL. It
+	// is written with the row but never listed, since a page of base64 images
+	// is megabytes; HasFoto says whether one is there to fetch.
+	Foto    string
+	HasFoto bool
 }
 
 // Ratio is litres per working hour, and false when there are no hours to

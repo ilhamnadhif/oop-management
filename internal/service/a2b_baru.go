@@ -6,9 +6,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"opp-management/internal/model"
+	"opp-management/internal/photo"
 	"opp-management/internal/repository"
 )
 
@@ -16,6 +18,7 @@ import (
 // orders the tank is filled from, and every dispense. It reads and writes the
 // three A2B Baru sheets only; the older A2B module is not touched.
 type A2BBaruService struct {
+	mu       sync.Mutex
 	store    repository.Store
 	location *time.Location
 	now      NowFunc
@@ -210,36 +213,37 @@ func (s *A2BBaruService) Operators(ctx context.Context) ([]string, error) {
 }
 
 type A2BBaruFuelKeluarInput struct {
-	Tanggal    string
-	IDUnit     string
-	HMAwalA2B  string
-	HMAkhirA2B string
-	HMAwalFM   string
-	HMAkhirFM  string
-	FuelLiter  string
-	HMSaatIsi  string
-	JamKerja   string
-	Operator   string
+	Tanggal   string
+	IDUnit    string
+	HMAwalFM  string
+	HMAkhirFM string
+	HMSaatIsi string
+	JamKerja  string
+	Operator  string
+	// Foto is the closing flow meter reading, already turned into a data URL.
+	Foto string
 }
 
-func (s *A2BBaruService) CreateFuelKeluar(ctx context.Context, user *model.User, input A2BBaruFuelKeluarInput) (*model.A2BBaruFuelKeluar, error) {
-	fill := model.A2BBaruFuelKeluar{
-		Operator:  strings.Join(strings.Fields(input.Operator), " "),
-		CreatedBy: userName(user), CreatedAt: s.now().In(s.location),
-	}
+// CreateFuelKeluar files one dispense the way the older fuel keluar form does:
+// the litres are the distance between the two flow meter readings, the unit's
+// name comes from the register, the machine's hour meter is held against its
+// fills either side, and a photo of the closing reading is required. The
+// second return is a caution about the hour meter; the row is saved either way.
+func (s *A2BBaruService) CreateFuelKeluar(ctx context.Context, user *model.User, input A2BBaruFuelKeluarInput) (*model.A2BBaruFuelKeluar, string, error) {
+	fill := model.A2BBaruFuelKeluar{CreatedBy: userName(user), CreatedAt: s.now().In(s.location)}
 	tanggal, err := s.parseDate(input.Tanggal)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	fill.Tanggal = tanggal
 
 	id := strings.TrimSpace(input.IDUnit)
 	if id == "" {
-		return nil, fmt.Errorf("%w: ID unit wajib dipilih", ErrValidation)
+		return nil, "", fmt.Errorf("%w: ID unit wajib dipilih", ErrValidation)
 	}
 	units, err := s.store.ListA2BBaruUnits(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list unit a2b baru: %w", err)
+		return nil, "", fmt.Errorf("list unit a2b baru: %w", err)
 	}
 	for _, unit := range units {
 		if strings.EqualFold(unit.IDUnit, id) {
@@ -247,58 +251,94 @@ func (s *A2BBaruService) CreateFuelKeluar(ctx context.Context, user *model.User,
 		}
 	}
 	if fill.IDUnit == "" {
-		return nil, fmt.Errorf("%w: ID unit %s belum terdaftar", ErrValidation, id)
+		return nil, "", fmt.Errorf("%w: ID unit %s belum terdaftar", ErrValidation, id)
 	}
 
-	readings := []struct {
-		label string
-		value string
-		into  **float64
-	}{
-		{"HM awal A2B", input.HMAwalA2B, &fill.HMAwalA2B},
-		{"HM akhir A2B", input.HMAkhirA2B, &fill.HMAkhirA2B},
-		{"HM awal flow meter", input.HMAwalFM, &fill.HMAwalFM},
-		{"HM akhir flow meter", input.HMAkhirFM, &fill.HMAkhirFM},
-		{"HM A2B saat isi", input.HMSaatIsi, &fill.HMSaatIsi},
+	awal, err := parseNonNegative("HM awal flow meter", input.HMAwalFM)
+	if err != nil {
+		return nil, "", err
 	}
-	for _, reading := range readings {
-		if strings.TrimSpace(reading.value) == "" {
-			continue
-		}
-		value, err := parseNumber(reading.label, reading.value)
-		if err != nil {
-			return nil, err
-		}
-		if value < 0 {
-			return nil, fmt.Errorf("%w: %s tidak boleh negatif", ErrValidation, reading.label)
-		}
-		*reading.into = &value
+	akhir, err := parseNonNegative("HM akhir flow meter", input.HMAkhirFM)
+	if err != nil {
+		return nil, "", err
 	}
-	if fill.HMAwalA2B != nil && fill.HMAkhirA2B != nil && *fill.HMAkhirA2B < *fill.HMAwalA2B {
-		return nil, fmt.Errorf("%w: HM akhir A2B lebih kecil dari HM awal", ErrValidation)
+	if akhir <= awal {
+		return nil, "", fmt.Errorf("%w: HM akhir flow meter harus lebih besar dari HM awal", ErrValidation)
 	}
-	if fill.HMAwalFM != nil && fill.HMAkhirFM != nil && *fill.HMAkhirFM < *fill.HMAwalFM {
-		return nil, fmt.Errorf("%w: HM akhir flow meter lebih kecil dari HM awal", ErrValidation)
-	}
-	if fill.FuelLiter, err = parsePositive("Fuel (L)", input.FuelLiter); err != nil {
-		return nil, err
-	}
-	if fill.JamKerja, err = optionalNonNegative("Jam kerja", input.JamKerja); err != nil {
-		return nil, err
-	}
-	if fill.Operator == "" {
-		return nil, fmt.Errorf("%w: operator wajib diisi", ErrValidation)
-	}
+	fill.HMAwalFM, fill.HMAkhirFM = &awal, &akhir
+	fill.FuelLiter = round2(akhir - awal)
 
 	fills, err := s.store.ListA2BBaruFuelKeluar(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list fuel keluar a2b baru: %w", err)
+		return nil, "", fmt.Errorf("list fuel keluar a2b baru: %w", err)
+	}
+	var warning string
+	if fill.HMSaatIsi, err = optionalHourMeter(input.HMSaatIsi); err != nil {
+		return nil, "", err
+	}
+	if fill.HMSaatIsi != nil {
+		var readings []meterReading
+		for _, other := range fills {
+			if other.HMSaatIsi != nil && strings.EqualFold(other.IDUnit, fill.IDUnit) {
+				readings = append(readings, meterReading{tanggal: other.Tanggal, meter: *other.HMSaatIsi})
+			}
+		}
+		before, after := nearestReadings(readings, fill.Tanggal)
+		if warning, err = judgeHourMeter(fill.IDUnit, fill.Tanggal, *fill.HMSaatIsi, before, after); err != nil {
+			return nil, "", err
+		}
+	}
+	if fill.JamKerja, err = optionalNonNegative("Jam kerja", input.JamKerja); err != nil {
+		return nil, "", err
+	}
+
+	var operators []string
+	for _, other := range fills {
+		operators = append(operators, other.Operator)
+	}
+	if fill.Operator, err = adoptOption("Operator", input.Operator, operators); err != nil {
+		return nil, "", err
+	}
+
+	foto := strings.TrimSpace(input.Foto)
+	if foto == "" {
+		return nil, "", fmt.Errorf("%w: foto akhir flow meter wajib dilampirkan", ErrValidation)
+	}
+	if err := photo.ValidateDataURL(foto); err != nil {
+		return nil, "", fmt.Errorf("%w: foto akhir flow meter tidak valid", ErrInvalidPhoto)
+	}
+	fill.Foto = foto
+
+	// Numbered and written under one lock, so two people saving at once do
+	// not both take the same number.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fills, err = s.store.ListA2BBaruFuelKeluar(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("list fuel keluar a2b baru: %w", err)
 	}
 	fill.FuelOutID = nextDailyID("FUELOUT-", fill.CreatedAt, len(fills), func(i int) string { return fills[i].FuelOutID })
 	if err := s.store.AppendA2BBaruFuelKeluar(ctx, []model.A2BBaruFuelKeluar{fill}); err != nil {
-		return nil, fmt.Errorf("create fuel keluar a2b baru: %w", err)
+		return nil, "", fmt.Errorf("create fuel keluar a2b baru: %w", err)
 	}
-	return &fill, nil
+	fill.HasFoto, fill.Foto = true, ""
+	return &fill, warning, nil
+}
+
+// FuelKeluarPhoto reads one dispense's photo.
+func (s *A2BBaruService) FuelKeluarPhoto(ctx context.Context, fuelOutID string) (string, error) {
+	fuelOutID = strings.TrimSpace(fuelOutID)
+	if fuelOutID == "" {
+		return "", fmt.Errorf("%w: nomor transaksi wajib diisi", ErrValidation)
+	}
+	foto, err := s.store.ReadA2BBaruFuelKeluarPhoto(ctx, fuelOutID)
+	if err != nil {
+		return "", err
+	}
+	if foto == "" {
+		return "", repository.ErrNotFound
+	}
+	return foto, nil
 }
 
 func (s *A2BBaruService) parseDate(value string) (string, error) {

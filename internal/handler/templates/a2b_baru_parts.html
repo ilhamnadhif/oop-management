@@ -58,10 +58,11 @@
         <th scope="col" class="numeric">HM Awal FM</th><th scope="col" class="numeric">HM Akhir FM</th>
         <th scope="col" class="numeric">Fuel (L)</th><th scope="col" class="numeric">HM A2B Saat Isi</th>
         <th scope="col" class="numeric">Jam Kerja</th><th scope="col">Operator</th><th scope="col" class="numeric">Ratio Fuel</th>
+        <th scope="col">Foto</th>
       </tr>
     </thead>
     <tbody>
-      <tr class="po-total"><th scope="row" colspan="9">TOTAL</th><td class="numeric">{{.Total}}</td><td colspan="4"></td></tr>
+      <tr class="po-total"><th scope="row" colspan="9">TOTAL</th><td class="numeric">{{.Total}}</td><td colspan="5"></td></tr>
       {{range .Rows}}
       <tr>
         <td>{{.No}}</td><td>{{.FuelOutID}}</td><td>{{.Tanggal}}</td><td>{{.IDUnit}}</td><td class="wrap">{{.NamaUnit}}</td>
@@ -69,6 +70,7 @@
         <td class="numeric">{{.HMAwalFM}}</td><td class="numeric">{{.HMAkhirFM}}</td>
         <td class="numeric">{{.Fuel}}</td><td class="numeric">{{.HMSaatIsi}}</td>
         <td class="numeric">{{.JamKerja}}</td><td class="wrap">{{.Operator}}</td><td class="numeric">{{.Ratio}}</td>
+        <td class="fuel-photo-links">{{if .PhotoURL}}<a href="{{.PhotoURL}}" target="_blank" rel="noopener" title="Foto akhir flow meter">{{template "icon" "camera"}}</a>{{else}}<span class="photo-none" title="Tidak ada foto" aria-label="Tidak ada foto">{{template "icon" "camera"}}</span>{{end}}</td>
       </tr>
       {{end}}
     </tbody>

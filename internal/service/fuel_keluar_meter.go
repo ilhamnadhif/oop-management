@@ -28,7 +28,14 @@ func (s *FuelKeluarService) checkHourMeter(ctx context.Context, unit FuelUnitOpt
 	if err != nil {
 		return "", err
 	}
-	value := *reading
+	return judgeHourMeter(unit.IDUnit, tanggal, *reading, before, after)
+}
+
+// judgeHourMeter is the rule itself, shared by both fuel books: a reading
+// below the fill before it or above the fill after it is refused, and one that
+// climbed further than the days between allow is saved with a caution.
+func judgeHourMeter(idUnit, tanggal string, value float64, before, after *meterReading) (string, error) {
+	unit := FuelUnitOption{IDUnit: idUnit}
 
 	// The row may be written up late, in which case it has to fit between the
 	// fills on either side of it rather than merely follow the last one.
@@ -96,7 +103,7 @@ func (s *FuelKeluarService) neighbouringReadings(ctx context.Context, idUnit, ta
 	if err != nil {
 		return nil, nil, fmt.Errorf("read fuel keluar: %w", err)
 	}
-	var before, after *meterReading
+	var readings []meterReading
 	for _, row := range rows {
 		if row.HMAlatBerat == nil {
 			continue
@@ -104,7 +111,17 @@ func (s *FuelKeluarService) neighbouringReadings(ctx context.Context, idUnit, ta
 		if !strings.EqualFold(strings.TrimSpace(row.IDUnit), strings.TrimSpace(idUnit)) {
 			continue
 		}
-		candidate := meterReading{tanggal: strings.TrimSpace(row.Tanggal), meter: *row.HMAlatBerat}
+		readings = append(readings, meterReading{tanggal: strings.TrimSpace(row.Tanggal), meter: *row.HMAlatBerat})
+	}
+	before, after := nearestReadings(readings, tanggal)
+	return before, after, nil
+}
+
+// nearestReadings picks, from one machine's readings, the nearest before a
+// date and the nearest after it. Readings on the same day count as before.
+func nearestReadings(readings []meterReading, tanggal string) (*meterReading, *meterReading) {
+	var before, after *meterReading
+	for _, candidate := range readings {
 		if candidate.tanggal <= tanggal {
 			if before == nil || candidate.tanggal > before.tanggal ||
 				(candidate.tanggal == before.tanggal && candidate.meter > before.meter) {
@@ -119,7 +136,7 @@ func (s *FuelKeluarService) neighbouringReadings(ctx context.Context, idUnit, ta
 			after = &value
 		}
 	}
-	return before, after, nil
+	return before, after
 }
 
 // meterText prints an hour meter the way the form takes it: as many decimals as
