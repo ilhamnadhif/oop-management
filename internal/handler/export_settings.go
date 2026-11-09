@@ -20,6 +20,7 @@ var exportLabels = map[model.ExportTypeKey]string{
 	model.ExportBiayaFuel:   "Biaya Fuel",
 	model.ExportAbsensi:     "Rekap Absensi Bulanan",
 	model.ExportProduksiNew: "Laporan Ritase Widya",
+	model.ExportA2BBaru:     "Laporan Fuel A2B Baru",
 }
 
 // exportLedes say what each report contains, so somebody switching one off can
@@ -34,6 +35,7 @@ var exportLedes = map[model.ExportTypeKey]string{
 	model.ExportBiayaFuel:   "Biaya bahan bakar per bulan, dihitung dari yang dipakai.",
 	model.ExportAbsensi:     "Matriks absensi bulanan per karyawan.",
 	model.ExportProduksiNew: "Summary ritase, rekap vendor, detail unit dan detail rit dari tiket Widya Load Scanner.",
+	model.ExportA2BBaru:     "Fuel masuk (PO dan diterima site), ratio fuel per unit, dan fuel keluar & HM.",
 }
 
 // ExportChoice is one export type as the settings form shows it: whether the

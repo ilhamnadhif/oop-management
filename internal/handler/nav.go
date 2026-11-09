@@ -132,6 +132,8 @@ var navItems = []NavItem{
 			Lede: "Catat purchase order fuel dan volume yang diterima site."},
 		{Key: "a2b-baru-fuel-keluar", Label: "Fuel Keluar & HM", Path: "/a2b-baru/fuel-keluar", Icon: "clock",
 			Lede: "Catat pengisian fuel tiap unit beserta HM dan jam kerjanya."},
+		{Key: "a2b-baru-export", Label: "Export Data", Path: "/a2b-baru/export", Icon: "save",
+			Lede: "Unduh fuel masuk, ratio per unit, dan fuel keluar dalam XLSX atau PDF."},
 	}},
 }
 

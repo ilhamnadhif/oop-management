@@ -1,0 +1,62 @@
+{{/* The A2B Baru export: a range and the units, then the overview's three
+     tables as a workbook or a signed PDF. */}}
+{{define "a2b_baru_export"}}
+{{template "appShellOpen" .}}
+  {{if .Error}}<div class="alert error" role="alert">{{.Error}}</div>{{end}}
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "calculator"}}RENTANG DATA</p>
+        <h2>Pilih periode dan unit</h2>
+      </div>
+    </div>
+    <form class="filter-form a2b-baru-filter" method="get" action="/a2b-baru/export">
+      <div>
+        <label for="from">{{template "icon" "calendar"}}Dari tanggal</label>
+        <span class="date-field" data-date-field{{if not .From}} data-empty{{end}}><input id="from" name="from" type="date" value="{{.From}}"><span class="date-placeholder" aria-hidden="true">dd/mm/yyyy</span></span>
+      </div>
+      <div>
+        <label for="to">{{template "icon" "calendar"}}Sampai tanggal</label>
+        <span class="date-field" data-date-field{{if not .To}} data-empty{{end}}><input id="to" name="to" type="date" value="{{.To}}"><span class="date-placeholder" aria-hidden="true">dd/mm/yyyy</span></span>
+      </div>
+      {{template "unitPicker" .Picker}}
+      <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+      {{if .Applied}}<a class="button subtle" href="/a2b-baru/export">Reset</a>{{end}}
+      <p class="hint filter-note">Kosongkan tanggal untuk seluruh periode dan unit untuk semua unit. Filter unit berlaku untuk ratio dan fuel keluar.</p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{template "icon" "save"}}UNDUH LAPORAN</p>
+        <h2>{{.Orders}} PO · {{.Fills}} pengisian · {{.Keluar}} L keluar</h2>
+      </div>
+    </div>
+    {{if not .Aktif}}
+    <p class="panel-empty">Export ini dinonaktifkan untuk project ini. Hubungi Management bila perlu dibuka.</p>
+    {{else if .Empty}}
+    <p class="panel-empty">Tidak ada fuel masuk maupun fuel keluar pada periode dan unit ini, jadi tidak ada yang bisa diunduh.</p>
+    {{else if not .Error}}
+    <div class="export-parts">
+      {{range .Parts}}
+      <div class="export-part">
+        <div>
+          <strong>{{.Label}}</strong>
+          <p class="hint">{{.Hint}}</p>
+        </div>
+        <div class="action-row">
+          <a class="button primary" href="{{.XLSX}}">{{template "icon" "save"}}XLSX</a>
+          <a class="button subtle" href="{{.PDF}}">{{template "icon" "save"}}PDF</a>
+        </div>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  </section>
+{{template "appShellClose" .}}
+<script src="/static/js/unit-picker.js" defer></script>
+<script src="/static/js/date-placeholder.js" defer></script>
+{{template "pageFoot" .}}
+{{end}}

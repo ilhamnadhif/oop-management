@@ -238,13 +238,16 @@ const (
 	// ExportProduksiNew is the Widya ritase report: the four Produksi New
 	// tables, a sheet or a run of pages each.
 	ExportProduksiNew ExportTypeKey = "produksi-new"
+	// ExportA2BBaru is the A2B Baru fuel book: purchase orders, ratio per
+	// unit and every dispense.
+	ExportA2BBaru ExportTypeKey = "a2b-baru"
 )
 
 // ExportTypeKeys is every configurable export, in the order the settings form
 // lists them.
 var ExportTypeKeys = []ExportTypeKey{
 	ExportProduksi, ExportNota, ExportUnitDT, ExportUnitA2B, ExportInputHM, ExportFuelKeluar,
-	ExportBiayaFuel, ExportAbsensi, ExportProduksiNew,
+	ExportBiayaFuel, ExportAbsensi, ExportProduksiNew, ExportA2BBaru,
 }
 
 // ExportConfigFor returns one export's config, or the defaults when the
