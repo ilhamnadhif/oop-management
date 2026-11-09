@@ -144,7 +144,7 @@ func TestA2BBaruFillsAndAddsUp(t *testing.T) {
 		// The order: 8.000 at 17.928 against 7.900 arrived, 100 short.
 		"143.424.000", "141.631.200", "1.792.800", "98.75%",
 		// EXC-01 burned 120 L over 8 hours; the genset has no ratio.
-		"15", "Agustus 2026",
+		"15", "Agu 2026",
 		"Langgeng",
 	} {
 		if !strings.Contains(page, want) {

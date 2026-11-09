@@ -2252,7 +2252,13 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
    would leave no room for a month. */
 .a2b-baru-ratio thead th { vertical-align: bottom; line-height: 1.35; }
 .a2b-baru-ratio thead th.month-group { text-align: center; vertical-align: middle; }
-@media (min-width: 761px) {
+/* The unit columns only stay put when the table's own box has room for them
+   and a month or two beside them; measured on the box rather than the screen,
+   since a sidebar or a tablet leaves far less than the screen width. Below
+   that, and on a browser without container queries, the whole table scrolls
+   like any other. */
+.a2b-baru-ratio-wrap { container-type: inline-size; }
+@container (min-width: 50rem) {
   .a2b-baru-ratio .fix { position: sticky; z-index: 1; box-sizing: border-box; background: #fff; }
   .a2b-baru-ratio thead .fix { z-index: 2; background: #f0f5fd; }
   .a2b-baru-ratio .po-total .fix { background: var(--surface-muted, #f6f7f9); }

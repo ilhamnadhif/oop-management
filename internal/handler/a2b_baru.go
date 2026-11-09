@@ -577,7 +577,7 @@ func (s *Server) handleA2BBaruOverview(w http.ResponseWriter, r *http.Request) {
 	data.FuelDiterima = formatDecimal(overview.FuelDiterima, 2)
 	data.Orders = orderTable(overview)
 	for _, month := range overview.Months {
-		data.Months = append(data.Months, monthLabel(month))
+		data.Months = append(data.Months, shortMonthLabel(month))
 	}
 	var keluar, forRatio, jam float64
 	for _, unit := range overview.Ratios {
@@ -824,6 +824,18 @@ func paginate(rows []A2BBaruFillRow, page, size int, ranges map[string]service.A
 }
 
 // ---- Formatting ----
+
+var shortMonths = []string{"Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"}
+
+// shortMonthLabel writes "2026-08" as "Agu 2026", narrow enough for a column
+// of figures.
+func shortMonthLabel(month string) string {
+	date, err := time.Parse("2006-01", month)
+	if err != nil {
+		return month
+	}
+	return fmt.Sprintf("%s %d", shortMonths[date.Month()-1], date.Year())
+}
 
 // formatDecimal writes a number the Indonesian way, 1.234,5, with at most the
 // decimals given and none that are only zeros.
