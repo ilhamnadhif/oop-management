@@ -4,7 +4,7 @@
 {{define "a2bBaruOrderTable"}}
 {{if .HasOrders}}
 <div class="table-scroll">
-  <table class="data-table a2b-baru-po">
+  <table class="data-table a2b-baru-table a2b-baru-po">
     <thead>
       <tr>
         <th scope="col" rowspan="2">Phase</th>
@@ -49,7 +49,7 @@
 {{define "a2bBaruFillTable"}}
 {{if .Rows}}
 <div class="table-scroll">
-  <table class="data-table">
+  <table class="data-table a2b-baru-table">
     <thead>
       <tr>
         <th scope="col">No</th><th scope="col">No Transaksi</th><th scope="col">Tanggal</th>
@@ -116,11 +116,11 @@
   {{range .Keep}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}
   <div>
     <label for="{{.Prefix}}_from">{{template "icon" "calendar"}}Dari tanggal</label>
-    <input id="{{.Prefix}}_from" name="{{.Prefix}}_from" type="date" value="{{.From}}">
+    <span class="date-field" data-date-field{{if not .From}} data-empty{{end}}><input id="{{.Prefix}}_from" name="{{.Prefix}}_from" type="date" value="{{.From}}"><span class="date-placeholder" aria-hidden="true">dd/mm/yyyy</span></span>
   </div>
   <div>
     <label for="{{.Prefix}}_to">{{template "icon" "calendar"}}Sampai tanggal</label>
-    <input id="{{.Prefix}}_to" name="{{.Prefix}}_to" type="date" value="{{.To}}">
+    <span class="date-field" data-date-field{{if not .To}} data-empty{{end}}><input id="{{.Prefix}}_to" name="{{.Prefix}}_to" type="date" value="{{.To}}"><span class="date-placeholder" aria-hidden="true">dd/mm/yyyy</span></span>
   </div>
   {{if .HasUnit}}{{template "unitPicker" .Picker}}{{end}}
   <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>

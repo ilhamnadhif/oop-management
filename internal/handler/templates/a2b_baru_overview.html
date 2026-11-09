@@ -60,7 +60,7 @@
     {{if .Ratios}}
     <div class="table-scroll a2b-baru-ratio-wrap">
       {{/* The six columns on the left stay put; the months scroll beside them. */}}
-      <table class="data-table a2b-baru-ratio">
+      <table class="data-table a2b-baru-table a2b-baru-ratio">
         <thead>
           <tr>
             <th scope="col" rowspan="2" class="fix fix-1">ID Unit</th><th scope="col" rowspan="2" class="fix fix-2">Nama Unit</th>
@@ -112,5 +112,6 @@
 {{template "appShellClose" .}}
 <script src="/static/js/auth.js" defer></script>
 <script src="/static/js/unit-picker.js" defer></script>
+<script src="/static/js/date-placeholder.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}

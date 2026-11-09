@@ -2306,3 +2306,31 @@ input[type="file"]::file-selector-button { background: var(--secondary-gradient)
 .a2b-baru-pager .current { border-color: transparent; color: #fff; background: var(--red-gradient, #d7182a); }
 .a2b-baru-pager .disabled { opacity: 0.35; }
 .a2b-baru-pager .pager-gap { padding: 0 0.2rem; color: var(--muted); }
+
+/* A2B Baru tables read at the size of the Produksi New ones: a touch smaller
+   and tighter than the app's default table, and smaller again on a phone, so
+   more of a wide table fits before it has to scroll. */
+.data-table.a2b-baru-table { font-size: 0.84rem; }
+.data-table.a2b-baru-table th,
+.data-table.a2b-baru-table td { padding: 0.55rem 0.75rem; }
+.data-table.a2b-baru-table thead th { font-size: 0.7rem; }
+@media (max-width: 640px) {
+  .data-table.a2b-baru-table { font-size: 0.78rem; }
+  .data-table.a2b-baru-table th,
+  .data-table.a2b-baru-table td { padding: 0.42rem 0.5rem; }
+  .data-table.a2b-baru-table thead th { font-size: 0.66rem; }
+}
+
+/* An empty date field on a touch screen is a blank box; the hint is laid over
+   it there until a date is picked. On a mouse-driven screen the browser draws
+   its own, so this one stays hidden. */
+.date-field { position: relative; display: block; }
+.date-placeholder { display: none; }
+@media (pointer: coarse) {
+  /* Set where the field's own text starts: the app's input padding, or the
+     A2B Baru filter's narrower one from tablet width up. */
+  .date-field[data-empty] .date-placeholder { position: absolute; top: 50%; left: 1rem; display: block; color: #94a0aa; font-size: 1rem; line-height: 1; pointer-events: none; transform: translateY(-50%); }
+}
+@media (pointer: coarse) and (min-width: 761px) {
+  .a2b-baru-filter .date-field[data-empty] .date-placeholder { left: 0.85rem; }
+}
