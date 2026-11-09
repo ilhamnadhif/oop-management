@@ -7,8 +7,10 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"opp-management/internal/export"
 	"opp-management/internal/model"
@@ -178,6 +180,8 @@ type A2BBaruOrderTable struct {
 	SitePct   string
 	DevPct    string
 	HasOrders bool
+	// Empty is what the table says when it has no rows.
+	Empty string
 }
 
 type A2BBaruFuelMasukPageData struct {
@@ -235,7 +239,7 @@ func (s *Server) renderA2BBaruFuelMasuk(w http.ResponseWriter, r *http.Request, 
 		ShellPageData: s.shellData(user, sessionValue, "a2b-baru-fuel-masuk"),
 		Form:          form, Error: notice.errMessage, Success: notice.success,
 	}
-	overview, err := s.a2bBaru.Overview(r.Context())
+	overview, err := s.a2bBaru.Overview(r.Context(), service.A2BBaruOverviewFilter{})
 	if err != nil {
 		log.Printf("read a2b baru: %v", err)
 		if data.Error == "" {
@@ -247,7 +251,7 @@ func (s *Server) renderA2BBaruFuelMasuk(w http.ResponseWriter, r *http.Request, 
 }
 
 func orderTable(overview service.A2BBaruOverview) A2BBaruOrderTable {
-	table := A2BBaruOrderTable{HasOrders: len(overview.Orders) > 0}
+	table := A2BBaruOrderTable{HasOrders: len(overview.Orders) > 0, Empty: "Belum ada fuel masuk tercatat."}
 	for _, order := range overview.Orders {
 		row := A2BBaruOrderRow{
 			Phase: order.Phase, Tanggal: dateOnlyLabel(order.Tanggal), NoPO: order.NoPO,
@@ -301,6 +305,11 @@ type A2BBaruFillRow struct {
 type A2BBaruFillTable struct {
 	Rows  []A2BBaruFillRow
 	Total string
+	// Pager is set on the overview, where the list is paged; the input page
+	// shows every row.
+	Pager *A2BBaruPager
+	// Empty is what the table says when it has no rows.
+	Empty string
 }
 
 type A2BBaruFuelKeluarPageData struct {
@@ -403,6 +412,7 @@ func (s *Server) renderA2BBaruFuelKeluar(w http.ResponseWriter, r *http.Request,
 		fail("Gagal memuat riwayat fuel keluar", err)
 	}
 	data.Fills.Rows, data.Fills.Total = fillRows(fills, true)
+	data.Fills.Empty = "Belum ada fuel keluar tercatat."
 	s.render(w, "a2b_baru_fuel_keluar", data, status)
 }
 
@@ -478,9 +488,33 @@ type A2BBaruRatioRow struct {
 	Monthly               []string
 }
 
+// A2BBaruTableFilter is one table's filter form: what it holds, the other
+// tables' filters to carry along so they are kept, and the address that
+// clears this one alone.
+type A2BBaruTableFilter struct {
+	// Prefix names this table's fields: "fm", "ratio" or "fk".
+	Prefix   string
+	Anchor   string
+	From     string
+	To       string
+	HasUnit  bool
+	Active   bool
+	Keep     []A2BBaruKeep
+	ResetURL string
+	// Picker is the unit filter: a list of ticks with a search over it, the
+	// same one the A2B export uses, so several units can be picked at once.
+	Picker UnitPicker
+}
+
+// A2BBaruKeep is one other filter's field, carried as a hidden input.
+type A2BBaruKeep struct{ Name, Value string }
+
 type A2BBaruOverviewPageData struct {
 	ShellPageData
 	Error        string
+	OrderFilter  A2BBaruTableFilter
+	RatioFilter  A2BBaruTableFilter
+	FillFilter   A2BBaruTableFilter
 	Units        string
 	Stock        string
 	StockLow     bool
@@ -490,6 +524,7 @@ type A2BBaruOverviewPageData struct {
 	Months       []string
 	Ratios       []A2BBaruRatioRow
 	RatioTotal   A2BBaruRatioRow
+	RatioEmpty   string
 	Fills        A2BBaruFillTable
 }
 
@@ -499,7 +534,38 @@ func (s *Server) handleA2BBaruOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := A2BBaruOverviewPageData{ShellPageData: bound.shellData(user, sessionValue, "a2b-baru-overview")}
-	overview, err := bound.a2bBaru.Overview(r.Context())
+	query := r.URL.Query()
+	ranges := map[string]service.A2BBaruRange{}
+	for _, prefix := range []string{"fm", "ratio", "fk"} {
+		ranges[prefix] = a2bBaruRange(query, prefix)
+	}
+	ranges["fm"] = service.A2BBaruRange{From: ranges["fm"].From, To: ranges["fm"].To}
+	overview, err := bound.a2bBaru.Overview(r.Context(), service.A2BBaruOverviewFilter{
+		Orders: ranges["fm"], Ratios: ranges["ratio"], Fills: ranges["fk"],
+	})
+	// The fuel keluar table is paged. Filtering another table keeps its page
+	// and size; filtering it keeps the size and starts again from page one.
+	size, page := pagerSize(query.Get("fk_size")), pagerPage(query.Get("fk_page"))
+	paging := url.Values{}
+	if size != defaultPageSize {
+		paging.Set("fk_size", strconv.Itoa(size))
+	}
+	sizeOnly := url.Values{}
+	for key, values := range paging {
+		sizeOnly[key] = values
+	}
+	if page > 1 {
+		paging.Set("fk_page", strconv.Itoa(page))
+	}
+	data.OrderFilter = tableFilter("fm", "fuel-masuk", false, ranges, paging)
+	data.RatioFilter = tableFilter("ratio", "ratio", true, ranges, paging)
+	data.FillFilter = tableFilter("fk", "fuel-keluar", true, ranges, sizeOnly)
+	register := make([]model.UnitA2B, 0, len(overview.UnitList))
+	for _, unit := range overview.UnitList {
+		register = append(register, model.UnitA2B{IDUnit: unit.IDUnit, NamaUnit: unit.NamaUnit})
+	}
+	data.RatioFilter.Picker = unitPickerFor("ratio_unit", register, ranges["ratio"].Units)
+	data.FillFilter.Picker = unitPickerFor("fk_unit", register, ranges["fk"].Units)
 	if err != nil {
 		log.Printf("read a2b baru overview: %v", err)
 		data.Error = "Data A2B Baru gagal dimuat"
@@ -524,7 +590,9 @@ func (s *Server) handleA2BBaruOverview(w http.ResponseWriter, r *http.Request) {
 			row.Ratio = formatDecimal(unit.Ratio, 2)
 		}
 		for _, month := range unit.Monthly {
-			cell := ""
+			// A month the unit logged no hours in reads "-", like any other
+			// figure that has nothing to show.
+			cell := "-"
 			if month.HasRatio {
 				cell = formatDecimal(month.Ratio, 2)
 			}
@@ -540,8 +608,219 @@ func (s *Server) handleA2BBaruOverview(w http.ResponseWriter, r *http.Request) {
 	if jam > 0 {
 		data.RatioTotal.Ratio = formatDecimal(forRatio/jam, 2)
 	}
-	data.Fills.Rows, data.Fills.Total = fillRows(overview.Fills, true)
+	allRows, total := fillRows(overview.Fills, true)
+	data.Fills.Total = total
+	data.Fills.Pager, data.Fills.Rows = paginate(allRows, page, size, ranges)
+	const noMatch = "Tidak ada data untuk filter ini."
+	data.Fills.Empty = "Belum ada fuel keluar tercatat."
+	if data.FillFilter.Active {
+		data.Fills.Empty = noMatch
+	}
+	if data.OrderFilter.Active {
+		data.Orders.Empty = noMatch
+	}
+	data.RatioEmpty = "Belum ada fuel keluar tercatat."
+	if data.RatioFilter.Active {
+		data.RatioEmpty = noMatch
+	}
 	bound.render(w, "a2b_baru_overview", data, http.StatusOK)
+}
+
+// a2bBaruRange reads one table's filter. A date that is not one is dropped,
+// and a range given backwards is turned round.
+func a2bBaruRange(query url.Values, prefix string) service.A2BBaruRange {
+	date := func(field string) string {
+		value := strings.TrimSpace(query.Get(prefix + "_" + field))
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return ""
+		}
+		return value
+	}
+	result := service.A2BBaruRange{From: date("from"), To: date("to")}
+	for _, unit := range query[prefix+"_unit"] {
+		if unit = strings.TrimSpace(unit); unit != "" {
+			result.Units = append(result.Units, unit)
+		}
+	}
+	if result.From != "" && result.To != "" && result.From > result.To {
+		result.From, result.To = result.To, result.From
+	}
+	return result
+}
+
+// tableFilter lays one table's filter out, carrying every other table's so
+// that filtering one leaves the rest as they were.
+func tableFilter(prefix, anchor string, hasUnit bool, ranges map[string]service.A2BBaruRange, extra url.Values) A2BBaruTableFilter {
+	own := ranges[prefix]
+	filter := A2BBaruTableFilter{Prefix: prefix, Anchor: anchor, From: own.From, To: own.To, HasUnit: hasUnit,
+		Active: own.From != "" || own.To != "" || len(own.Units) > 0}
+	others := url.Values{}
+	for _, other := range []string{"fm", "ratio", "fk"} {
+		if other == prefix {
+			continue
+		}
+		theirs := ranges[other]
+		for field, value := range map[string]string{"from": theirs.From, "to": theirs.To} {
+			if value != "" {
+				others.Add(other+"_"+field, value)
+			}
+		}
+		for _, unit := range theirs.Units {
+			others.Add(other+"_unit", unit)
+		}
+	}
+	for name, values := range extra {
+		for _, value := range values {
+			others.Add(name, value)
+		}
+	}
+	names := make([]string, 0, len(others))
+	for name := range others {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, value := range others[name] {
+			filter.Keep = append(filter.Keep, A2BBaruKeep{Name: name, Value: value})
+		}
+	}
+	filter.ResetURL = "/a2b-baru/overview"
+	if encoded := others.Encode(); encoded != "" {
+		filter.ResetURL += "?" + encoded
+	}
+	filter.ResetURL += "#" + anchor
+	return filter
+}
+
+// ---- Paging ----
+
+// pageSizes are the row counts a reader may page the fuel keluar list by.
+var pageSizes = []int{10, 25, 50, 100}
+
+const defaultPageSize = 10
+
+func pagerSize(value string) int {
+	size, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return defaultPageSize
+	}
+	for _, allowed := range pageSizes {
+		if size == allowed {
+			return size
+		}
+	}
+	return defaultPageSize
+}
+
+func pagerPage(value string) int {
+	page, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || page < 1 {
+		return 1
+	}
+	return page
+}
+
+// A2BBaruPager is the paging bar under the fuel keluar list.
+type A2BBaruPager struct {
+	Page, Pages, Size int
+	FirstRow, LastRow int
+	Rows              int
+	PrevURL, NextURL  string
+	Links             []A2BBaruPageLink
+	Sizes             []A2BBaruPageSize
+}
+
+// A2BBaruPageLink is one page number, or a gap between them.
+type A2BBaruPageLink struct {
+	Label   string
+	URL     string
+	Current bool
+	Gap     bool
+}
+
+// A2BBaruPageSize is one choice of rows a page, as a link that starts again
+// from the first page.
+type A2BBaruPageSize struct {
+	Size     int
+	URL      string
+	Selected bool
+}
+
+// paginate cuts one page out of the rows and lays out the bar that moves
+// between pages. A page past the end shows the last one. Every address it
+// builds keeps the page's filters.
+func paginate(rows []A2BBaruFillRow, page, size int, ranges map[string]service.A2BBaruRange) (*A2BBaruPager, []A2BBaruFillRow) {
+	pages := (len(rows) + size - 1) / size
+	if pages < 1 {
+		pages = 1
+	}
+	if page > pages {
+		page = pages
+	}
+	start := (page - 1) * size
+	end := start + size
+	if end > len(rows) {
+		end = len(rows)
+	}
+	pager := &A2BBaruPager{Page: page, Pages: pages, Size: size, Rows: len(rows), FirstRow: start + 1, LastRow: end}
+	if len(rows) == 0 {
+		pager.FirstRow = 0
+	}
+
+	filters := url.Values{}
+	for _, prefix := range []string{"fm", "ratio", "fk"} {
+		own := ranges[prefix]
+		if own.From != "" {
+			filters.Set(prefix+"_from", own.From)
+		}
+		if own.To != "" {
+			filters.Set(prefix+"_to", own.To)
+		}
+		for _, unit := range own.Units {
+			filters.Add(prefix+"_unit", unit)
+		}
+	}
+	address := func(target, rows int) string {
+		query := url.Values{}
+		for key, values := range filters {
+			query[key] = values
+		}
+		if rows != defaultPageSize {
+			query.Set("fk_size", strconv.Itoa(rows))
+		}
+		if target > 1 {
+			query.Set("fk_page", strconv.Itoa(target))
+		}
+		path := "/a2b-baru/overview"
+		if encoded := query.Encode(); encoded != "" {
+			path += "?" + encoded
+		}
+		return path + "#fuel-keluar"
+	}
+	link := func(target int) string { return address(target, size) }
+	if page > 1 {
+		pager.PrevURL = link(page - 1)
+	}
+	if page < pages {
+		pager.NextURL = link(page + 1)
+	}
+	// The first and last pages, and two either side of this one, with a gap
+	// where pages are skipped.
+	last := 0
+	for number := 1; number <= pages; number++ {
+		if number != 1 && number != pages && (number < page-2 || number > page+2) {
+			continue
+		}
+		if last != 0 && number > last+1 {
+			pager.Links = append(pager.Links, A2BBaruPageLink{Label: "…", Gap: true})
+		}
+		pager.Links = append(pager.Links, A2BBaruPageLink{Label: strconv.Itoa(number), URL: link(number), Current: number == page})
+		last = number
+	}
+	for _, allowed := range pageSizes {
+		pager.Sizes = append(pager.Sizes, A2BBaruPageSize{Size: allowed, URL: address(1, allowed), Selected: allowed == size})
+	}
+	return pager, rows[start:end]
 }
 
 // ---- Formatting ----

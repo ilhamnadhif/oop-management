@@ -41,7 +41,7 @@
   </table>
 </div>
 {{else}}
-<p class="panel-empty">Belum ada fuel masuk tercatat.</p>
+<p class="panel-empty">{{.Empty}}</p>
 {{end}}
 {{end}}
 
@@ -76,7 +76,54 @@
     </tbody>
   </table>
 </div>
+{{with .Pager}}{{template "a2bBaruPager" .}}{{end}}
 {{else}}
-<p class="panel-empty">Belum ada fuel keluar tercatat.</p>
+<p class="panel-empty">{{.Empty}}</p>
 {{end}}
+{{end}}
+
+{{/* The bar under a paged list: how many rows a page holds, where this page
+     sits in the whole, and the way to the others. Every choice is a link, so
+     it works with no script at all. */}}
+{{define "a2bBaruPager"}}
+<nav class="a2b-baru-pager" aria-label="Halaman fuel keluar">
+  <div class="a2b-baru-pager-size">
+    <span>Baris per halaman</span>
+    <div class="pager-sizes">
+      {{range .Sizes}}{{if .Selected}}<span class="pager-page current" aria-current="true">{{.Size}}</span>{{else}}<a class="pager-page" href="{{.URL}}">{{.Size}}</a>{{end}}{{end}}
+    </div>
+  </div>
+  <p class="a2b-baru-pager-count">Menampilkan {{.FirstRow}}–{{.LastRow}} dari {{.Rows}}</p>
+  {{if gt .Pages 1}}
+  <div class="a2b-baru-pager-pages">
+    {{if .PrevURL}}<a class="pager-step" href="{{.PrevURL}}" aria-label="Halaman sebelumnya">‹</a>{{else}}<span class="pager-step disabled" aria-hidden="true">‹</span>{{end}}
+    {{range .Links}}
+      {{if .Gap}}<span class="pager-gap">…</span>
+      {{else if .Current}}<span class="pager-page current" aria-current="page">{{.Label}}</span>
+      {{else}}<a class="pager-page" href="{{.URL}}">{{.Label}}</a>{{end}}
+    {{end}}
+    {{if .NextURL}}<a class="pager-step" href="{{.NextURL}}" aria-label="Halaman berikutnya">›</a>{{else}}<span class="pager-step disabled" aria-hidden="true">›</span>{{end}}
+  </div>
+  {{end}}
+</nav>
+{{end}}
+
+{{/* One table's own filter. It keeps every other table's filter in hidden
+     fields, so filtering this one leaves the rest as they were, and comes
+     back to this table rather than the top of the page. */}}
+{{define "a2bBaruFilter"}}
+<form class="filter-form a2b-baru-filter" method="get" action="/a2b-baru/overview#{{.Anchor}}">
+  {{range .Keep}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}
+  <div>
+    <label for="{{.Prefix}}_from">{{template "icon" "calendar"}}Dari tanggal</label>
+    <input id="{{.Prefix}}_from" name="{{.Prefix}}_from" type="date" value="{{.From}}">
+  </div>
+  <div>
+    <label for="{{.Prefix}}_to">{{template "icon" "calendar"}}Sampai tanggal</label>
+    <input id="{{.Prefix}}_to" name="{{.Prefix}}_to" type="date" value="{{.To}}">
+  </div>
+  {{if .HasUnit}}{{template "unitPicker" .Picker}}{{end}}
+  <button class="button primary" type="submit">{{template "icon" "list"}}Terapkan</button>
+  {{if .Active}}<a class="button subtle" href="{{.ResetURL}}">Reset</a>{{end}}
+</form>
 {{end}}

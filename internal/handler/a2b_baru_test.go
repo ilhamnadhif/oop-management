@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -163,5 +164,102 @@ func TestA2BBaruIsClosedToOtherPositions(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("HR got %d, want 403", response.StatusCode)
+	}
+}
+
+// A table's filter narrows that table alone, and its form carries the other
+// tables' filters along so applying it does not clear them.
+func TestA2BBaruOverviewFiltersOneTableAtATime(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	_ = store.AppendA2BBaruUnits(t.Context(), []model.A2BBaruUnit{{IDUnit: "EXC-01", NamaUnit: "Excavator"}, {IDUnit: "BLD-01", NamaUnit: "Bulldozer"}})
+	_ = store.AppendA2BBaruFuelKeluar(t.Context(), []model.A2BBaruFuelKeluar{
+		{FuelOutID: "FO-EXC", Tanggal: "2026-08-01", IDUnit: "EXC-01", FuelLiter: 100, JamKerja: 10},
+		{FuelOutID: "FO-BLD", Tanggal: "2026-08-02", IDUnit: "BLD-01", FuelLiter: 200, JamKerja: 10},
+		{FuelOutID: "FO-EXC-SEP", Tanggal: "2026-09-01", IDUnit: "EXC-01", FuelLiter: 90, JamKerja: 10},
+	})
+	client := loggedInClientAs(t, testServer, "Logistik")
+	page := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview?fk_unit=BLD-01&fk_unit=WT-01&ratio_from=2026-08-02")
+	if strings.Contains(page, "FO-EXC") || !strings.Contains(page, "FO-BLD") {
+		t.Fatal("the fuel keluar table was not narrowed to BLD-01")
+	}
+	// BLD-01 worked in August only, so its September cell has nothing to
+	// show: it reads as a dash, not a blank.
+	monthly := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview")
+	if strings.Contains(monthly, `<td class="numeric"></td>`) || !strings.Contains(monthly, `<td class="numeric">-</td>`) {
+		t.Fatal("a month without a ratio is left blank")
+	}
+	if !strings.Contains(page, `<input type="hidden" name="ratio_from" value="2026-08-02">`) ||
+		!strings.Contains(page, `<input type="hidden" name="fk_unit" value="BLD-01">`) ||
+		!strings.Contains(page, `<input type="hidden" name="fk_unit" value="WT-01">`) {
+		t.Fatal("a table's form does not carry the other tables' filters")
+	}
+	if !strings.Contains(page, `href="/a2b-baru/overview?ratio_from=2026-08-02#fuel-keluar"`) {
+		t.Fatal("resetting one table clears the others")
+	}
+	// The unit filter is the searchable list of ticks, with the picked ones
+	// ticked.
+	if !strings.Contains(page, `data-unit-picker`) || !strings.Contains(page, `name="fk_unit" value="BLD-01" checked`) {
+		t.Fatal("the unit filter is not the multi-select picker")
+	}
+	both := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview?fk_unit=BLD-01&fk_unit=EXC-01")
+	if !strings.Contains(both, "FO-EXC") || !strings.Contains(both, "FO-BLD") {
+		t.Fatal("two units picked do not both show")
+	}
+	empty := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview?fk_from=2027-01-01")
+	if !strings.Contains(empty, "Tidak ada data untuk filter ini.") {
+		t.Fatal("an empty filtered table says nothing was ever recorded")
+	}
+}
+
+// The fuel keluar list on the overview is paged, ten rows a page unless the
+// reader picks 25, 50 or 100; the total is still every row, and filtering
+// another table keeps the page.
+func TestA2BBaruOverviewPagesTheFuelKeluarList(t *testing.T) {
+	testServer, store := newTestServerWithStore(t)
+	_ = store.AppendA2BBaruUnits(t.Context(), []model.A2BBaruUnit{{IDUnit: "EXC-01", NamaUnit: "Excavator"}})
+	var fills []model.A2BBaruFuelKeluar
+	for day := 1; day <= 25; day++ {
+		fills = append(fills, model.A2BBaruFuelKeluar{
+			FuelOutID: fmt.Sprintf("FO-%02d", day), Tanggal: fmt.Sprintf("2026-08-%02d", day), IDUnit: "EXC-01", FuelLiter: 10,
+		})
+	}
+	_ = store.AppendA2BBaruFuelKeluar(t.Context(), fills)
+	client := loggedInClientAs(t, testServer, "Logistik")
+	count := func(page string) int { return strings.Count(page, ">FO-") }
+
+	first := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview")
+	if count(first) != 10 || !strings.Contains(first, ">FO-25<") || strings.Contains(first, ">FO-15<") {
+		t.Fatalf("the first page holds %d rows", count(first))
+	}
+	if !strings.Contains(first, "Menampilkan 1–10 dari 25") || !strings.Contains(first, "250") {
+		t.Fatal("the bar or the total is wrong on the first page")
+	}
+	if !strings.Contains(first, `href="/a2b-baru/overview?fk_page=2#fuel-keluar"`) {
+		t.Fatal("there is no way to the next page")
+	}
+
+	last := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview?fk_page=3")
+	if count(last) != 5 || !strings.Contains(last, ">FO-01<") || !strings.Contains(last, "Menampilkan 21–25 dari 25") {
+		t.Fatalf("the last page holds %d rows", count(last))
+	}
+	// Another table's filter form carries the page along.
+	if !strings.Contains(last, `<input type="hidden" name="fk_page" value="3">`) {
+		t.Fatal("filtering another table would lose the page")
+	}
+	beyond := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview?fk_page=9")
+	if count(beyond) != 5 {
+		t.Fatal("a page past the end does not show the last one")
+	}
+	// The sizes are links that start again from the first page.
+	if !strings.Contains(last, `href="/a2b-baru/overview?fk_size=25#fuel-keluar"`) {
+		t.Fatal("there is no link to 25 rows a page")
+	}
+	all := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview?fk_size=25")
+	if count(all) != 25 || strings.Contains(all, "fk_page=2") {
+		t.Fatalf("25 a page shows %d rows", count(all))
+	}
+	odd := fetchAuthedPage(t, client, testServer.URL+"/a2b-baru/overview?fk_size=7")
+	if count(odd) != 10 {
+		t.Fatal("a size nobody offers was taken")
 	}
 }

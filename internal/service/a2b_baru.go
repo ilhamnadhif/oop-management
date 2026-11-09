@@ -431,9 +431,11 @@ type A2BBaruMonthRatio struct {
 	HasRatio bool
 }
 
-// A2BBaruOverview is the page the module opens on.
+// A2BBaruOverview is the page the module opens on. The figures at the top
+// are the whole book; each table below is what its own filter lets through.
 type A2BBaruOverview struct {
 	Units        int
+	UnitList     []model.A2BBaruUnit
 	FuelDiterima float64
 	FuelKeluar   float64
 	// Stock is what should be in the tank: everything received less everything
@@ -447,7 +449,39 @@ type A2BBaruOverview struct {
 	Fills  []model.A2BBaruFuelKeluar
 }
 
-func (s *A2BBaruService) Overview(ctx context.Context) (A2BBaruOverview, error) {
+// A2BBaruRange narrows one table: dates inclusive as "2006-01-02", and the
+// units by id. Empty means no bound; several units are any of them.
+type A2BBaruRange struct {
+	From, To string
+	Units    []string
+}
+
+func (r A2BBaruRange) admits(tanggal, unit string) bool {
+	if r.From != "" && tanggal < r.From {
+		return false
+	}
+	if r.To != "" && tanggal > r.To {
+		return false
+	}
+	if len(r.Units) == 0 {
+		return true
+	}
+	for _, wanted := range r.Units {
+		if strings.EqualFold(strings.TrimSpace(unit), strings.TrimSpace(wanted)) {
+			return true
+		}
+	}
+	return false
+}
+
+// A2BBaruOverviewFilter is one range per table. The orders have no unit.
+type A2BBaruOverviewFilter struct {
+	Orders A2BBaruRange
+	Ratios A2BBaruRange
+	Fills  A2BBaruRange
+}
+
+func (s *A2BBaruService) Overview(ctx context.Context, filter A2BBaruOverviewFilter) (A2BBaruOverview, error) {
 	var view A2BBaruOverview
 	units, err := s.Units(ctx)
 	if err != nil {
@@ -461,18 +495,55 @@ func (s *A2BBaruService) Overview(ctx context.Context) (A2BBaruOverview, error) 
 	if err != nil {
 		return view, err
 	}
-	view.Units, view.Orders, view.Fills = len(units), orders, fills
+	view.Units, view.UnitList = len(units), units
+
+	everything := orderTotals(orders)
+	view.FuelDiterima = everything.SiteVolume
+	for _, fill := range fills {
+		view.FuelKeluar += fill.FuelLiter
+	}
+	view.Stock = view.FuelDiterima - view.FuelKeluar
 
 	for _, order := range orders {
-		view.Totals.POVolume += order.POVolume
-		view.Totals.POJumlah += order.POJumlah()
-		view.Totals.SiteVolume += order.SiteVolume
-		view.Totals.SiteJumlah += order.SiteJumlah()
+		if filter.Orders.admits(order.Tanggal, "") {
+			view.Orders = append(view.Orders, order)
+		}
 	}
-	view.Totals.DevVolume = view.Totals.POVolume - view.Totals.SiteVolume
-	view.Totals.DevJumlah = view.Totals.POJumlah - view.Totals.SiteJumlah
-	view.FuelDiterima = view.Totals.SiteVolume
+	view.Totals = orderTotals(view.Orders)
 
+	var forRatio []model.A2BBaruFuelKeluar
+	for _, fill := range fills {
+		if filter.Ratios.admits(fill.Tanggal, fill.IDUnit) {
+			forRatio = append(forRatio, fill)
+		}
+		if filter.Fills.admits(fill.Tanggal, fill.IDUnit) {
+			view.Fills = append(view.Fills, fill)
+		}
+	}
+	view.Months, view.Ratios = unitRatios(units, forRatio)
+	return view, nil
+}
+
+// orderTotals adds purchase orders up the way the workbook's fuel masuk table
+// heads them.
+func orderTotals(orders []model.A2BBaruFuelMasuk) A2BBaruOrderTotals {
+	var totals A2BBaruOrderTotals
+	for _, order := range orders {
+		totals.POVolume += order.POVolume
+		totals.POJumlah += order.POJumlah()
+		totals.SiteVolume += order.SiteVolume
+		totals.SiteJumlah += order.SiteJumlah()
+	}
+	totals.DevVolume = totals.POVolume - totals.SiteVolume
+	totals.DevJumlah = totals.POJumlah - totals.SiteJumlah
+	return totals
+}
+
+// unitRatios is each machine's consumption over the fills given: every litre
+// it took, the litres taken over hours worked, and those over the hours,
+// overall and month by month. A dispense the workbook names no unit for has
+// no machine to set a ratio against and is left out.
+func unitRatios(units []model.A2BBaruUnit, fills []model.A2BBaruFuelKeluar) ([]string, []A2BBaruUnitRatio) {
 	names := make(map[string]string, len(units))
 	for _, unit := range units {
 		names[strings.ToLower(unit.IDUnit)] = unit.NamaUnit
@@ -486,9 +557,6 @@ func (s *A2BBaruService) Overview(ctx context.Context) (A2BBaruOverview, error) 
 	byUnit := make(map[string]*unitSums)
 	monthSeen := make(map[string]bool)
 	for _, fill := range fills {
-		view.FuelKeluar += fill.FuelLiter
-		// A dispense the workbook names no unit for counts towards the
-		// fuel out, but has no machine to set a ratio against.
 		if strings.TrimSpace(fill.IDUnit) == "" {
 			continue
 		}
@@ -518,29 +586,30 @@ func (s *A2BBaruService) Overview(ctx context.Context) (A2BBaruOverview, error) 
 			entry.months[month].jam += fill.JamKerja
 		}
 	}
-	view.Stock = view.FuelDiterima - view.FuelKeluar
 
+	var months []string
 	for month := range monthSeen {
-		view.Months = append(view.Months, month)
+		months = append(months, month)
 	}
-	sort.Strings(view.Months)
+	sort.Strings(months)
+	var ratios []A2BBaruUnitRatio
 	for _, entry := range byUnit {
 		ratio := A2BBaruUnitRatio{IDUnit: entry.id, NamaUnit: entry.name,
 			FuelKeluar: entry.keluar, FuelRatio: entry.fuel, JamKerja: entry.jam}
 		if entry.jam > 0 {
 			ratio.Ratio, ratio.HasRatio = entry.fuel/entry.jam, true
 		}
-		for _, month := range view.Months {
+		for _, month := range months {
 			cell := A2BBaruMonthRatio{}
 			if m := entry.months[month]; m != nil && m.jam > 0 {
 				cell = A2BBaruMonthRatio{Ratio: m.fuel / m.jam, HasRatio: true}
 			}
 			ratio.Monthly = append(ratio.Monthly, cell)
 		}
-		view.Ratios = append(view.Ratios, ratio)
+		ratios = append(ratios, ratio)
 	}
-	sort.Slice(view.Ratios, func(i, j int) bool {
-		return strings.ToLower(view.Ratios[i].IDUnit) < strings.ToLower(view.Ratios[j].IDUnit)
+	sort.Slice(ratios, func(i, j int) bool {
+		return strings.ToLower(ratios[i].IDUnit) < strings.ToLower(ratios[j].IDUnit)
 	})
-	return view, nil
+	return months, ratios
 }

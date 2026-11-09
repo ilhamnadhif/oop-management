@@ -29,7 +29,7 @@ func TestA2BBaruOverviewMatchesTheWorkbook(t *testing.T) {
 		// A workbook line with no unit and no readings, kept as it is.
 		{Tanggal: "2026-07-03", NamaUnit: "Pengisian Solar"},
 	})
-	view, err := NewA2BBaruService(store, time.UTC, nil).Overview(ctx)
+	view, err := NewA2BBaruService(store, time.UTC, nil).Overview(ctx, A2BBaruOverviewFilter{})
 	if err != nil {
 		t.Fatalf("overview: %v", err)
 	}
@@ -109,5 +109,42 @@ func TestA2BBaruNextPhase(t *testing.T) {
 	_ = store.AppendA2BBaruFuelMasuk(ctx, []model.A2BBaruFuelMasuk{{Phase: "PO-1"}, {Phase: "PO-7"}, {Phase: "Tambahan"}})
 	if next, _ := NewA2BBaruService(store, time.UTC, nil).NextPhase(ctx); next != "PO-8" {
 		t.Fatalf("next phase = %s", next)
+	}
+}
+
+// Each table is narrowed by its own range, while the figures at the top stay
+// the whole book.
+func TestA2BBaruOverviewFiltersEachTable(t *testing.T) {
+	ctx := context.Background()
+	store := repository.NewTestRepository()
+	_ = store.AppendA2BBaruUnits(ctx, []model.A2BBaruUnit{{IDUnit: "EXC-01", NamaUnit: "Excavator"}, {IDUnit: "BLD-01", NamaUnit: "Bulldozer"}})
+	_ = store.AppendA2BBaruFuelMasuk(ctx, []model.A2BBaruFuelMasuk{
+		{Phase: "PO-1", Tanggal: "2026-08-01", POVolume: 8000, SiteVolume: 8000},
+		{Phase: "PO-2", Tanggal: "2026-10-01", POVolume: 8000, SiteVolume: 7800},
+	})
+	_ = store.AppendA2BBaruFuelKeluar(ctx, []model.A2BBaruFuelKeluar{
+		{Tanggal: "2026-09-01", IDUnit: "EXC-01", FuelLiter: 100, JamKerja: 10},
+		{Tanggal: "2026-10-01", IDUnit: "EXC-01", FuelLiter: 120, JamKerja: 10},
+		{Tanggal: "2026-10-02", IDUnit: "BLD-01", FuelLiter: 200, JamKerja: 10},
+	})
+	view, err := NewA2BBaruService(store, time.UTC, nil).Overview(ctx, A2BBaruOverviewFilter{
+		Orders: A2BBaruRange{From: "2026-09-01"},
+		Ratios: A2BBaruRange{From: "2026-10-01", To: "2026-10-31", Units: []string{"exc-01"}},
+		Fills:  A2BBaruRange{Units: []string{"BLD-01", "WT-01"}},
+	})
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if view.Stock != 15800-420 || view.FuelKeluar != 420 || view.FuelDiterima != 15800 {
+		t.Fatalf("the top figures were filtered: %+v", view)
+	}
+	if len(view.Orders) != 1 || view.Orders[0].Phase != "PO-2" || view.Totals.DevVolume != 200 {
+		t.Fatalf("orders = %+v totals %+v", view.Orders, view.Totals)
+	}
+	if len(view.Ratios) != 1 || view.Ratios[0].IDUnit != "EXC-01" || view.Ratios[0].Ratio != 12 || len(view.Months) != 1 {
+		t.Fatalf("ratios = %+v months %v", view.Ratios, view.Months)
+	}
+	if len(view.Fills) != 1 || view.Fills[0].IDUnit != "BLD-01" {
+		t.Fatalf("fills = %+v", view.Fills)
 	}
 }

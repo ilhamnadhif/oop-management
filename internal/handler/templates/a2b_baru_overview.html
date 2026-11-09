@@ -37,7 +37,7 @@
     </article>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="fuel-masuk">
     <div class="panel-heading">
       <div>
         <p class="eyebrow">{{template "icon" "fuel"}}FUEL MASUK</p>
@@ -45,16 +45,18 @@
       </div>
       <a class="button subtle" href="/a2b-baru/fuel-masuk">{{template "icon" "plus"}}Input</a>
     </div>
+    {{template "a2bBaruFilter" .OrderFilter}}
     {{template "a2bBaruOrderTable" .Orders}}
   </section>
 
-  <section class="panel">
+  <section class="panel" id="ratio">
     <div class="panel-heading">
       <div>
         <p class="eyebrow">{{template "icon" "percent"}}RATIO FUEL PER UNIT</p>
         <h2>Ratio rata-rata (L/jam)</h2>
       </div>
     </div>
+    {{template "a2bBaruFilter" .RatioFilter}}
     {{if .Ratios}}
     <div class="table-scroll">
       {{/* The six columns on the left stay put; the months scroll beside them. */}}
@@ -92,21 +94,23 @@
     </div>
     <p class="hint">BBM untuk ratio hanya pengisian yang punya jam kerja. Unit tanpa HM seperti genset tidak punya ratio.</p>
     {{else}}
-    <p class="panel-empty">Belum ada fuel keluar tercatat.</p>
+    <p class="panel-empty">{{.RatioEmpty}}</p>
     {{end}}
   </section>
 
-  <section class="panel">
+  <section class="panel" id="fuel-keluar">
     <div class="panel-heading">
       <div>
         <p class="eyebrow">{{template "icon" "list"}}FUEL KELUAR &amp; HM</p>
-        <h2>{{len .Fills.Rows}} pengisian, terbaru di atas</h2>
+        <h2>{{if .Fills.Pager}}{{.Fills.Pager.Rows}}{{else}}{{len .Fills.Rows}}{{end}} pengisian{{if .FillFilter.Active}} sesuai filter{{end}}, terbaru di atas</h2>
       </div>
       <a class="button subtle" href="/a2b-baru/fuel-keluar">{{template "icon" "plus"}}Input</a>
     </div>
+    {{template "a2bBaruFilter" .FillFilter}}
     {{template "a2bBaruFillTable" .Fills}}
   </section>
 {{template "appShellClose" .}}
 <script src="/static/js/auth.js" defer></script>
+<script src="/static/js/unit-picker.js" defer></script>
 {{template "pageFoot" .}}
 {{end}}
