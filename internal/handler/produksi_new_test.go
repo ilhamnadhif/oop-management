@@ -343,7 +343,7 @@ func TestProduksiNewDetailsEachTruckForOneDay(t *testing.T) {
 		`>Jam operasi 08:06 – 12:15</td> <td class="ritase-value detail-avg">125<span>Avg total</span></td>`,
 		// B 1 A: 08:06, 09:10 and 12:15, the last in the break; 249 minutes
 		// over two gaps rounds to 125.
-		`<td class="ritase-value detail-time material-oranye">08:06</td><td class="ritase-value detail-time material-merah">09:10</td><td class="ritase-value detail-time">12:15*</td> <td class="ritase-value">125</td>`,
+		`<td class="ritase-value detail-time material-oranye">08:06</td><td class="ritase-value detail-time material-hijau">09:10</td><td class="ritase-value detail-time">12:15*</td> <td class="ritase-value">125</td>`,
 		// B 2 A made one load: flagged, two empty rit cells, no interval.
 		`<td class="ritase-value tone-bad-text">1</td>`,
 		`<td class="ritase-value detail-time material-ungu">09:40</td><td class="ritase-value detail-time"></td><td class="ritase-value detail-time"></td> <td class="ritase-value">-</td>`,
@@ -578,15 +578,15 @@ func TestMaterialSharesCoverTheVolume(t *testing.T) {
 		want    string
 	}{
 		{map[string]float64{"sirtu": 50, "berbatu kecil": 25, "tanah": 25},
-			"merah:Tanah 25.0%,hijau:Berbatu Kecil 25.0%,oranye:Sirtu 50.0%,"},
+			"hijau:Tanah 25.0%,kuning:Berbatu Kecil 25.0%,oranye:Sirtu 50.0%,"},
 		{map[string]float64{"berbatu kecil": 1, "berbatu besar": 1, "batu": 2, "": 4},
-			"kuning:Berbatu Besar 12.5%,hijau:Berbatu Kecil 12.5%,ungu:Batu 25.0%,:Lainnya 50.0%,"},
+			"merah:Berbatu Besar 12.5%,kuning:Berbatu Kecil 12.5%,ungu:Batu 25.0%,:Lainnya 50.0%,"},
 		{map[string]float64{"tanah timbunan": 12}, "pink:Tanah Timbunan 100.0%,"},
 		// sirtu and berbatu are kept apart, as the scanner has them.
 		{map[string]float64{"sirtu": 3, "berbatu": 1}, "teal:Berbatu 25.0%,oranye:Sirtu 75.0%,"},
 		// A third each rounds to 33.3%, 99.9% in all.
-		{map[string]float64{"tanah": 10, "sirtu": 10, "batu": 10}, "merah:Tanah 33.4%,ungu:Batu 33.3%,oranye:Sirtu 33.3%,"},
-		{map[string]float64{"tanah": 1, "sirtu": 5}, "merah:Tanah 16.7%,oranye:Sirtu 83.3%,"},
+		{map[string]float64{"tanah": 10, "sirtu": 10, "batu": 10}, "hijau:Tanah 33.4%,ungu:Batu 33.3%,oranye:Sirtu 33.3%,"},
+		{map[string]float64{"tanah": 1, "sirtu": 5}, "hijau:Tanah 16.7%,oranye:Sirtu 83.3%,"},
 		{nil, ""},
 		{map[string]float64{"sirtu": 0}, ""},
 	} {
@@ -600,9 +600,18 @@ func TestMaterialSharesCoverTheVolume(t *testing.T) {
 	}
 }
 
-// The known materials stay apart, and one never seen before takes a spare
-// colour and keeps it, without touching the three the site chose.
+// The site's four materials have the colours it chose, the known materials
+// stay apart, and one never seen before takes a spare colour and keeps it,
+// never one of the four.
 func TestMaterialColors(t *testing.T) {
+	for material, want := range map[string]string{"tanah": "hijau", "sirtu": "oranye", "berbatu kecil": "kuning", "berbatu besar": "merah"} {
+		if got := materialColor(material); got != want {
+			t.Fatalf("%s is %s, want %s", material, got, want)
+		}
+		if slices.Contains(spareColors, want) {
+			t.Fatalf("%s is still a spare colour", want)
+		}
+	}
 	seen := make(map[string]string)
 	for material, color := range materialColors {
 		if other, clash := seen[color]; clash {
@@ -643,8 +652,8 @@ func TestDetailTimesCarryTheirMaterial(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		`<td class="ritase-value detail-time material-oranye">08:06</td>`,
-		`<td class="ritase-value detail-time material-merah">09:10</td>`,
-		`<td class="ritase-value detail-time material-hijau">12:20*</td>`,
+		`<td class="ritase-value detail-time material-hijau">09:10</td>`,
+		`<td class="ritase-value detail-time material-kuning">12:20*</td>`,
 		`<td class="ritase-value detail-time material-pink">13:20</td>`,
 		// A ticket with no material is printed plain.
 		`<td class="ritase-value detail-time">14:20</td>`,
@@ -703,10 +712,10 @@ func TestProduksiNewDetailTitlesEachVendor(t *testing.T) {
 	if materials := strings.Count(today, `class="table-scroll detail-material"`); materials != 3 {
 		t.Fatalf("today's detail has %d material tables, want 3\n%s", materials, today)
 	}
-	if !strings.Contains(today, `<td class="ritase-value material-merah">41.5%</td><td class="ritase-value material-ungu">17.8%</td><td class="ritase-value material-oranye">40.7%</td>`) {
+	if !strings.Contains(today, `<td class="ritase-value material-hijau">41.5%</td><td class="ritase-value material-ungu">17.8%</td><td class="ritase-value material-oranye">40.7%</td>`) {
 		t.Fatalf("the total's materials are not under it\n%s", today)
 	}
-	if !strings.Contains(today, `<tbody> <tr> <td class="ritase-value material-merah">50.5%</td><td class="ritase-value material-oranye">49.5%</td> </tr>`) {
+	if !strings.Contains(today, `<tbody> <tr> <td class="ritase-value material-hijau">50.5%</td><td class="ritase-value material-oranye">49.5%</td> </tr>`) {
 		t.Fatalf("HPP's materials are not under its table\n%s", today)
 	}
 	// The total table lists every vendor's line above the TOTAL.

@@ -482,15 +482,16 @@ func (s *Server) detailDay(value string) string {
 // detailView lays one day out like the site's detail sheet: a heading line per
 // vendor with its first and last load, its trucks under it with the time of
 // every load, and the total at the foot.
-// materialColors fixes the colour of the materials known so far. The first
-// three are the site's own choice; the rest only have to stay apart.
+// materialColors fixes the colour of the materials known so far. Tanah,
+// Sirtu, Berbatu Kecil and Berbatu Besar are the site's own choice; the rest
+// only have to stay apart from them and from each other.
 var materialColors = map[string]string{
-	"tanah":          "merah",
-	"berbatu besar":  "kuning",
-	"berbatu kecil":  "hijau",
+	"tanah":          "hijau",
+	"sirtu":          "oranye",
+	"berbatu kecil":  "kuning",
+	"berbatu besar":  "merah",
 	"granula":        "biru",
 	"pasir":          "abu",
-	"sirtu":          "oranye",
 	"batu":           "ungu",
 	"berbatu":        "teal",
 	"tanah timbunan": "pink",
@@ -500,9 +501,9 @@ var materialColors = map[string]string{
 // follow by name, so the columns read alike from one vendor to the next.
 var materialsFirst = []string{"tanah", "berbatu besar", "berbatu kecil"}
 
-// spareColors are what a new material takes. Red, yellow and green are spoken
-// for.
-var spareColors = []string{"biru", "abu", "oranye", "ungu", "teal", "pink"}
+// spareColors are what a new material takes. Green, orange, yellow and red are
+// spoken for.
+var spareColors = []string{"biru", "abu", "ungu", "teal", "pink"}
 
 // materialColor is the colour a material is shown in: its own, or for one not
 // seen before a spare picked from its name, so it keeps that colour on every
