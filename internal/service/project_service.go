@@ -399,6 +399,9 @@ type ProjectUpdate struct {
 	WidyaURL      string
 	WidyaEmail    string
 	WidyaPassword string
+	// WidyaUnits are the scanner unit codes the project counts; blank counts
+	// every unit.
+	WidyaUnits string
 }
 
 // Update saves the settings screen. Blank settings are stored blank rather than
@@ -483,6 +486,7 @@ func (s *ProjectService) Update(ctx context.Context, projectID string, update Pr
 		WidyaURL:            widyaURL,
 		WidyaEmail:          widyaEmail,
 		WidyaPasswordSealed: widyaSealed,
+		WidyaUnits:          cleanUnitCodes(update.WidyaUnits),
 	}
 	stored.UpdatedAt = s.now().In(s.location)
 
@@ -631,6 +635,22 @@ func (s *ProjectService) merge(settings model.ProjectSettings) model.ProjectSett
 		settings.SignatoryPlace = s.defaults.SignatoryPlace
 	}
 	return settings
+}
+
+// cleanUnitCodes writes scanner unit codes the one way: upper case, comma
+// separated, each once, so "ls001, LS001 ls002" is stored as "LS001,LS002".
+func cleanUnitCodes(codes string) string {
+	seen := make(map[string]bool)
+	var cleaned []string
+	for _, code := range strings.FieldsFunc(codes, func(r rune) bool { return r == ',' || r == ' ' || r == ';' }) {
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		cleaned = append(cleaned, code)
+	}
+	return strings.Join(cleaned, ",")
 }
 
 // cleanMenus normalises the ticked menu keys, dropping blanks and repeats while

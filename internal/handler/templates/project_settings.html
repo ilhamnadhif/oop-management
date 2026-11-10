@@ -112,7 +112,7 @@
         </div>
         <span class="status-chip {{if .Selected.Settings.WidyaPasswordSealed}}approved{{else}}cancelled{{end}}">{{if .Selected.Settings.WidyaPasswordSealed}}Tersimpan{{else}}Belum diatur{{end}}</span>
       </div>
-      <p class="hint">Tiket disimpan di spreadsheet project ini. Akun dicoba saat disimpan, dan password disimpan terenkripsi. Kosongkan ketiganya untuk melepas akun. Project pertama memakai akun dari konfigurasi server selama kolom ini kosong.</p>
+      <p class="hint">Tiket disimpan di spreadsheet project ini. Akun dicoba saat disimpan, dan password disimpan terenkripsi. Kosongkan ketiganya untuk melepas akun. Project pertama memakai akun dari konfigurasi server selama kolom ini kosong. Unit Load Scanner membatasi tiket yang dihitung ke unit tertentu (pisahkan dengan koma); kosongkan untuk semua unit.</p>
       <div class="form-grid form-grid-3">
         <div>
           <label for="widya_url">{{template "icon" "pin"}}URL Widya</label>
@@ -125,6 +125,10 @@
         <div>
           <label for="widya_password">{{template "icon" "check"}}Password</label>
           <input id="widya_password" name="widya_password" type="password" autocomplete="new-password" placeholder="{{if .Selected.Settings.WidyaPasswordSealed}}Tersimpan, kosongkan bila tidak diganti{{end}}">
+        </div>
+        <div>
+          <label for="widya_units">{{template "icon" "truck"}}Unit Load Scanner</label>
+          <input id="widya_units" name="widya_units" type="text" value="{{.Selected.Settings.WidyaUnits}}" placeholder="Semua unit, misal LS001" autocomplete="off">
         </div>
       </div>
     </section>

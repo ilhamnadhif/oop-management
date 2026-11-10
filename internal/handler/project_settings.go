@@ -275,6 +275,7 @@ func (s *Server) handleProjectSettingsSave(w http.ResponseWriter, r *http.Reques
 			WidyaURL:             r.FormValue("widya_url"),
 			WidyaEmail:           r.FormValue("widya_email"),
 			WidyaPassword:        r.FormValue("widya_password"),
+			WidyaUnits:           r.FormValue("widya_units"),
 		})
 		actionErr = err
 		if err == nil {

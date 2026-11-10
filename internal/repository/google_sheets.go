@@ -138,10 +138,11 @@ var projectHeaders = []string{
 	// widya_password is sealed: see the secret package. The sheet alone cannot
 	// read it.
 	"widya_url", "widya_email", "widya_password",
+	"widya_unit",
 }
 
 // projectLastColumn is the letter of the last of projectHeaders.
-const projectLastColumn = "U"
+const projectLastColumn = "V"
 
 // exportConfigHeaders hold one row per project-and-export setting. The three
 // slots are left, centre and right in sheet order; TTD count says how many of
@@ -318,6 +319,8 @@ const widyaTicketSheet = "Widya Tiket"
 
 var widyaTicketHeaders = []string{
 	"no_tiket", "scan_full_at", "plat", "vendor", "material", "volume", "synced_at",
+	// unit came later, so it sits last: the scanner unit that cut the ticket.
+	"unit",
 }
 
 // sheetDefinition pairs a sheet with the header it must carry.
@@ -521,6 +524,7 @@ func (r *GoogleSheetsRepository) ListProjects(ctx context.Context) ([]model.Proj
 				WidyaURL:             strings.TrimSpace(cellString(row[18])),
 				WidyaEmail:           strings.TrimSpace(cellString(row[19])),
 				WidyaPasswordSealed:  strings.TrimSpace(cellString(row[20])),
+				WidyaUnits:           strings.TrimSpace(cellString(row[21])),
 			},
 			CreatedAt: createdAt,
 			UpdatedAt: updatedAt,
@@ -861,6 +865,7 @@ func projectToRow(project *model.Project) []interface{} {
 		formatDateTime(project.CreatedAt), formatDateTime(project.UpdatedAt),
 		project.Settings.LogoSistem, project.Settings.LogoExport, project.Settings.Favicon,
 		project.Settings.WidyaURL, project.Settings.WidyaEmail, project.Settings.WidyaPasswordSealed,
+		project.Settings.WidyaUnits,
 	}
 }
 
@@ -3063,7 +3068,7 @@ func quoteSheet(name string) string {
 // skipped rather than failing the list: one hand-edited cell should not blank
 // the Produksi New page.
 func (r *GoogleSheetsRepository) ListWidyaTickets(ctx context.Context) ([]model.WidyaTicket, error) {
-	rows, err := r.readRows(ctx, widyaTicketSheet, "G")
+	rows, err := r.readRows(ctx, widyaTicketSheet, "H")
 	if err != nil {
 		return nil, err
 	}
@@ -3088,6 +3093,7 @@ func (r *GoogleSheetsRepository) ListWidyaTickets(ctx context.Context) ([]model.
 			Material:   cellString(row[4]),
 			Volume:     parseFloatCell(row[5]),
 			SyncedAt:   syncedAt,
+			Unit:       strings.TrimSpace(cellString(row[7])),
 		})
 	}
 	return tickets, nil
@@ -3126,7 +3132,7 @@ func (r *GoogleSheetsRepository) UpdateWidyaTickets(ctx context.Context, tickets
 			return fmt.Errorf("invalid row number %d for ticket %s", ticket.RowNumber, ticket.Number)
 		}
 		data = append(data, &sheets.ValueRange{
-			Range:  fmt.Sprintf("%s!A%d:G%d", sheet, ticket.RowNumber, ticket.RowNumber),
+			Range:  fmt.Sprintf("%s!A%d:H%d", sheet, ticket.RowNumber, ticket.RowNumber),
 			Values: [][]interface{}{r.widyaTicketToRow(ticket)},
 		})
 	}
@@ -3151,5 +3157,6 @@ func (r *GoogleSheetsRepository) widyaTicketToRow(ticket model.WidyaTicket) []in
 		ticket.Material,
 		ticket.Volume,
 		formatDateTime(ticket.SyncedAt.In(r.location)),
+		ticket.Unit,
 	}
 }

@@ -183,6 +183,10 @@ type ProjectSettings struct {
 	WidyaURL            string
 	WidyaEmail          string
 	WidyaPasswordSealed string
+	// WidyaUnits are the scanner units, by code such as "LS001", whose tickets
+	// this project counts, comma separated. Empty counts every unit: one
+	// account can see scanners standing at other sites.
+	WidyaUnits string
 }
 
 // WidyaAccount is what signs in to one Widya Load Scanner.
@@ -192,6 +196,10 @@ type WidyaAccount struct {
 	Password string
 	// LoginCompany is empty for the scanner to name itself.
 	LoginCompany string
+	// Units are the scanner unit codes whose tickets are kept, upper case and
+	// comma separated; empty keeps every unit. It is a string so an account
+	// still compares with ==.
+	Units string
 }
 
 // Configured reports whether the account has what a sign-in needs.
@@ -717,4 +725,7 @@ type WidyaTicket struct {
 	Material   string
 	Volume     float64
 	SyncedAt   time.Time
+	// Unit is the code of the scanner unit that cut the ticket, such as
+	// "LS001". Empty on rows kept before it was read.
+	Unit string
 }

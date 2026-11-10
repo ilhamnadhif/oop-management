@@ -37,6 +37,9 @@ type Archive struct {
 	interval time.Duration
 	now      func() time.Time
 	figures  *Feed
+	// units are the scanner unit codes whose tickets count, nil for every
+	// unit. See WithUnits.
+	units map[string]bool
 
 	mu      sync.RWMutex
 	tickets map[string]model.WidyaTicket
@@ -106,6 +109,33 @@ func NewArchive(source Source, store TicketStore, location *time.Location, inter
 		figures:  NewFeed(source, interval, now),
 		tickets:  make(map[string]model.WidyaTicket),
 	}
+}
+
+// WithUnits keeps only the tickets cut by the named scanner units, given as
+// codes separated by commas or spaces, such as "LS001". One account can see the
+// scanners of several sites; empty keeps them all. A kept row of another unit
+// stays in the sheet, labelled, but reaches no figure, and a new one is not
+// written at all. Rows kept before the unit was read are read again from the
+// scanner once, to be labelled, and count for nothing until they are.
+func (a *Archive) WithUnits(codes string) *Archive {
+	a.units = nil
+	for _, code := range strings.FieldsFunc(codes, func(r rune) bool { return r == ',' || r == ' ' || r == ';' }) {
+		if code = normalizeUnit(code); code != "" {
+			if a.units == nil {
+				a.units = make(map[string]bool)
+			}
+			a.units[code] = true
+		}
+	}
+	return a
+}
+
+// counts reports whether a kept ticket is one of this project's loads.
+func (a *Archive) counts(ticket model.WidyaTicket) bool {
+	if testVendor(ticket.Supplier) {
+		return false
+	}
+	return a.units == nil || a.units[normalizeUnit(ticket.Unit)]
 }
 
 // MaxAge is how often the archive reads today again, which is also how often a
@@ -279,6 +309,19 @@ func (a *Archive) backfill(ctx context.Context, todayStart time.Time) error {
 				from = day
 			}
 		}
+		// A project that counts only some units cannot tell a row kept
+		// before the unit was read, so its history is read again from the
+		// oldest such row: the rewrite labels it.
+		if a.units != nil {
+			for _, ticket := range a.tickets {
+				if ticket.Unit != "" {
+					continue
+				}
+				if day := startOfDay(ticket.ScanFullAt.In(a.location)); day.Before(from) {
+					from = day
+				}
+			}
+		}
 		a.backfillNext = from
 	}
 	start := a.backfillNext
@@ -325,11 +368,12 @@ func (a *Archive) merge(ctx context.Context, fetched []Ticket) error {
 		record := model.WidyaTicket{
 			Number: number, ScanFullAt: ticket.ScanFullAt, Vehicle: ticket.Vehicle,
 			Supplier: ticket.Supplier, Material: ticket.Material, Volume: ticket.Volume, SyncedAt: now,
+			Unit: normalizeUnit(ticket.Unit),
 		}
 		kept, known := a.tickets[number]
 		switch {
 		case !known:
-			if !testVendor(record.Supplier) {
+			if a.counts(record) {
 				fresh = append(fresh, record)
 			}
 		case !sameLoad(kept, record):
@@ -417,7 +461,7 @@ func (a *Archive) rowsFor(ctx context.Context, changed []model.WidyaTicket) erro
 func sameLoad(kept, read model.WidyaTicket) bool {
 	return kept.ScanFullAt.Equal(read.ScanFullAt) &&
 		kept.Vehicle == read.Vehicle && kept.Supplier == read.Supplier && kept.Material == read.Material &&
-		round2(kept.Volume) == round2(read.Volume)
+		round2(kept.Volume) == round2(read.Volume) && kept.Unit == read.Unit
 }
 
 // errNotLoaded is what a page sees before the sheet has been read once.
@@ -456,6 +500,9 @@ func (a *Archive) Vendors(context.Context) []string {
 	defer a.mu.RUnlock()
 	seen := make(map[string]string)
 	for _, ticket := range a.tickets {
+		if !a.counts(ticket) {
+			continue
+		}
 		name := strings.TrimSpace(ticket.Supplier)
 		if name == "" {
 			continue
@@ -487,13 +534,16 @@ func (a *Archive) between(from, to string, location *time.Location) ([]Ticket, b
 	}
 	var tickets []Ticket
 	for _, kept := range a.tickets {
+		if !a.counts(kept) {
+			continue
+		}
 		day := kept.ScanFullAt.In(location).Format("2006-01-02")
 		if day < from || day > to {
 			continue
 		}
 		tickets = append(tickets, Ticket{
 			Number: kept.Number, Vehicle: kept.Vehicle, Supplier: kept.Supplier,
-			Material: kept.Material, Volume: kept.Volume, ScanFullAt: kept.ScanFullAt,
+			Material: kept.Material, Volume: kept.Volume, ScanFullAt: kept.ScanFullAt, Unit: kept.Unit,
 		})
 	}
 	return tickets, true, a.lastErr

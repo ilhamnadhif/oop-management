@@ -38,14 +38,19 @@ func widyaAccountFor(projects *service.ProjectService, project, first model.Proj
 		return model.WidyaAccount{}, nil
 	}
 	account, err := projects.WidyaAccount(project)
-	if err != nil || account.Configured() {
+	if err != nil {
 		return account, err
 	}
-	if strings.EqualFold(project.ProjectID, first.ProjectID) {
-		return model.WidyaAccount{URL: cfg.WidyaURL, Email: cfg.WidyaEmail, Password: cfg.WidyaPassword,
-			LoginCompany: cfg.WidyaLoginCompany}, nil
+	if !account.Configured() && strings.EqualFold(project.ProjectID, first.ProjectID) {
+		account = model.WidyaAccount{URL: cfg.WidyaURL, Email: cfg.WidyaEmail, Password: cfg.WidyaPassword,
+			LoginCompany: cfg.WidyaLoginCompany}
 	}
-	return model.WidyaAccount{}, nil
+	if !account.Configured() {
+		return model.WidyaAccount{}, nil
+	}
+	// The units are the project's, whichever account it signs in with.
+	account.Units = project.Settings.WidyaUnits
+	return account, nil
 }
 
 func main() {

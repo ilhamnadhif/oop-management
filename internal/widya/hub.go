@@ -96,7 +96,7 @@ func (h *Hub) Apply(ctx context.Context, projectID, spreadsheetID string, accoun
 	run, cancel := context.WithCancel(h.ctx)
 	entry := &hubArchive{
 		account: account, spreadsheetID: spreadsheetID, cancel: cancel, done: make(chan struct{}),
-		archive: NewArchive(h.openSource(account), store, h.location, h.interval, h.now),
+		archive: NewArchive(h.openSource(account), store, h.location, h.interval, h.now).WithUnits(account.Units),
 	}
 	h.mu.Lock()
 	h.running[key] = entry

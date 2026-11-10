@@ -476,3 +476,22 @@ func TestWidyaPasswordBelongsToItsProject(t *testing.T) {
 		t.Fatal("a password opened on another project's row")
 	}
 }
+
+// The scanner units a project counts are kept one way, whatever was typed, and
+// saving them reaches no scanner.
+func TestWidyaUnitsAreStoredCleaned(t *testing.T) {
+	projects, first, tried, _ := newWidyaProjects(t)
+	update := widyaUpdate("", "", "")
+	update.WidyaUnits = " ls001, LS001 ls002;"
+	saved, err := projects.Update(context.Background(), first.ProjectID, update)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if saved.Settings.WidyaUnits != "LS001,LS002" || len(*tried) != 0 {
+		t.Fatalf("units = %q, tried %d", saved.Settings.WidyaUnits, len(*tried))
+	}
+	stored, err := projects.Find(context.Background(), "PCPM")
+	if err != nil || stored.Settings.WidyaUnits != "LS001,LS002" {
+		t.Fatalf("read back %q, %v", stored.Settings.WidyaUnits, err)
+	}
+}

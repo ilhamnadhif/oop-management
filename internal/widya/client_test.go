@@ -85,10 +85,10 @@ func fakeScanner(t *testing.T, logins *int32) *httptest.Server {
 		}
 		// Two pages: the client has to follow totalPages.
 		if query.Get("page") == "1" {
-			_, _ = w.Write([]byte(`{"data":[{"number":"LS-1","vehicleVrm":"\t b 1  A","supplierName":"HPP","scanLoadVolume":27.5,"scanFullAt":"2026-10-18T01:06:00.000Z"},{"number":"LS-2","vehicleVrm":"B 2 A","supplierName":"MNP","scanLoadVolume":10,"scanFullAt":null}],"meta":{"totalPages":2}}`))
+			_, _ = w.Write([]byte(`{"data":[{"number":"LS-1","vehicleVrm":"\t b 1  A","supplierName":"HPP","scanLoadVolume":27.5,"scanFullAt":"2026-10-18T01:06:00.000Z","unit":{"code":" ls001 ","name":"LS001"}},{"number":"LS-2","vehicleVrm":"B 2 A","supplierName":"MNP","scanLoadVolume":10,"scanFullAt":null}],"meta":{"totalPages":2}}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"data":[{"number":"LS-3","vehicleVrm":"B 1 A","supplierName":"HPP","scanLoadVolume":28,"scanFullAt":"2026-10-18T09:36:00.000Z"}],"meta":{"totalPages":2}}`))
+		_, _ = w.Write([]byte(`{"data":[{"number":"LS-3","vehicleVrm":"B 1 A","supplierName":"HPP","scanLoadVolume":28,"scanFullAt":"2026-10-18T09:36:00.000Z","unit":{"code":"","name":"LS002"}}],"meta":{"totalPages":2}}`))
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -117,6 +117,10 @@ func TestClientSignsInAndReadsTheDashboard(t *testing.T) {
 	// stray spacing is folded so the truck counts once.
 	if len(tickets) != 2 || tickets[0].Vehicle != "B 1 A" || tickets[1].Vehicle != "B 1 A" || tickets[1].Volume != 28 {
 		t.Fatalf("tickets = %+v", tickets)
+	}
+	// The unit is read by its code, or its name when the code is blank.
+	if tickets[0].Unit != "LS001" || tickets[1].Unit != "LS002" {
+		t.Fatalf("units = %q, %q", tickets[0].Unit, tickets[1].Unit)
 	}
 
 	// The token is kept: a second read does not sign in again.

@@ -391,3 +391,81 @@ func TestArchiveLeavesTheTestVendorOut(t *testing.T) {
 		t.Fatalf("after restart tickets = %+v", tickets)
 	}
 }
+
+// A project that counts only its own scanner unit keeps no new ticket from
+// another, and labels the rows it kept before the unit was read by reading
+// their days again, however far back they are.
+func TestArchiveCountsOnlyItsUnits(t *testing.T) {
+	now := at("2026-10-25", "10:00")
+	day := "2026-10-25"
+	source := &rangeSource{tickets: []Ticket{
+		{Number: "LS-OLD-1", Vehicle: "A", Supplier: "HPP", Material: "Tanah", Volume: 20, ScanFullAt: at("2026-08-01", "08:00"), Unit: "LS001"},
+		{Number: "LS-OLD-2", Vehicle: "B", Supplier: "MNP", Material: "Tanah", Volume: 21, ScanFullAt: at("2026-08-01", "09:00"), Unit: "LS002"},
+		{Number: "LS-MID", Vehicle: "B", Supplier: "MNP", Material: "Sirtu", Volume: 22, ScanFullAt: at("2026-10-20", "09:00"), Unit: "LS002"},
+		{Number: "LS-1", Vehicle: "A", Supplier: "HPP", Material: "Tanah", Volume: 25, ScanFullAt: at(day, "08:00"), Unit: "LS001"},
+		{Number: "LS-2", Vehicle: "C", Supplier: "MNP", Material: "Tanah", Volume: 26, ScanFullAt: at(day, "08:10"), Unit: "LS002"},
+	}}
+	store := &memoryStore{}
+	if err := store.AppendWidyaTickets(context.Background(), []model.WidyaTicket{
+		{Number: "LS-OLD-1", Vehicle: "A", Supplier: "HPP", Material: "Tanah", Volume: 20, ScanFullAt: at("2026-08-01", "08:00")},
+		{Number: "LS-OLD-2", Vehicle: "B", Supplier: "MNP", Material: "Tanah", Volume: 21, ScanFullAt: at("2026-08-01", "09:00")},
+		{Number: "LS-MID", Vehicle: "B", Supplier: "MNP", Material: "Sirtu", Volume: 22, ScanFullAt: at("2026-10-20", "09:00")},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	archive := NewArchive(source, store, wib, 30*time.Second, func() time.Time { return now }).WithUnits(" ls001 ")
+
+	if err := archive.Sync(context.Background()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	units := map[string]string{}
+	for _, row := range store.rows {
+		if _, twice := units[row.Number]; twice {
+			t.Fatalf("ticket %s written twice: %+v", row.Number, store.rows)
+		}
+		units[row.Number] = row.Unit
+	}
+	want := map[string]string{"LS-OLD-1": "LS001", "LS-OLD-2": "LS002", "LS-MID": "LS002", "LS-1": "LS001"}
+	if len(units) != len(want) {
+		t.Fatalf("sheet = %+v", store.rows)
+	}
+	for number, unit := range want {
+		if units[number] != unit {
+			t.Fatalf("%s labelled %q, want %q; sheet = %+v", number, units[number], unit, store.rows)
+		}
+	}
+
+	tickets, has, err := archive.TicketsBetween(context.Background(), "2026-08-01", day, wib)
+	if err != nil || !has {
+		t.Fatalf("tickets: has=%v err=%v", has, err)
+	}
+	counted := map[string]bool{}
+	for _, ticket := range tickets {
+		counted[ticket.Number] = true
+	}
+	if len(counted) != 2 || !counted["LS-OLD-1"] || !counted["LS-1"] {
+		t.Fatalf("counted %v", counted)
+	}
+	if vendors := archive.Vendors(context.Background()); len(vendors) != 1 || vendors[0] != "HPP" {
+		t.Fatalf("filter offers %v", vendors)
+	}
+
+	// A restart reads the labels back and needs nothing read again to know.
+	restarted := NewArchive(&rangeSource{}, store, wib, 30*time.Second, func() time.Time { return now }).WithUnits("LS001")
+	if err := restarted.Sync(context.Background()); err != nil {
+		t.Fatalf("restart sync: %v", err)
+	}
+	if tickets, _, _ = restarted.TicketsBetween(context.Background(), "2026-08-01", day, wib); len(tickets) != 2 {
+		t.Fatalf("after restart tickets = %+v", tickets)
+	}
+
+	// Without a unit, every unit counts, as before.
+	all := NewArchive(&rangeSource{}, store, wib, 30*time.Second, func() time.Time { return now })
+	if err := all.Sync(context.Background()); err != nil {
+		t.Fatalf("all sync: %v", err)
+	}
+	if tickets, _, _ = all.TicketsBetween(context.Background(), "2026-08-01", day, wib); len(tickets) != 4 {
+		t.Fatalf("every unit tickets = %+v", tickets)
+	}
+}

@@ -25,6 +25,9 @@ type Ticket struct {
 	// UpdatedAt is when the scanner last changed the ticket: its full scan, or
 	// a correction. The archive reads forward from the newest one it has seen.
 	UpdatedAt time.Time
+	// Unit is the code of the scanner unit that cut the ticket, such as
+	// "LS001". One account can see several scanners, at several sites.
+	Unit string
 }
 
 // ticketPageSize is how many tickets are asked for at once. It is the most the
@@ -52,6 +55,10 @@ type ticketPage struct {
 		Volume       float64 `json:"scanLoadVolume"`
 		ScanFullAt   string  `json:"scanFullAt"`
 		UpdatedAt    string  `json:"updatedAt"`
+		Unit         *struct {
+			Code string `json:"code"`
+			Name string `json:"name"`
+		} `json:"unit"`
 	} `json:"data"`
 	Meta struct {
 		TotalPages int `json:"totalPages"`
@@ -147,6 +154,13 @@ func (c *Client) tickets(ctx context.Context, filter ticketFilter) ([]Ticket, er
 				continue
 			}
 			updated, _ := time.Parse(time.RFC3339, row.UpdatedAt)
+			unit := ""
+			if row.Unit != nil {
+				unit = row.Unit.Code
+				if strings.TrimSpace(unit) == "" {
+					unit = row.Unit.Name
+				}
+			}
 			tickets = append(tickets, Ticket{
 				UpdatedAt:  updated,
 				Number:     strings.TrimSpace(row.Number),
@@ -155,6 +169,7 @@ func (c *Client) tickets(ctx context.Context, filter ticketFilter) ([]Ticket, er
 				Material:   strings.TrimSpace(row.MaterialName),
 				Volume:     row.Volume,
 				ScanFullAt: scanned,
+				Unit:       normalizeUnit(unit),
 			})
 		}
 	}
@@ -174,6 +189,11 @@ func (c *Client) ticketPage(ctx context.Context, filter ticketFilter, page int) 
 		return nil, fmt.Errorf("read tickets page %d: %w", page, err)
 	}
 	return &response, nil
+}
+
+// normalizeUnit folds a unit code to the one spelling it is compared in.
+func normalizeUnit(code string) string {
+	return strings.ToUpper(strings.TrimSpace(code))
 }
 
 // normalizeVrm folds the spacing a plate was typed with, so "\t E 9374 HB" and
